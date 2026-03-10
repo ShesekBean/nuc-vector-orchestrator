@@ -36,28 +36,38 @@ Do NOT attempt to log in or handle credentials yourself.
 
 ## API Reference
 
-- **Base URL:** `https://api.monarchmoney.com`
-- **GraphQL endpoint:** `https://api.monarchmoney.com/graphql`
+- **Base URL:** `https://api.monarch.com`
+- **GraphQL endpoint:** `https://api.monarch.com/graphql`
 
 ### Required Headers
 
-Every request must include:
+Every request MUST include ALL of these headers (the API returns 403 without them):
 ```
 Content-Type: application/json
 Authorization: Token <session_token from monarch-log.json>
-Accept: application/json
+Accept: */*
 Client-Platform: web
+Origin: https://app.monarch.com
+Monarch-Client: monarch-core-web-app-graphql
+Monarch-Client-Version: v1.0.1600
+User-Agent: Mozilla/5.0 (compatible; MonarchMoneyOpenClaw/1.0)
 ```
 
 ### How to Call
 
+**IMPORTANT: GraphQL query strings MUST be single-line (no newlines in the `query` field). Multiline queries cause 403 errors.**
+
 All queries use POST to the GraphQL endpoint. Example:
 ```bash
-curl -sf -X POST https://api.monarchmoney.com/graphql \
+curl -sf -X POST https://api.monarch.com/graphql \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Token <TOKEN>' \
-  -H 'Accept: application/json' \
+  -H 'Accept: */*' \
   -H 'Client-Platform: web' \
+  -H 'Origin: https://app.monarch.com' \
+  -H 'Monarch-Client: monarch-core-web-app-graphql' \
+  -H 'Monarch-Client-Version: v1.0.1600' \
+  -H 'User-Agent: Mozilla/5.0 (compatible; MonarchMoneyOpenClaw/1.0)' \
   -d '{"operationName":"GetAccounts","query":"query GetAccounts { accounts { id displayName currentBalance isAsset isHidden includeInNetWorth type { name display } subtype { name display } institution { name } } }","variables":{}}'
 ```
 

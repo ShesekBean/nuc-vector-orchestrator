@@ -35,8 +35,8 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-LOGIN_URL = "https://api.monarchmoney.com/auth/login/"
-GRAPHQL_URL = "https://api.monarchmoney.com/graphql"
+LOGIN_URL = "https://api.monarch.com/auth/login/"
+GRAPHQL_URL = "https://api.monarch.com/graphql"
 
 # Where OpenClaw reads the token from
 MONARCH_LOG_PATH = Path.home() / ".openclaw" / "workspace" / "memory" / "monarch-log.json"
@@ -46,9 +46,12 @@ def api_post(url: str, body: dict, token: str | None = None) -> dict:
     """POST JSON to Monarch Money API."""
     headers = {
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Accept": "*/*",
         "Client-Platform": "web",
-        "User-Agent": "MonarchMoneyOpenClaw/1.0",
+        "Origin": "https://app.monarch.com",
+        "Monarch-Client": "monarch-core-web-app-graphql",
+        "Monarch-Client-Version": "v1.0.1600",
+        "User-Agent": "Mozilla/5.0 (compatible; MonarchMoneyOpenClaw/1.0)",
     }
     if token:
         headers["Authorization"] = f"Token {token}"
