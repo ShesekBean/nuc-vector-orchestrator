@@ -1,0 +1,139 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.3.8",
+    "lastTouchedAt": "2026-03-10T20:25:23.068Z"
+  },
+  "env": {
+    "STRAVA_CLIENT_ID": "<STRAVA_CLIENT_ID>",
+    "STRAVA_CLIENT_SECRET": "<STRAVA_CLIENT_SECRET>",
+    "STRAVA_REFRESH_TOKEN": "<STRAVA_REFRESH_TOKEN>",
+    "WITHINGS_CLIENT_ID": "<WITHINGS_CLIENT_ID>",
+    "WITHINGS_CLIENT_SECRET": "<WITHINGS_CLIENT_SECRET>",
+    "WITHINGS_REFRESH_TOKEN": "<WITHINGS_REFRESH_TOKEN>",
+    "OURA_ACCESS_TOKEN": "<OURA_ACCESS_TOKEN>"
+  },
+  "wizard": {
+    "lastRunAt": "2026-02-27T07:28:48.920Z",
+    "lastRunVersion": "2026.2.26",
+    "lastRunCommand": "onboard",
+    "lastRunMode": "local"
+  },
+  "update": {
+    "checkOnStart": true,
+    "auto": {
+      "enabled": true
+    }
+  },
+  "browser": {
+    "ssrfPolicy": {
+      "allowedHostnames": []
+    }
+  },
+  "auth": {
+    "profiles": {
+      "openai-codex:default": {
+        "provider": "openai-codex",
+        "mode": "oauth"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openai-codex/gpt-5.3-codex"
+      },
+      "workspace": "/home/node/.openclaw/workspace",
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "hooks": {
+    "enabled": true,
+    "path": "/hooks",
+    "token": "<HOOKS_TOKEN>",
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        },
+        "boot-md": {
+          "enabled": true
+        },
+        "bootstrap-extra-files": {
+          "enabled": true
+        },
+        "command-logger": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "channels": {
+    "signal": {
+      "enabled": true,
+      "account": "+14086469950",
+      "cliPath": "signal-cli",
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        14084758230
+      ],
+      "groupPolicy": "disabled"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "lan",
+    "controlUi": {
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789",
+        "http://localhost:18889",
+        "http://127.0.0.1:18889"
+      ]
+    },
+    "auth": {
+      "mode": "token",
+      "token": "<GATEWAY_AUTH_TOKEN>"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "nodes": {
+      "denyCommands": [
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
+        "calendar.add",
+        "contacts.add",
+        "reminders.add"
+      ]
+    }
+  },
+  "plugins": {
+    "entries": {
+      "signal": {
+        "enabled": true
+      }
+    }
+  }
+}

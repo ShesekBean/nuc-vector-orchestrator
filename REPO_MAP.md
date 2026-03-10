@@ -33,10 +33,27 @@ vector-orchestrator/
 │   ├── test_harness/              ← vision oracle + automated testing
 │   │   ├── golden_test.py         ← comprehensive test
 │   │   └── voice_commands/        ← test WAV files
-│   ├── openclaw/                  ← OpenClaw extensions (additive)
-│   │   └── skills/
-│   │       └── robot-control/
-│   │           └── SKILL.md       ← Signal → robot commands (gRPC-based)
+│   ├── openclaw/                  ← OpenClaw config backup + extensions (additive)
+│   │   ├── docker/                ← Container run scripts (sanitized, tokens via env vars)
+│   │   │   ├── openclaw-gateway-run.sh  ← Signal gateway container
+│   │   │   └── openclaw-ade-run.sh      ← ADE (work bot) container
+│   │   ├── config/
+│   │   │   ├── openclaw.json.example    ← Full config template (secrets redacted)
+│   │   │   └── signal-config.json.example ← Signal channel config reference
+│   │   ├── cron/
+│   │   │   └── jobs.json          ← Cron job definitions (fitness, briefs)
+│   │   ├── workspace/             ← Workspace MD files (SOUL, IDENTITY, AGENTS, etc.)
+│   │   ├── skills/
+│   │   │   ├── robot-control/
+│   │   │   │   └── SKILL.md       ← Signal → robot commands
+│   │   │   └── fitness/
+│   │   │       └── SKILL.md       ← Fitness tracking skill
+│   │   ├── agent-notifier.js      ← Agent notification helper
+│   │   ├── command-allowlist.yaml  ← Allowed commands
+│   │   ├── intercom-relay.js      ← Intercom message relay
+│   │   ├── narration-receiver.js  ← Narration endpoint
+│   │   ├── robot-commands.js      ← Robot command dispatcher
+│   │   └── voice_chat_relay.py    ← Voice chat relay
 │   └── vector/                    ← Vector runtime bridge (runs on NUC)
 │       ├── bridge/                ← gRPC client → HTTP bridge (compatibility layer)
 │       ├── src/                   ← inference + control nodes
