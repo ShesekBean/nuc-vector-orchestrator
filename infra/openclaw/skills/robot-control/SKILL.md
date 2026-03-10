@@ -6,8 +6,6 @@ metadata: {"openclaw": {"emoji": "🤖"}}
 
 # Robot Control Skill
 
-# TODO: Replace HTTP bridge with Vector gRPC SDK
-
 ## Overview
 You have DIRECT CONTROL of a physical robot (Yahboom ROSMASTER X3 Plus) via HTTP. When the user says "robot <command>", you MUST immediately execute the corresponding curl command — do not ask for clarification, do not explain, just DO IT and report the result.
 
@@ -342,7 +340,7 @@ Do NOT ask the user what they mean. Do NOT explain the API. Just run curl and te
 
 Movement commands automatically pause the autonomous planner for 10 seconds. No extra steps needed.
 
-**SECURITY: You do NOT have SSH access to the Vector robot. All robot interaction is via HTTP bridge only. Never attempt to SSH, SCP, rsync, or run scripts on the Vector robot.**
+**SECURITY: You do NOT have SSH access to the Jetson. All robot interaction is via HTTP bridge only. Never attempt to SSH, SCP, rsync, or run scripts on the Jetson.**
 
 ## Command Reference
 - Movement: "go forward/back", "turn left/right", "slide left/right", "spin", "dance"
