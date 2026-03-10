@@ -46,8 +46,10 @@ vector-orchestrator/
 │   │   ├── skills/
 │   │   │   ├── robot-control/
 │   │   │   │   └── SKILL.md       ← Signal → robot commands
-│   │   │   └── fitness/
-│   │   │       └── SKILL.md       ← Fitness tracking skill
+│   │   │   ├── fitness/
+│   │   │   │   └── SKILL.md       ← Fitness tracking skill
+│   │   │   └── monarch-money/
+│   │   │       └── SKILL.md       ← Monarch Money financial queries (read-only)
 │   │   ├── agent-notifier.js      ← Agent notification helper
 │   │   ├── command-allowlist.yaml  ← Allowed commands
 │   │   ├── intercom-relay.js      ← Intercom message relay
@@ -76,6 +78,7 @@ vector-orchestrator/
 │   ├── pgm-signal-gate.sh        ← rate-limited Signal notifications
 │   ├── signal-interactive.sh     ← interactive test Signal library
 │   ├── intercom-server.py        ← NUC HTTP intercom relay → Signal DM
+│   ├── monarch-login.py          ← Monarch Money auth → saves token for OpenClaw
 │   └── ...                        ← other utility scripts
 ├── infra/                         ← runtime environment configuration
 │   ├── vector/                    ← Vector infra (wire-pod config, OSKR setup)
