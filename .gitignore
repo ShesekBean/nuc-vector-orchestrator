@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# State (runtime)
+.claude/state/
+
+# Models (large files)
+apps/vector/models/*.pt
+apps/vector/models/*.onnx
+apps/vector/models/*.bin
+!apps/vector/models/.gitkeep
+
+# Test artifacts
+apps/test_harness/captures/
+apps/test_harness/experiments/
+
+# Logs
+*.log
+/tmp/
