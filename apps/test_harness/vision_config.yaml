@@ -1,0 +1,17 @@
+vision_oracle:
+  livekit_room: robot-cam       # LiveKit Cloud room name
+  capture_delay_ms: 500         # settle time between before/after
+  captures_dir: null            # null = default (apps/test_harness/captures/)
+  success_metrics:
+    face_tracking:
+      required:
+        - face_detected_after
+        - face_centered_after
+        - centering_improved
+      pass_rules:
+        center_tolerance_pct: 20
+        min_centering_improvement_pct: 10
+        min_confidence: 0.70
+
+  # Vision LLM provider + model: read from config/llm-provider.yaml
+  # (same config used by agent-loop.sh — change provider there)

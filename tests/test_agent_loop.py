@@ -311,7 +311,7 @@ class TestDispatch:
         assert "VECTOR WORKER CONTEXT" not in prompt
 
     @patch("apps.control_plane.agent_loop.dispatch._is_vector_issue", return_value=True)
-    def test_build_worker_prompt_vector_has_ssh_context(self, mock_vector, tmp_path):
+    def test_build_worker_prompt_vector_has_grpc_context(self, mock_vector, tmp_path):
         from apps.control_plane.agent_loop.config import Config
         from apps.control_plane.agent_loop.dispatch import build_worker_prompt
 
@@ -321,11 +321,9 @@ class TestDispatch:
         prompt = build_worker_prompt(cfg, "ShesekBean/nuc-vector-orchestrator", 120,
                                      "Fix motor code", "No comments")
         assert "VECTOR WORKER CONTEXT" in prompt
-        assert "ssh vector" in prompt
-        assert "192.168.1.71" in prompt
-        assert "/home/yahboom/claude/" in prompt
+        assert "gRPC" in prompt
+        assert "apps/vector/" in prompt
         assert "issue number 120" in prompt
-        assert "vector/" in prompt
 
     @patch("apps.control_plane.agent_loop.dispatch.gh")
     def test_get_dispatchable_issues_single_repo(self, mock_gh, tmp_path):
