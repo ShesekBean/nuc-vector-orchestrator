@@ -1,0 +1,47 @@
+# Dockerfile.signal
+#
+# Extends openclaw:local with the signal-cli native binary.
+# Build openclaw:local first (via docker-setup.sh or `docker build -t openclaw:local .`),
+# then build this image:
+#
+#   SIGNAL_CLI_VERSION=$(curl -fsSL https://api.github.com/repos/AsamK/signal-cli/releases/latest \
+#     | grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
+#   docker build \
+#     --build-arg SIGNAL_CLI_VERSION=$SIGNAL_CLI_VERSION \
+#     -f Dockerfile.signal \
+#     -t openclaw:signal .
+
+ARG BASE_IMAGE=openclaw:local
+FROM ${BASE_IMAGE}
+
+USER root
+
+# signal-cli native binary (no JVM required, x86_64 and arm64 supported).
+# Pass the version at build time to pin a known-good release.
+# Check latest: https://github.com/AsamK/signal-cli/releases/latest
+ARG SIGNAL_CLI_VERSION
+RUN test -n "$SIGNAL_CLI_VERSION" || { \
+      echo "ERROR: --build-arg SIGNAL_CLI_VERSION=<version> is required."; \
+      echo "  Latest: https://github.com/AsamK/signal-cli/releases/latest"; \
+      exit 1; \
+    }
+
+# Download signal-cli native binary (x86_64 Linux).
+# The release asset is named: signal-cli-VERSION-Linux-native.tar.gz
+# It extracts to a single file: /opt/signal-cli
+RUN set -eux; \
+    curl -fsSL \
+      "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}-Linux-native.tar.gz" \
+      -o /tmp/signal-cli.tar.gz; \
+    tar xzf /tmp/signal-cli.tar.gz -C /opt/; \
+    rm /tmp/signal-cli.tar.gz; \
+    chmod 755 /opt/signal-cli; \
+    ln -sf /opt/signal-cli /usr/local/bin/signal-cli; \
+    signal-cli --version
+
+# Ensure the signal-cli data directory exists and is owned by the node user.
+# The gateway mounts a named volume at this path for persistence across restarts.
+RUN mkdir -p /home/node/.local/share/signal-cli \
+ && chown -R node:node /home/node/.local
+
+USER node

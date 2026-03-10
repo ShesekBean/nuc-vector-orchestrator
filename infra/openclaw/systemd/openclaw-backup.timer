@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenClaw backup timer (every 6 hours)
+
+[Timer]
+OnCalendar=*-*-* 00/6:00:00
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

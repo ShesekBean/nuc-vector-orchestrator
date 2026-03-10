@@ -11,8 +11,8 @@ Two machines coordinate via GitHub Issues in a single monorepo:
 - **NUC "desk"** (Intel x86_64, Ubuntu) — orchestrator, Signal gateway, ALL inference + control
 - **Vector 2.0** (Snapdragon 212, OSKR unlocked) — thin gRPC client, hardware only
 
-**Repo:** `ShesekBean/vector-orchestrator` (monorepo)
-**Parent:** `ShesekBean/nuc-orchestrator` (R3 robot — reference architecture)
+**Repo:** `ShesekBean/nuc-vector-orchestrator` (monorepo)
+**Parent:** `ShesekBean/nuc-orchestrator` (R3 robot — reference architecture, archived)
 **Human:** Ophir (communicates via Signal messenger)
 
 ## Key Differences from R3 (nuc-orchestrator)

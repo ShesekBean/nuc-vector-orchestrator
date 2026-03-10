@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenClaw outbound + inbound security monitor (Ade)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sg docker -c "/home/ophirsw/openclaw-dns-ade/openclaw-monitor-ade.sh"
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-monitor-ade
+
+[Install]
+WantedBy=default.target

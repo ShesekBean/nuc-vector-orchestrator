@@ -1,0 +1,112 @@
+# docker-compose.signal.yml
+#
+# Security-hardened overlay for OpenClaw + Signal messenger.
+# Merges on top of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.signal.yml up -d openclaw-gateway
+#
+# Volume strategy: mounts ~/.openclaw as a whole directory.
+# Files are synced from the monorepo to ~/.openclaw via scripts/sync-openclaw.sh
+# and backed up from ~/.openclaw to the repo via scripts/backup-openclaw.sh (every 6h).
+# NOTE: Symlinks inside ~/.openclaw DO NOT work — Docker bind mounts can't follow
+# symlinks to paths outside the container. Always use real files.
+#
+# Security layers:
+#   1. Ports bound to 127.0.0.1 — not reachable from LAN/internet
+#      (Docker bypasses ufw; binding to 127.0.0.1 is the correct mitigation)
+#   2. privileged: false — container cannot access host devices
+#   3. no-new-privileges — blocks privilege escalation inside the container
+#   4. cap_drop: ALL — removes all Linux capabilities (Node.js needs none)
+#   5. Isolated Docker network — isolated from other containers on docker0
+#   6. mem_limit / cpus — caps resources, prevents runaway process / DoS
+#   7. Log rotation — prevents disk exhaustion
+#   8. Health check — Docker auto-restarts unresponsive gateway
+#   9. Named volume for signal-cli keys — persists across image rebuilds
+
+services:
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE:-openclaw:signal}
+
+    # ── Firewall: loopback-only port binding ─────────────────────────────────
+    # Docker rewrites iptables and bypasses ufw. Binding to 127.0.0.1 prevents
+    # Docker from exposing these ports on external interfaces entirely.
+    # To allow LAN access: change 127.0.0.1 → 0.0.0.0 AND run harden-firewall.sh
+    ports:
+      - "127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+      - "127.0.0.1:${OPENCLAW_BRIDGE_PORT:-18790}:18790"
+
+    # ── DNS ──────────────────────────────────────────────────────────────────
+    # Host uses systemd-resolved (127.0.0.53) which containers can't reach.
+    # Use Google DNS as fallback inside the container.
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+
+    # ── Container hardening ───────────────────────────────────────────────────
+    privileged: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # ── Resource limits (standalone Docker Compose syntax) ───────────────────
+    # Note: deploy.resources only applies to Docker Swarm; use these keys instead.
+    mem_limit: 1.5g
+    cpus: 2.0
+
+    # ── Health check ─────────────────────────────────────────────────────────
+    # CMD-SHELL is required so the shell expands $OPENCLAW_GATEWAY_TOKEN.
+    healthcheck:
+      test: ["CMD-SHELL", "node openclaw.mjs health --token $$OPENCLAW_GATEWAY_TOKEN"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    # ── Network isolation ─────────────────────────────────────────────────────
+    networks:
+      - openclaw_net
+
+    # ── Log rotation ─────────────────────────────────────────────────────────
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    volumes:
+      # Signal account keys and sessions — back up before migrating/re-registering.
+      - signal_cli_data:/home/node/.local/share/signal-cli
+      # Full OpenClaw directory — contains config, workspace, cron, sessions.
+      # Files are real copies (NOT symlinks) synced from the monorepo.
+      - ${HOME}/.openclaw:/home/node/.openclaw
+
+  openclaw-cli:
+    image: ${OPENCLAW_IMAGE:-openclaw:signal}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    privileged: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - openclaw_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    volumes:
+      - signal_cli_data:/home/node/.local/share/signal-cli
+      - ${HOME}/.openclaw:/home/node/.openclaw
+
+networks:
+  # Custom bridge network isolates OpenClaw from unrelated containers on docker0.
+  openclaw_net:
+    driver: bridge
+
+volumes:
+  signal_cli_data:
+    driver: local

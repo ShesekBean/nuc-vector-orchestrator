@@ -1,0 +1,28 @@
+# LLM Provider Configuration
+# Switch between Claude Code and OpenAI Codex (or any future CLI) by changing "provider:"
+# agent-loop.sh reads this file at startup via parse_llm_config()
+provider: claude
+
+claude:
+  binary: claude
+  api_key_env: ANTHROPIC_API_KEY
+  skip_permissions: "--dangerously-skip-permissions"
+  prompt_flag: "-p"
+  model_flag: "--model"
+  env_unset: "CLAUDECODE"
+  models:
+    heavy: ""
+    medium: sonnet
+    light: haiku
+
+openai:
+  binary: "codex exec"
+  api_key_env: OPENAI_API_KEY
+  skip_permissions: "--dangerously-bypass-approvals-and-sandbox"
+  prompt_flag: ""
+  model_flag: "--model"
+  env_unset: ""
+  models:
+    heavy: ""
+    medium: "gpt-5-codex-mini"
+    light: "gpt-5-codex-mini"

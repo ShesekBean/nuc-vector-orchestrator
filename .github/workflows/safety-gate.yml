@@ -1,0 +1,87 @@
+name: "CISO Security Review"
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  ciso-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "CISO: Check for hardcoded secrets"
+        run: |
+          FAIL=0
+          # Check for password assignments
+          if grep -rn 'password\s*=' --include='*.py' --include='*.js' --include='*.sh' --include='*.ts' . 2>/dev/null | grep -v 'test_\|\.env\.example\|#.*password\|//.*password'; then
+            echo "::error::CISO VETOED: Potential hardcoded password found"
+            FAIL=1
+          fi
+          # Check for API keys
+          if grep -rn -E "(api[_-]?key|secret[_-]?key|auth[_-]?token)\s*=\s*[\"'][A-Za-z0-9]" --include='*.py' --include='*.js' --include='*.sh' --include='*.ts' . 2>/dev/null | grep -v 'test_\|example\|#\|//'; then
+            echo "::error::CISO VETOED: Potential hardcoded API key or token"
+            FAIL=1
+          fi
+          # Check for .env files being committed
+          if git diff --name-only origin/main...HEAD 2>/dev/null | grep -E '\.env$|\.env\.local'; then
+            echo "::error::CISO VETOED: .env file in commit"
+            FAIL=1
+          fi
+          exit $FAIL
+
+      - name: "CISO: Check for sudo usage"
+        run: |
+          if grep -rn 'sudo ' --include='*.sh' --include='*.py' --include='*.js' . 2>/dev/null | grep -v '#.*sudo\|//.*sudo\|test_'; then
+            echo "::error::CISO VETOED: sudo usage detected — not allowed in agent code"
+            exit 1
+          fi
+
+      - name: "CISO: Check for docker push"
+        run: |
+          if grep -rn 'docker push' --include='*.sh' --include='*.py' --include='*.js' --include='*.yml' --exclude-dir=.github . 2>/dev/null | grep -v '#.*docker push\|//.*docker\|test_'; then
+            echo "::error::CISO VETOED: docker push detected — images must not be pushed"
+            exit 1
+          fi
+
+      - name: "CISO: Check for non-allowlisted external URLs"
+        run: |
+          # Allow: localhost, 192.168.*, 127.0.0.1, pypi.org, github.com
+          ALLOWED='localhost|127\.0\.0\.1|192\.168\.|pypi\.org|github\.com|api\.anthropic\.com|claude\.ai'
+          if grep -rn -E 'curl\s+https?://' --include='*.sh' --include='*.py' . 2>/dev/null | grep -v -E "$ALLOWED|#|test_"; then
+            echo "::warning::CISO FLAG: curl to non-allowlisted URL detected — review required"
+          fi
+
+      - name: "CISO: Check for IMMUTABLE CLAUDE.md modification"
+        run: |
+          CHANGED_CLAUDE_MD=$(git diff --name-only origin/main...HEAD 2>/dev/null | grep '^\.claude/CLAUDE\.md$' || true)
+          if [ -n "$CHANGED_CLAUDE_MD" ]; then
+            echo "::error::CISO VETOED: .claude/CLAUDE.md is IMMUTABLE — only Ophir can modify it"
+            exit 1
+          fi
+
+      - name: "CISO: Check for OpenClaw config modifications"
+        run: |
+          if git diff --name-only origin/main...HEAD 2>/dev/null | grep -E 'openclaw\.json|SOUL\.md|AGENTS\.md|dnsmasq\.conf|\.openclaw/'; then
+            echo "::error::CISO VETOED: Attempt to modify existing OpenClaw/DNS configuration"
+            exit 1
+          fi
+
+      - name: "CISO: Check for large changes"
+        run: |
+          LINES=$(git diff --stat origin/main...HEAD 2>/dev/null | tail -1 | grep -oP '\d+ insertion' | grep -oP '\d+' || echo "0")
+          if [ "$LINES" -gt 500 ]; then
+            echo "::warning::CISO FLAG: Large change ($LINES insertions) — manual review recommended"
+          fi
+
+      - name: "CISO: Check for new dependencies"
+        run: |
+          if git diff --name-only origin/main...HEAD 2>/dev/null | grep -E 'requirements\.txt|package\.json|Pipfile|pyproject\.toml'; then
+            echo "::warning::CISO FLAG: Dependency file changed — review new packages for supply chain risk"
+          fi
+
+      - name: "CISO: Security review passed"
+        run: |
+          echo "CISO REVIEW - APPROVED - all security checks passed"

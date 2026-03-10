@@ -1,0 +1,40 @@
+// signal-config.json.example
+//
+// Merge this into ~/.openclaw/openclaw.json (or the path in OPENCLAW_CONFIG_DIR).
+// Uses JSON5 syntax (comments and trailing commas allowed).
+//
+// Replace every placeholder before using.
+// NEVER commit real phone numbers or secrets to git.
+{
+  channels: {
+    signal: {
+      enabled: true,
+
+      // Bot phone number in E.164 format.
+      // Use a DEDICATED number — not your personal Signal account.
+      // Registering with signal-cli de-authenticates the phone app for that number.
+      account: "+1REPLACE_BOT_NUMBER",
+
+      // signal-cli is installed at /usr/local/bin/signal-cli inside the container.
+      cliPath: "signal-cli",
+
+      // "pairing" = every new DM sender must be approved by you.
+      // This is the safest option: unknown senders get a code, not a response.
+      dmPolicy: "pairing",
+
+      // Your personal number(s) allowed to DM the bot without pairing approval.
+      // Add your own number here so your first message is accepted immediately.
+      allowFrom: ["+1REPLACE_YOUR_NUMBER"],
+
+      // Group messages: "open" = any group member can trigger the bot.
+      // Use "allowlist" + groupAllowFrom for tighter control.
+      groupPolicy: "open",
+
+      // Optional: restrict group senders when groupPolicy is "allowlist"
+      // groupAllowFrom: ["+1REPLACE_YOUR_NUMBER"],
+
+      // Typing indicators sent while the bot is composing a reply.
+      // sendReadReceipts: false,
+    },
+  },
+}

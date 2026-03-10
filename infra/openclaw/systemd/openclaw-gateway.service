@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenClaw Gateway (Signal)
+Documentation=https://openclaw.ai
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ophirsw/Documents/claude/openclaw
+ExecStart=/usr/bin/sg docker -c "/home/ophirsw/Documents/claude/openclaw/openclaw-gateway-run.sh"
+ExecStop=/usr/bin/sg docker -c "docker stop openclaw-gateway"
+Restart=always
+RestartSec=10
+TimeoutStartSec=90
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-gateway
+
+[Install]
+WantedBy=default.target

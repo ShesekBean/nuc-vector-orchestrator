@@ -1,0 +1,112 @@
+# command-allowlist.yaml — Allowed robot actions via bridge API
+#
+# Bridge API: http://192.168.1.70:8081
+# Each entry maps to a bridge endpoint with safety constraints.
+# MQTT transport publishes equivalent command payloads to:
+#   <MQTT_TOPIC_PREFIX>/move
+#   <MQTT_TOPIC_PREFIX>/stop
+#   <MQTT_TOPIC_PREFIX>/follow/start
+#   <MQTT_TOPIC_PREFIX>/follow/stop
+#   <MQTT_TOPIC_PREFIX>/follow/status
+
+movement:
+  move:
+    endpoint: "POST /move"
+    params: {vx: float, vy: float, vz: float, duration: float}
+    limits:
+      vx: [-0.5, 0.5]
+      vy: [-0.5, 0.5]
+      vz: [-0.5, 0.5]
+      duration: [0.1, 5.0]
+    requires_safety_check: true
+  stop:
+    endpoint: "POST /stop"
+    requires_safety_check: false
+  motor:
+    endpoint: "POST /motor"
+    params: {speeds: [int, int, int, int]}
+    limits:
+      speeds: [-50, 50]
+    requires_safety_check: true
+
+servo:
+  set:
+    endpoint: "POST /servo"
+    params: {channel: int, angle: int}
+    limits:
+      channel: [1, 4]
+      angle: [0, 180]
+    requires_safety_check: false
+
+effects:
+  led:
+    endpoint: "POST /led"
+    params: {r: int, g: int, b: int}
+    limits:
+      r: [0, 255]
+      g: [0, 255]
+      b: [0, 255]
+    requires_safety_check: false
+  led_charging:
+    description: "Composite: sets green color then running effect"
+    sequence:
+      - endpoint: "POST /led"
+        params: {r: 0, g: 255, b: 0}
+      - endpoint: "POST /led/effect"
+        params: {effect: 2, speed: 50, parm: 0}
+    requires_safety_check: false
+  led_effect:
+    endpoint: "POST /led/effect"
+    params: {effect: int, speed: int, parm: int}
+    limits:
+      effect: [0, 3]
+      speed: [0, 100]
+      parm: [0, 255]
+    requires_safety_check: false
+  beep:
+    endpoint: "POST /beep"
+    params: {duration: int}
+    limits:
+      duration: [0, 2000]
+    requires_safety_check: false
+
+camera:
+  capture:
+    endpoint: "GET /capture"
+    description: "Capture a JPEG photo from robot camera and send via Signal"
+    requires_safety_check: false
+  scene:
+    endpoint: "GET /scene"
+    port: 8091
+    description: "Get natural language scene description from robot vision"
+    requires_safety_check: false
+
+status:
+  health:
+    endpoint: "GET /health"
+    description: "Battery voltage and robot status"
+    requires_safety_check: false
+  sensors:
+    endpoint: "GET /sensors"
+    requires_safety_check: false
+
+following:
+  start:
+    endpoint: "POST /follow/start"
+    params: {target: string}
+    description: "Start following (optionally a named person)"
+    requires_safety_check: true
+  stop:
+    endpoint: "POST /follow/stop"
+    requires_safety_check: false
+  status:
+    endpoint: "GET /follow/status"
+    requires_safety_check: false
+
+face_enrollment:
+  enroll:
+    endpoint: "POST /enroll"
+    port: 8085
+    params: {name: string}
+    description: "Enroll/remember a face with a given name"
+    requires_safety_check: false

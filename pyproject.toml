@@ -1,0 +1,8 @@
+[tool.ruff]
+exclude = ["apps/vector/vendor/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Robot tests require Vector-specific modules (Vector SDK, etc.)
+# They run on the Vector robot via SSH, not on the NUC
+addopts = "--ignore=tests/robot"

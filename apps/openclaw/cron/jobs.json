@@ -1,0 +1,229 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "swim-reminder",
+      "name": "Morning swim push",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1772976611137,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 6 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "🏊 6:30 — time to swim. Go."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773063000000,
+        "lastRunAtMs": 1772976600014,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 11123,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "weight-checkin",
+      "name": "Morning weight check-in",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1772982032581,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Pull today's weight from Withings using the access_token in memory/fitness-log.json withings_token_cache. Log it and send Ophir his weight with progress toward 86 kg goal and a brief motivating note."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773068400000,
+        "lastRunAtMs": 1772982000012,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 32569,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "swim-check",
+      "name": "Noon swim verification",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1772996432837,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 12 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Check Strava for a swim since midnight today. Use the access_token from memory/fitness-log.json strava_token_cache. If swam: log it and send congrats with current streak. If not: gentle nudge."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773082800000,
+        "lastRunAtMs": 1772996400008,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 32829,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "lunch-checkin",
+      "name": "Lunch diet check-in",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1773000028575,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 13 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Ask Ophir what he had for breakfast and lunch. When he replies, log it and give 1-2 lines of honest dietary feedback."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773086400000,
+        "lastRunAtMs": 1773000000011,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 28564,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "dinner-checkin",
+      "name": "Dinner diet check-in",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1772942418844,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 20 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Ask Ophir what he had for dinner. When he replies, log it, then give a brief end-of-day diet summary (what went well, one thing to improve tomorrow)."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773025200000,
+        "lastRunAtMs": 1772942400009,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 18835,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "run-coordinator",
+      "name": "Wednesday run coordinator",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1772643637135,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 3",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Check Strava for this week's runs (Mon-today) using access_token from memory/fitness-log.json strava_token_cache. Report: 4K done? 8K done? Then send an outbound Signal message to Mickey (+16502838593) to coordinate a run this week - suggest a day/time. Keep it casual."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773244800000,
+        "lastRunAtMs": 1772643600008,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 37127,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "ai-daily-brief",
+      "name": "Daily AI shipping brief",
+      "enabled": true,
+      "createdAtMs": 1773011375086,
+      "updatedAtMs": 1773011375086,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 7 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '🤖 AI Daily Brief' header."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773064800000
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenClaw Safety Cop — AI assistant integrity monitor
+After=network.target docker.service
+Wants=docker.service
+DefaultDependencies=no
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/openclaw-safety-cop/safety_cop.py
+Restart=always
+RestartSec=10
+User=root
+Group=root
+NoNewPrivileges=yes
+ProtectSystem=full
+BindPaths=/var/run/docker.sock
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-safety-cop
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
