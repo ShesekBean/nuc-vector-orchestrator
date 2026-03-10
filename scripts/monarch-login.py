@@ -2,16 +2,31 @@
 """
 Monarch Money login helper for OpenClaw.
 
-Authenticates with Monarch Money and saves the session token to the
-OpenClaw workspace memory file. Supports MFA/2FA.
+Saves a session token that Shon uses to query your Monarch Money data.
+The token typically lasts several months before needing renewal.
 
 Usage:
-    python3 scripts/monarch-login.py
+    # Option 1 (recommended): Paste token from your browser
+    python3 scripts/monarch-login.py --token
+
+    # Option 2: Log in with email/password (supports MFA)
+    python3 scripts/monarch-login.py --login
+
+How to get your token from the browser:
+    1. Log into https://app.monarchmoney.com in your browser
+    2. Open DevTools (F12 or Cmd+Opt+I)
+    3. Go to Application tab → Storage → Local Storage → https://app.monarchmoney.com
+    4. Find the key containing your auth token (look for a long alphanumeric string)
+    -- OR --
+    3. Go to Network tab, refresh the page
+    4. Click any request to api.monarchmoney.com
+    5. In the Headers tab, find "Authorization: Token <your_token>"
+    6. Copy just the token value (after "Token ")
 
 The token is saved to ~/.openclaw/workspace/memory/monarch-log.json
-and typically lasts several months before needing renewal.
 """
 
+import argparse
 import getpass
 import json
 import sys
@@ -25,9 +40,6 @@ GRAPHQL_URL = "https://api.monarchmoney.com/graphql"
 
 # Where OpenClaw reads the token from
 MONARCH_LOG_PATH = Path.home() / ".openclaw" / "workspace" / "memory" / "monarch-log.json"
-
-# Also save to repo backup
-REPO_BACKUP_PATH = None  # Set if you want a repo copy
 
 
 def api_post(url: str, body: dict, token: str | None = None) -> dict:
@@ -92,7 +104,6 @@ def verify_token(token: str) -> bool:
 
 def save_token(token: str) -> None:
     """Save token to the OpenClaw workspace memory."""
-    # Load existing data if present
     data = {}
     if MONARCH_LOG_PATH.exists():
         try:
@@ -108,12 +119,48 @@ def save_token(token: str) -> None:
     print(f"Token saved to {MONARCH_LOG_PATH}")
 
 
-def main() -> None:
-    print("=== Monarch Money Login for OpenClaw ===\n")
-    print("This will save a session token that Shon uses to query your finances.")
-    print("The token typically lasts several months.\n")
+def mode_token() -> None:
+    """Paste a token from the browser."""
+    print("=== Monarch Money — Browser Token ===\n")
+    print("How to get your token:")
+    print("  1. Log into https://app.monarchmoney.com")
+    print("  2. Open DevTools (F12)")
+    print("  3. Go to Network tab, refresh the page")
+    print("  4. Click any request to api.monarchmoney.com")
+    print("  5. Find the 'Authorization' header")
+    print("  6. Copy the value after 'Token '\n")
 
-    email = input("Monarch Money email: ").strip()
+    raw = input("Paste your token: ").strip()
+    if not raw:
+        print("No token provided.")
+        sys.exit(1)
+
+    # Strip "Token " prefix if they copied the whole header value
+    token = raw.removeprefix("Token ").strip()
+
+    if not token:
+        print("No token provided.")
+        sys.exit(1)
+
+    print("\nVerifying token...")
+    if not verify_token(token):
+        print("Token verification failed — it may be expired or invalid.")
+        print("Make sure you copied the full token string.")
+        sys.exit(1)
+
+    print("Token verified!")
+    save_token(token)
+    print("\nDone! Shon can now query your Monarch Money data.")
+    print("Try: 'monarch balances' or 'how much did I spend this month'")
+
+
+def mode_login() -> None:
+    """Log in with email/password."""
+    print("=== Monarch Money — Email/Password Login ===\n")
+    print("Note: If you use 'Continue with Google', you need to set a")
+    print("password first in Monarch's account settings.\n")
+
+    email = input("Email: ").strip()
     if not email:
         print("Email required.")
         sys.exit(1)
@@ -123,7 +170,6 @@ def main() -> None:
         print("Password required.")
         sys.exit(1)
 
-    # First attempt without MFA
     token = None
     try:
         token = login(email, password)
@@ -143,19 +189,38 @@ def main() -> None:
             print(f"\nLogin failed: {e}")
             sys.exit(1)
 
-    # Verify
     print("\nVerifying token...")
     if not verify_token(token):
-        print("Token verification failed. The token may not be valid.")
+        print("Token verification failed.")
         sys.exit(1)
 
-    print("Token verified successfully!")
-
-    # Save
+    print("Token verified!")
     save_token(token)
-
     print("\nDone! Shon can now query your Monarch Money data.")
-    print("Ask Shon: 'monarch balances' or 'how much did I spend this month'")
+    print("Try: 'monarch balances' or 'how much did I spend this month'")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Save a Monarch Money session token for OpenClaw (Shon).",
+        epilog="The token is saved to ~/.openclaw/workspace/memory/monarch-log.json",
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--token", action="store_true",
+        help="Paste a token from your browser (recommended, no password needed)",
+    )
+    group.add_argument(
+        "--login", action="store_true",
+        help="Log in with email and password (supports MFA)",
+    )
+
+    args = parser.parse_args()
+
+    if args.token:
+        mode_token()
+    else:
+        mode_login()
 
 
 if __name__ == "__main__":
