@@ -60,12 +60,24 @@ Authorization: Bearer <strava_token_cache.access_token from fitness-log.json>
 
 For weekly runs use `after=<unix midnight Monday this week>`.
 
-## Oura API (readiness context)
+## Oura API (readiness + sleep)
+
+Oura uses a Personal Access Token (does not expire, no refresh needed).
+Token is in `.env` as `OURA_ACCESS_TOKEN`.
+
+### Readiness
 ```
 GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
-Authorization: Bearer <your-oura-personal-access-token>
+Authorization: Bearer $OURA_ACCESS_TOKEN
 ```
-Use `score` as optional context. Score < 60 → acknowledge lower readiness.
+Use `score` as context. Score < 60 → acknowledge lower readiness, suggest recovery day.
+
+### Sleep
+```
+GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+Authorization: Bearer $OURA_ACCESS_TOKEN
+```
+Key fields: `score`, `contributors.total_sleep`, `contributors.deep_sleep`, `contributors.rem_sleep`.
 
 ## Diet Guidance
 - Encourage: protein-rich, Mediterranean-style, vegetables, lean protein
