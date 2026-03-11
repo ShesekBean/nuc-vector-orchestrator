@@ -168,14 +168,14 @@ def mode_login() -> None:
         print("Email required.")
         sys.exit(1)
 
-    password = getpass.getpass("Password: ")
-    if not password:
+    user_pass = getpass.getpass("Password: ")
+    if not user_pass:
         print("Password required.")
         sys.exit(1)
 
     token = None
     try:
-        token = login(email, password)
+        token = login(email, user_pass)
     except RuntimeError as e:
         if "MFA_REQUIRED" in str(e):
             print("\nMFA/2FA required.")
@@ -184,7 +184,7 @@ def mode_login() -> None:
                 print("2FA code required.")
                 sys.exit(1)
             try:
-                token = login(email, password, totp=totp)
+                token = login(email, user_pass, totp=totp)
             except RuntimeError as e2:
                 print(f"\nLogin failed: {e2}")
                 sys.exit(1)
