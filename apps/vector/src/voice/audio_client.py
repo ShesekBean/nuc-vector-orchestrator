@@ -31,9 +31,6 @@ NATIVE_SAMPLE_RATE = 15_625
 # Target rate expected by openwakeword / Whisper
 TARGET_SAMPLE_RATE = 16_000
 
-# Samples per AudioFeed chunk (observed: 3200 bytes = 1600 int16)
-_SAMPLES_PER_CHUNK = 1600
-
 # Rolling window size for chunks-per-second metric
 _CPS_WINDOW = 30
 
