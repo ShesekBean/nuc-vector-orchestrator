@@ -189,6 +189,23 @@ def pr_checks_billing_failure(repo: str, num: int) -> bool:
     return True
 
 
+def main_ci_healthy(repo: str) -> bool:
+    """Check if CI on the main branch is passing.
+
+    Returns True if the latest main commit has all checks passing (or no checks).
+    Returns True on API failure (fail-open — don't block dispatch on infra issues).
+    """
+    status = gh("api", f"repos/{repo}/commits/main/status", "--jq", ".state")
+    if not status:
+        return True  # Fail-open
+    status = status.strip()
+    # "success" or "pending" are fine; "failure" means main is broken
+    if status == "failure":
+        log.warning("Main branch CI is failing — pre-existing failures detected")
+        return False
+    return True
+
+
 def graphql(query: str, **variables: str) -> dict | None:
     """Run a GraphQL query."""
     args = ["api", "graphql", "-f", f"query={query}"]

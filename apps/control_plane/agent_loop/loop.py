@@ -182,6 +182,11 @@ class AgentLoop:
             log.info("Cooldown ended — unsticking all issues")
             self._unstick_all_issues()
 
+        # Pre-dispatch: warn if main CI is broken (workers will hit pre-existing failures)
+        from . import github as gh_mod
+        if not gh_mod.main_ci_healthy(self.cfg.nuc_repo):
+            log.warning("Main branch CI is failing — workers may hit pre-existing lint/test failures")
+
         log.info("Checking for assigned:worker issues... [%s]", self.rotator.status)
         issues = get_dispatchable_issues(self.cfg)
 
