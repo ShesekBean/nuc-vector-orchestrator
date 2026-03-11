@@ -60,7 +60,7 @@ class CameraClient:
         self._reconnect_thread: threading.Thread | None = None
         self._should_reconnect = False
         self._max_reconnect_delay = 30.0
-        self._on_connection_lost: Callable[[], None] | None = None
+        self._connection_lost_callback: Callable[[], None] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -102,7 +102,7 @@ class CameraClient:
 
     def set_connection_lost_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback invoked when the robot connection drops."""
-        self._on_connection_lost = callback
+        self._connection_lost_callback = callback
 
     @property
     def fps(self) -> float:
@@ -184,20 +184,19 @@ class CameraClient:
                 self._frames.append(bgr_array)
                 self._jpegs.append(jpeg_bytes)
                 self._timestamps.append(now)
-
-            self._frame_count += 1
+                self._frame_count += 1
 
         except Exception:
             logger.exception("Error processing camera frame")
 
-    def _on_connection_lost(self) -> None:
+    def _handle_connection_lost(self) -> None:
         """Handle SDK connection_lost event — attempt reconnection."""
         logger.warning("Vector connection lost — will attempt reconnect")
         self._streaming = False
 
-        if self._on_connection_lost:
+        if self._connection_lost_callback:
             try:
-                self._on_connection_lost()
+                self._connection_lost_callback()
             except Exception:
                 logger.exception("connection_lost callback raised")
 

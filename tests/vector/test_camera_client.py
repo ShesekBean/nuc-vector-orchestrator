@@ -240,8 +240,8 @@ class TestConnectionLost:
         callback = MagicMock()
         client.set_connection_lost_callback(callback)
 
-        # The public callback attribute should be set
-        assert client._on_connection_lost == callback
+        # The callback attribute should be set
+        assert client._connection_lost_callback == callback
 
 
 # ---------------------------------------------------------------------------
