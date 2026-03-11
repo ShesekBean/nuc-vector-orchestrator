@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh Strava/Withings OAuth tokens for OpenClaw fitness skill
+After=openclaw-gateway.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/ophirsw/Documents/claude/nuc-vector-orchestrator/scripts/refresh-fitness-tokens.sh
+TimeoutSec=60

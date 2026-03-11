@@ -30,8 +30,8 @@ Schema:
 
 ## Withings API (weight from scale)
 
-Tokens are managed by a background refresh script. Do NOT attempt to refresh — just use the cached token.
-If `withings_token_cache.expires_at < now`, tell the user the token is being refreshed and to try again in a few minutes.
+Tokens are refreshed automatically every 2 hours by `fitness-token-refresh.timer` (systemd user timer on NUC). The timer runs `scripts/refresh-fitness-tokens.py` inside the openclaw-gateway container.
+If `withings_token_cache.expires_at < now`, the timer will refresh it within 2 hours. Tell the user the token is being refreshed and to try again shortly. Do NOT attempt to refresh tokens yourself.
 
 ```
 GET https://wbsapi.withings.net/measure?action=getmeas&meastypes=1&category=1&lastupdate=<unix 48h ago>
@@ -47,8 +47,8 @@ Log result to `weights` array in fitness-log.json.
 
 ## Strava API (swim + run)
 
-Tokens are managed by a background refresh script. Do NOT attempt to refresh — just use the cached token.
-If `strava_token_cache.expires_at < now`, tell the user the token is being refreshed and to try again shortly.
+Tokens are refreshed automatically every 2 hours by `fitness-token-refresh.timer` (systemd user timer on NUC). The timer runs `scripts/refresh-fitness-tokens.py` inside the openclaw-gateway container.
+If `strava_token_cache.expires_at < now`, the timer will refresh it within 2 hours. Tell the user the token is being refreshed and to try again shortly. Do NOT attempt to refresh tokens yourself.
 
 ```
 GET https://www.strava.com/api/v3/athlete/activities?after=<unix midnight today>&per_page=20
