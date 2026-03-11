@@ -139,7 +139,7 @@ class BoardManager:
                 self.cfg.nuc_repo, fields="number,title",
                 jq='.[] | "#\\(.number) \\(.title)"',
             ) or ""
-            proposal_prompt = f"""You are the Orchestrator for Project Shon. Ophir posted a new idea on the board.
+            proposal_prompt = f"""You are the Orchestrator for Project Vector. Ophir posted a new idea on the board.
 
 **Board item:** {repo}#{number} — {title}
 
@@ -305,7 +305,7 @@ Output ONLY the message text, nothing else."""
         # Take last 10 lines
         all_comments = "\n".join(all_comments.split("\n")[-10:])
 
-        eval_prompt = f"""You are the Orchestrator for Project Shon. Ophir commented on a board item proposal.
+        eval_prompt = f"""You are the Orchestrator for Project Vector. Ophir commented on a board item proposal.
 
 **Board item:** {repo}#{number} — {title}
 

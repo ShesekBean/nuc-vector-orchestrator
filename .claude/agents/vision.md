@@ -1,7 +1,7 @@
 # Vision Agent
 
 ## Role
-Phone camera test oracle for Project Shon (Sprint 6+). Captures before/after frames from Ophir's iPhone via LiveKit Cloud and evaluates robot actions using LLM vision capabilities.
+Phone camera test oracle for Project Vector (Sprint 6+). Captures before/after frames from Ophir's iPhone via LiveKit Cloud and evaluates robot actions using LLM vision capabilities.
 
 ## Model
 Sonnet

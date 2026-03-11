@@ -60,7 +60,7 @@ def build_worker_prompt(cfg: Config, repo: str, issue_num: int,
     # Read issue-worker.md (single source of truth)
     md_file = cfg.repo_dir / ".claude/agents/issue-worker.md"
     md_content = md_file.read_text() if md_file.exists() else (
-        "You are a NUC Issue Worker for Project Shon. Read .claude/CLAUDE.md for context."
+        "You are a NUC Issue Worker for Project Vector. Read .claude/CLAUDE.md for context."
     )
 
     # Recent lessons
@@ -595,7 +595,7 @@ def run_pr_review_hook(cfg: Config, repo: str, issue_num: int) -> None:
     # Gate 0: Check PR is up-to-date with main
     _check_pr_up_to_date(cfg, repo, pr_number, issue_num)
 
-    review_prompt = f"""You are an independent security and quality reviewer for Project Shon.
+    review_prompt = f"""You are an independent security and quality reviewer for Project Vector.
 Review this PR diff. You have NO context about why decisions were made — review purely on merit.
 
 {truncation_note}

@@ -1,5 +1,5 @@
 #!/bin/bash
-# start-all.sh — Start ALL Project Shon services on NUC
+# start-all.sh — Start ALL Project Vector services on NUC
 #
 # Starts systemd services and verifies they're running.
 # Does NOT touch OpenClaw/Docker containers (those run independently).

@@ -269,7 +269,7 @@ print(json.dumps(s, indent=2))
 
             # Refresh project summary snapshot
             if [[ "$DRY_RUN" == "true" ]]; then
-                log "[DRY RUN] Would refresh project-shon-summary"
+                log "[DRY RUN] Would refresh project-vector-summary"
             else
                 bash "$REPO_DIR/scripts/update-project-summary.sh" || \
                     log "WARN: project summary refresh failed"

@@ -16,7 +16,7 @@ Bring Vector 2.0 (OSKR) to feature parity with the R3 Jetson robot, with improve
 Signal (Ophir's phone)
     │
     ▼
-OpenClaw (Shon) on NUC ←── Voice (Vector mic → OpenClaw Talk Mode)
+OpenClaw (Vector agent) on NUC ←── Voice (Vector mic → OpenClaw Talk Mode)
     │
     ▼
 HTTP→gRPC Bridge (NUC) ── gRPC ──► Vector 2.0
@@ -110,15 +110,15 @@ Autonomous person tracking and following — the flagship feature.
 
 ### Phase 4: Voice Pipeline
 
-Voice interaction through OpenClaw Talk Mode — Shon handles everything.
+Voice interaction through OpenClaw Talk Mode — Vector agent handles everything.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
 | 18 | [Mic audio streaming](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/18) | #3 | stuck | Raw `AudioFeed` gRPC from Vector's 4-mic beamforming array. 16kHz PCM. |
 | 19 | [Wake word detection](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/19) | #18 | stuck | OpenWakeWord "hey jarvis" on NUC. Gates audio send to OpenClaw. |
-| 20 | [OpenClaw Talk Mode integration](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/20) | #18, #19, #3 | stuck | **Core voice issue.** Pipes mic audio → OpenClaw Talk Mode (gpt-4o-transcribe STT → Shon agent → OpenAI TTS). All via OpenAI OAuth, zero API cost. Solves accent problem. |
+| 20 | [OpenClaw Talk Mode integration](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/20) | #18, #19, #3 | stuck | **Core voice issue.** Pipes mic audio → OpenClaw Talk Mode (gpt-4o-transcribe STT → Vector agent → OpenAI TTS). All via OpenAI OAuth, zero API cost. Solves accent problem. |
 | 21 | [OpenAI TTS + gRPC playback](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/21) | #3, #20 | stuck | Receive TTS audio from OpenClaw, forward to Vector speaker via `PlayAudio` gRPC. |
-| 22 | [Voice command routing](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/22) | #20, #23, #32 | stuck | No custom router — Shon's agent handles all commands via existing skills. Voice and Signal share the same routing. |
+| 22 | [Voice command routing](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/22) | #20, #23, #32 | stuck | No custom router — Vector agent handles all commands via existing skills. Voice and Signal share the same routing. |
 | 37 | [Echo cancellation](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/37) | #18, #19, #21 | stuck | Mute mic during TTS playback + hold-off. Prevents wake word re-trigger loop. |
 
 #### Voice Architecture Decision
@@ -131,14 +131,14 @@ Vector mic ──gRPC──► NUC wake word (OpenWakeWord)
                       │
                       └── triggered ──► OpenClaw Talk Mode
                                          ├── STT: gpt-4o-transcribe (accent-friendly)
-                                         ├── Agent: Shon (all skills work)
+                                         ├── Agent: Vector agent (all skills work)
                                          └── TTS: OpenAI
                                          │
                                          ▼
                               gRPC PlayAudio ──► Vector speaker
 ```
 
-**Key insight:** Voice commands go through the same Shon agent as Signal DMs. No separate command router to maintain. Any new skill added to OpenClaw automatically works via voice too.
+**Key insight:** Voice commands go through the same Vector agent as Signal DMs. No separate command router to maintain. Any new skill added to OpenClaw automatically works via voice too.
 
 **Future option:** If latency or quality needs improvement, GPT-4o Realtime API (audio-to-audio, no text intermediate, sub-second) — PR #25465 on openclaw/openclaw.
 
@@ -154,7 +154,7 @@ Connect Vector to Ophir via Signal messenger through OpenClaw.
 |---|-------|-------------|--------|-------------|
 | 23 | [Port robot-control skill](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/23) | #32 | stuck | Update OpenClaw skill: HTTP curl → NUC bridge (localhost, not Jetson 192.168.1.71). |
 | 24 | [Intercom: photo + text](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/24) | #32, #13 | stuck | Capture photo, send to Ophir via Signal DM with scene description. |
-| 25 | [Intercom: voice to Signal](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/25) | #20, #22, #24 | stuck | "Tell Ophir I'm heading out" → Shon sends Signal DM. |
+| 25 | [Intercom: voice to Signal](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/25) | #20, #22, #24 | stuck | "Tell Ophir I'm heading out" → Vector agent sends Signal DM. |
 | 31 | [LiveKit WebRTC session](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/31) | #10, #18, #32 | stuck | Live video + audio from Vector to Ophir's phone. Bidirectional — speak through Vector. |
 | 34 | [Physical test framework](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/34) | #32, #23 | stuck | Signal-based test checkpoints for physical robot verification. |
 
@@ -228,10 +228,10 @@ Phase 0 (infra)                    Phase 1 (basic)
 
 All interactions can be initiated two ways:
 
-1. **Voice** — "Hey Jarvis, [command]" → Vector mic → OpenClaw Talk Mode → Shon agent → action
-2. **Signal** — text Shon on Signal DM → OpenClaw agent → robot-control skill → action
+1. **Voice** — "Hey Vector, [command]" → Vector mic → OpenClaw Talk Mode → Vector agent → action
+2. **Signal** — text Vector agent on Signal DM → OpenClaw agent → robot-control skill → action
 
-Both paths go through the same Shon agent with the same skills. Commands available:
+Both paths go through the same Vector agent with the same skills. Commands available:
 
 | Command | Voice example | Signal example | Issues |
 |---------|--------------|----------------|--------|

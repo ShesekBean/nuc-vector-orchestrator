@@ -2,7 +2,7 @@
 """
 Monarch Money login helper for OpenClaw.
 
-Saves a session token that Shon uses to query your Monarch Money data.
+Saves a session token that Vector uses to query your Monarch Money data.
 The token typically lasts several months before needing renewal.
 
 Usage:
@@ -153,7 +153,7 @@ def mode_token() -> None:
 
     print("Token verified!")
     save_token(token)
-    print("\nDone! Shon can now query your Monarch Money data.")
+    print("\nDone! Vector can now query your Monarch Money data.")
     print("Try: 'monarch balances' or 'how much did I spend this month'")
 
 
@@ -199,13 +199,13 @@ def mode_login() -> None:
 
     print("Token verified!")
     save_token(token)
-    print("\nDone! Shon can now query your Monarch Money data.")
+    print("\nDone! Vector can now query your Monarch Money data.")
     print("Try: 'monarch balances' or 'how much did I spend this month'")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Save a Monarch Money session token for OpenClaw (Shon).",
+        description="Save a Monarch Money session token for OpenClaw (Vector).",
         epilog="The token is saved to ~/.openclaw/workspace/memory/monarch-log.json",
     )
     group = parser.add_mutually_exclusive_group(required=True)

@@ -3,7 +3,7 @@
 #
 # OUTBOUND: fires when the container tries to reach a domain not on the DNS allowlist.
 #           Sends a Signal alert; reply "#ALLOW# <domain>" to auto-approve.
-# INBOUND:  fires when someone not on the Signal allowlist tries to message Shon.
+# INBOUND:  fires when someone not on the Signal allowlist tries to message Vector.
 # APPROVALS: subscribes to signal-cli SSE stream (sse-watcher.py) for real-time replies.
 #
 # Alerts are sent to ALERT_NUMBER via Signal.
@@ -126,7 +126,7 @@ except:
         log "INBOUND BLOCKED: $sender"
         send_signal "[INBOUND BLOCKED] $(date '+%Y-%m-%d %H:%M')
 Sender: $sender
-Someone NOT on the Signal allowlist tried to message Shon.
+Someone NOT on the Signal allowlist tried to message Vector.
 To allow: add to ~/.openclaw/openclaw.json → channels.signal.allowFrom" || true
     done
 }

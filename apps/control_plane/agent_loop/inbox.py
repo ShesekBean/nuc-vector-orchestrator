@@ -657,7 +657,7 @@ def _handle_approve(cfg: Config, issue_num: int, timestamps: set[int]) -> None:
 def _run_coach(cfg: Config, combined: str, conversation: str,
                issue_context: str, vector_context: str) -> str:
     """Run Coach quality gate. Returns concern text or empty string if approved."""
-    coach_prompt = f"""You are the Coach — quality gate for Project Shon (robotics AI system).
+    coach_prompt = f"""You are the Coach — quality gate for Project Vector (robotics AI system).
 Ophir (lead engineer) sent messages on Signal. Evaluate them QUICKLY.
 
 CONVERSATION:
@@ -699,7 +699,7 @@ ONLY flag REAL problems that will cause agent failures, architectural damage, or
 def _run_orchestrator(cfg: Config, combined: str, conversation: str,
                       issue_context: str, vector_context: str) -> None:
     """Run Orchestrator to respond to Ophir's messages."""
-    prompt = f"""You are Shon, the Orchestrator for Project Shon — a robotics AI system on a NUC. Ophir is your lead engineer texting you on Signal.
+    prompt = f"""You are Vector, the Orchestrator for Project Vector — a robotics AI system on a NUC. Ophir is your lead engineer texting you on Signal.
 
 CONVERSATION:
 {conversation}

@@ -1,7 +1,7 @@
 #!/bin/bash
-# update-project-summary.sh — Refresh project-shon-summary from live repos
+# update-project-summary.sh — Refresh project-vector-summary from live repos
 #
-# Regenerates ~/Documents/claude/project-shon-summary/ with current state
+# Regenerates ~/Documents/claude/project-vector-summary/ with current state
 # of the monorepo. This folder is for onboarding new LLM sessions —
 # a self-contained snapshot of everything about the project.
 #
@@ -12,7 +12,7 @@
 set -euo pipefail
 
 NUC_REPO="/home/ophirsw/Documents/claude/nuc-vector-orchestrator"
-SUMMARY_DIR="/home/ophirsw/Documents/claude/project-shon-summary"
+SUMMARY_DIR="/home/ophirsw/Documents/claude/project-vector-summary"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] SUMMARY: $*"
@@ -104,14 +104,14 @@ VECTOR_OPEN=$(gh issue list -R ShesekBean/nuc-vector-orchestrator -l "component:
     --jq '.[] | "- #\(.number): \(.title) [\([.labels[].name] | join(", "))]"' 2>/dev/null || echo "  (unable to fetch)")
 
 cat > "$SUMMARY_DIR/00-PROJECT-OVERVIEW.md" << OVERVIEW
-# Project Shon — Summary
+# Project Vector — Summary
 
 **Generated:** $(date '+%Y-%m-%d %H:%M')
 **Purpose:** Self-contained snapshot for onboarding new LLM sessions.
 
 ## What Is This?
 
-Project Shon is a distributed multi-agent robotics system where a robot (Anki/DDL Vector)
+Project Vector is a distributed multi-agent robotics system where a robot (Anki/DDL Vector)
 codes itself, tests itself, and improves itself — with minimal human intervention.
 
 The NUC orchestrates via GitHub Issues; Vector communicates via gRPC SDK.
@@ -136,7 +136,7 @@ $VECTOR_OPEN
 ## Folder Structure
 
 \`\`\`
-project-shon-summary/
+project-vector-summary/
 ├── 00-PROJECT-OVERVIEW.md     ← this file
 ├── nuc-vector-orchestrator/
 │   ├── CLAUDE.md              ← full NUC project config + sprint roadmap

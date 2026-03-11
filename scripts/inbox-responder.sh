@@ -55,7 +55,7 @@ with open('$INBOX_FILE', 'a') as f:
     # Build orchestrator prompt
     local prompt
     prompt=$(cat <<PROMPT
-You are the Orchestrator for Project Shon. Read .claude/CLAUDE.md for full context.
+You are the Orchestrator for Project Vector. Read .claude/CLAUDE.md for full context.
 
 Ophir sent this message on the build-orchestrator Signal group:
 

@@ -139,6 +139,6 @@ def get_conversation_history(inbox_file: Path, limit: int = 20) -> str:
     lines = []
     for m in messages[-limit:]:
         ts = datetime.fromtimestamp(m["ts"] / 1000).strftime("%H:%M")
-        who = "Shon" if m.get("from") == "bot" else "Ophir"
+        who = "Vector" if m.get("from") == "bot" else "Ophir"
         lines.append(f"[{ts}] {who}: {m['msg']}")
     return "\n".join(lines)

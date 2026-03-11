@@ -1,5 +1,5 @@
 [Unit]
-Description=NUC Agent Loop — PM, Coder, Tester, CISO dispatch for Project Shon
+Description=NUC Agent Loop — PM, Coder, Tester, CISO dispatch for Project Vector
 After=network-online.target
 
 [Service]

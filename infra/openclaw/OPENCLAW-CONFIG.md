@@ -10,7 +10,7 @@ Two OpenClaw gateway instances run on the NUC ("desk"), each as a Docker contain
 
 | Instance | Container | Signal Number | Ports (host) | Config Dir | Purpose |
 |----------|-----------|---------------|--------------|------------|---------|
-| **Shon** (primary) | `openclaw-gateway` | +14086469950 | 18889, 18890 | `~/.openclaw/` | Robot control, Ophir's personal assistant |
+| **Vector** (primary) | `openclaw-gateway` | +14086469950 | 18889, 18890 | `~/.openclaw/` | Robot control, Ophir's personal assistant |
 | **Ade** (work bot) | `openclaw-ade` | (separate number) | 18891, 18892 | `~/.openclaw-ade/` | Work-related bot |
 
 Both use the same Docker image: `openclaw:signal` (custom-built, v2026.2.26).
@@ -68,13 +68,13 @@ All are user units at `~/.config/systemd/user/`. Manage with `systemctl --user`.
 ### Services
 | Unit | Description | Status |
 |------|-------------|--------|
-| `openclaw-gateway.service` | Shon gateway (Signal) | active |
+| `openclaw-gateway.service` | Vector gateway (Signal) | active |
 | `openclaw-ade.service` | Ade gateway (work bot) | active |
-| `openclaw-monitor.service` | Security monitor (Shon) — tails logs for rejections | active |
+| `openclaw-monitor.service` | Security monitor (Vector) — tails logs for rejections | active |
 | `openclaw-monitor-ade.service` | Security monitor (Ade) | active |
-| `openclaw-backup.service` | Config backup (Shon) | triggered by timer |
+| `openclaw-backup.service` | Config backup (Vector) | triggered by timer |
 | `openclaw-ade-backup.service` | Config backup (Ade) | triggered by timer |
-| `openclaw-backup-monthly.service` | Monthly full backup (Shon) | triggered by timer |
+| `openclaw-backup-monthly.service` | Monthly full backup (Vector) | triggered by timer |
 | `openclaw-ade-backup-monthly.service` | Monthly full backup (Ade) | triggered by timer |
 
 ### Timers
@@ -116,7 +116,7 @@ All API secrets are stored in `~/.openclaw/.env` (chmod 600) and referenced in c
 - **Sandbox:** `off` (Docker binary not in container — `non-main` caused `spawn docker EACCES`), read-only workspace
 
 ### Signal Channel
-- **Account:** +14086469950 (Shon's Signal number)
+- **Account:** +14086469950 (Vector's Signal number)
 - **signal-cli path:** `signal-cli` (on PATH inside the custom image)
 - **DM policy:** `allowlist` — only Ophir's number (+14084758230) can DM
 - **Group policy:** `disabled` — bot does not respond in group chats
@@ -222,8 +222,8 @@ Robot hardware (motors, servos, camera, etc.)
 ### Ports (all on localhost only)
 | Port | Service |
 |------|---------|
-| 18889 | Shon gateway WebSocket + Control UI |
-| 18890 | Shon gateway secondary port |
+| 18889 | Vector gateway WebSocket + Control UI |
+| 18890 | Vector gateway secondary port |
 | 18891 | Ade gateway WebSocket + Control UI |
 | 18892 | Ade gateway secondary port |
 
@@ -249,7 +249,7 @@ Robot hardware (motors, servos, camera, etc.)
 3. If `exec format error` or `ENOENT` — wrong image (generic instead of custom)
 
 ### Monarch Money token expired
-1. Symptom: Monarch queries return 401/403, Shon says "session has expired"
+1. Symptom: Monarch queries return 401/403, Vector says "session has expired"
 2. Fix: `python3 scripts/monarch-login.py --token` (paste from browser DevTools)
 3. Token saved to `~/.openclaw/workspace/memory/monarch-log.json`
 4. No restart needed — skill reads token on each query

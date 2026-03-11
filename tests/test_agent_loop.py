@@ -149,7 +149,7 @@ class TestState:
         )
         history = get_conversation_history(inbox)
         assert "Ophir: hello" in history
-        assert "Shon: hi there" in history
+        assert "Vector: hi there" in history
 
 
 # ── LLM tests ──────────────────────────────────────────────────────────────────

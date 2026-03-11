@@ -1,5 +1,5 @@
 #!/bin/bash
-# kill-all.sh — Stop ALL Project Shon processes on NUC
+# kill-all.sh — Stop ALL Project Vector processes on NUC
 #
 # Stops systemd services + kills any orphan processes.
 # Does NOT touch OpenClaw/Docker containers (those are sacred).

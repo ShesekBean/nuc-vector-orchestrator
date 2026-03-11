@@ -6,7 +6,7 @@ Executes inside the openclaw-gateway container via `docker exec`.
 
 Tokens are stored in two places:
   1. ~/.openclaw/.env (refresh tokens — seed values, updated on rotation)
-  2. ~/.openclaw/workspace/memory/fitness-log.json (cached access tokens — used by Shon)
+  2. ~/.openclaw/workspace/memory/fitness-log.json (cached access tokens — used by Vector)
 
 Withings access tokens expire every ~3 hours. Strava every ~6 hours.
 """

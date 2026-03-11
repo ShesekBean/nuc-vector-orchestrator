@@ -37,7 +37,7 @@
 |---------|-------------|-------------|-------|
 | Person detection (YOLO) | Jetson GPU, ~3Hz | NUC GPU/CPU, ~15+ fps | Actually faster — no Jetson GPU contention |
 | Face recognition | YuNet + SFace on Jetson | Same models on NUC | Better — NUC has more compute |
-| Voice pipeline | Wake word → STT → Command → TTS | Wake word → OpenClaw Talk Mode (gpt-4o-transcribe STT → Shon agent → OpenAI TTS) | 4-mic array + accent-friendly STT via OpenAI OAuth |
+| Voice pipeline | Wake word → STT → Command → TTS | Wake word → OpenClaw Talk Mode (gpt-4o-transcribe STT → Vector agent → OpenAI TTS) | 4-mic array + accent-friendly STT via OpenAI OAuth |
 | LED control | Rosmaster_Lib API | gRPC `SetBackpackLights` | Different API, same concept |
 | Text-to-speech | Kokoro/Piper on Jetson | OpenAI TTS via OpenClaw → gRPC audio | OpenAI OAuth, better voice quality, zero cost |
 | Signal integration | OpenClaw → bridge HTTP | OpenClaw → gRPC | Same architecture |
@@ -79,7 +79,7 @@
 
 ```
 Ophir (laptop)
-├── Signal app → texts Shon
+├── Signal app → texts Vector
 └── Signal feedback
 
 NUC "desk" (THIS MACHINE — ALL COMPUTE)

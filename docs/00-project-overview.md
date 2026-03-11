@@ -1,11 +1,11 @@
-# Project Shon (Vector Edition) — Summary
+# Project Vector (Vector Edition) — Summary
 
 **Generated:** 2026-03-10
 **Purpose:** Self-contained snapshot for onboarding new LLM sessions.
 
 ## What Is This?
 
-Project Shon (Vector edition) is a distributed multi-agent robotics system where a robot (Anki/DDL Vector 2.0 with OSKR) codes itself, tests itself, and improves itself — with minimal human intervention.
+Project Vector (Vector edition) is a distributed multi-agent robotics system where a robot (Anki/DDL Vector 2.0 with OSKR) codes itself, tests itself, and improves itself — with minimal human intervention.
 
 Two machines coordinate via GitHub Issues in a single monorepo:
 - **NUC "desk"** (Intel x86_64, Ubuntu) — orchestrator, Signal gateway, ALL inference + control
