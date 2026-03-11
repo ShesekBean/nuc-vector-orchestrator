@@ -86,4 +86,4 @@ class NucEventBus:
     def listener_count(self, event: str) -> int:
         """Return the number of listeners for *event*."""
         with self._lock:
-            return len(self._listeners[event])
+            return len(self._listeners.get(event, []))
