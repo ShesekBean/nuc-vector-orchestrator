@@ -107,7 +107,13 @@ class LiftController:
 
     # -- Public API ----------------------------------------------------------
 
-    def move_to(self, height: float, speed: float | None = None) -> bool:
+    def move_to(
+        self,
+        height: float,
+        speed: float | None = None,
+        *,
+        _preset: str | None = None,
+    ) -> bool:
         """Move lift to an absolute height.
 
         Parameters
@@ -153,7 +159,7 @@ class LiftController:
         self._reset_stow_timer()
         self._bus.emit(
             LIFT_HEIGHT_CHANGED,
-            LiftHeightChangedEvent(height=clamped, preset=None),
+            LiftHeightChangedEvent(height=clamped, preset=_preset),
         )
         logger.info("Lift moved to %.2f", clamped)
         return True
@@ -183,15 +189,7 @@ class LiftController:
             raise ValueError(
                 f"Unknown preset {name!r}; choose from {sorted(PRESETS)}"
             )
-        height = PRESETS[key]
-        success = self.move_to(height, speed=speed)
-        if success:
-            # Re-emit with preset name for richer event data.
-            self._bus.emit(
-                LIFT_HEIGHT_CHANGED,
-                LiftHeightChangedEvent(height=height, preset=key),
-            )
-        return success
+        return self.move_to(PRESETS[key], speed=speed, _preset=key)
 
     def stow(self, speed: float | None = None) -> bool:
         """Convenience method — move lift to the stowed (down) position."""

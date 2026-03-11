@@ -169,11 +169,10 @@ class TestPresets:
         bus.on(LIFT_HEIGHT_CHANGED, lambda e: received.append(e))
         ctrl.start()
         ctrl.move_to_preset("carry")
-        # move_to emits once (preset=None), then move_to_preset emits again (preset="carry")
-        preset_events = [e for e in received if e.preset is not None]
-        assert len(preset_events) == 1
-        assert preset_events[0].preset == "carry"
-        assert preset_events[0].height == pytest.approx(0.5)
+        # Single event with preset name populated
+        assert len(received) == 1
+        assert received[0].preset == "carry"
+        assert received[0].height == pytest.approx(0.5)
 
 
 # --- stow convenience ------------------------------------------------------
