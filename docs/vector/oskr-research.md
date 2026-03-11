@@ -89,6 +89,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Inference Pipeline
 │   ├── YOLO person detection (~15fps on NUC)
 │   ├── Face recognition (YuNet + SFace)
+│   ├── Scene description (camera + YOLO + Claude Vision LLM)
 │   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
 │   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
 ├── Planner (PD controller → gRPC motor commands)
