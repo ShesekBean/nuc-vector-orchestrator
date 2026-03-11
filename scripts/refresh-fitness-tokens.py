@@ -12,11 +12,9 @@ Withings access tokens expire every ~3 hours. Strava every ~6 hours.
 """
 
 import json
-import os
 import re
 import sys
 import time
-from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
