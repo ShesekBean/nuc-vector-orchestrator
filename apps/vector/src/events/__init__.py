@@ -2,6 +2,7 @@
 
 from apps.vector.src.events.nuc_event_bus import NucEventBus
 from apps.vector.src.events.event_types import (
+    CliffTriggeredEvent,
     EmergencyStopEvent,
     FaceRecognizedEvent,
     FollowStateChangedEvent,
@@ -9,6 +10,7 @@ from apps.vector.src.events.event_types import (
     MotorCommandEvent,
     SttResultEvent,
     CommandReceivedEvent,
+    TouchDetectedEvent,
     TtsPlayingEvent,
     YoloPersonDetectedEvent,
 )
@@ -17,6 +19,7 @@ from apps.vector.src.events.sdk_events import SdkEventBridge
 __all__ = [
     "NucEventBus",
     "SdkEventBridge",
+    "CliffTriggeredEvent",
     "CommandReceivedEvent",
     "EmergencyStopEvent",
     "FaceRecognizedEvent",
@@ -24,6 +27,7 @@ __all__ = [
     "LiveKitSessionEvent",
     "MotorCommandEvent",
     "SttResultEvent",
+    "TouchDetectedEvent",
     "TtsPlayingEvent",
     "YoloPersonDetectedEvent",
 ]

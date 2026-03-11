@@ -11,8 +11,12 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from apps.vector.src.events.event_types import (
+    CLIFF_TRIGGERED,
     EMERGENCY_STOP,
+    TOUCH_DETECTED,
+    CliffTriggeredEvent,
     EmergencyStopEvent,
+    TouchDetectedEvent,
 )
 
 if TYPE_CHECKING:
@@ -82,15 +86,28 @@ class SdkEventBridge:
     # -- SDK event handlers --------------------------------------------------
 
     def _on_robot_state(self, _robot: Any, _name: str, msg: Any) -> None:
-        """Handle robot_state events — bridge cliff detection to NUC bus."""
+        """Handle robot_state events — bridge cliff and touch to NUC bus."""
+        # Cliff detection → emergency_stop + cliff_triggered
         cliff = getattr(msg, "cliff_detected_flags", 0)
         if cliff:
+            self._bus.emit(
+                CLIFF_TRIGGERED,
+                CliffTriggeredEvent(cliff_flags=cliff),
+            )
             self._bus.emit(
                 EMERGENCY_STOP,
                 EmergencyStopEvent(
                     source="cliff",
                     details=f"cliff_flags={cliff}",
                 ),
+            )
+
+        # Touch detection → touch_detected
+        touch = getattr(msg, "touch_detected", False)
+        if touch:
+            self._bus.emit(
+                TOUCH_DETECTED,
+                TouchDetectedEvent(location="head", is_pressed=True),
             )
 
     def _on_connection_lost(self, _robot: Any, _name: str, _msg: Any) -> None:

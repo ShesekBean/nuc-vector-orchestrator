@@ -20,6 +20,8 @@ COMMAND_RECEIVED = "command_received"
 TTS_PLAYING = "tts_playing"
 LIVEKIT_SESSION = "livekit_session"
 EMERGENCY_STOP = "emergency_stop"
+CLIFF_TRIGGERED = "cliff_triggered"
+TOUCH_DETECTED = "touch_detected"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -107,3 +109,19 @@ class EmergencyStopEvent:
 
     source: str  # "cliff", "connection_lost", "manual"
     details: str = ""
+
+
+@dataclass(frozen=True)
+class CliffTriggeredEvent:
+    """Emitted when a cliff sensor detects an edge."""
+
+    cliff_flags: int  # bitmask of triggered cliff sensors
+    timestamp_ms: float = 0.0
+
+
+@dataclass(frozen=True)
+class TouchDetectedEvent:
+    """Emitted when the capacitive touch sensor on Vector's head is touched."""
+
+    location: str = "head"  # Vector only has head touch
+    is_pressed: bool = True
