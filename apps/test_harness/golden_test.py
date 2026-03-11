@@ -163,17 +163,15 @@ def signal_send(msg: str):
 
 
 def robot_say(text: str, blocking: bool = False):
-    """Speak text through the robot's OpenAI TTS via the bridge /say endpoint.
+    """Speak text through Vector's say_text() via the NUC bridge /say endpoint.
 
     Non-blocking by default — fires and forgets so TTS doesn't hold up the test.
     """
     try:
-        # voice_io_node HTTP server listens on port 8091 inside muscle container
         payload = json.dumps({"text": text})
-        cmd = ["ssh", "jetson",
-               "docker exec muscle curl -sf -X POST http://localhost:8091/voice/tts "
-               "-H 'Content-Type: application/json' "
-               f"-d '{payload}'"]
+        cmd = ["curl", "-sf", "-X", "POST", "http://localhost:8081/say",
+               "-H", "Content-Type: application/json",
+               "-d", payload]
         if blocking:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
             if result.returncode == 0:

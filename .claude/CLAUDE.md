@@ -56,6 +56,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   │   └── Kalman filter tracker (smooths detections at 10Hz)
 │   ├── Face recognition (YuNet + SFace)
 │   ├── Scene description (camera + Claude Vision API)
+│   ├── Wake word detection (SDK + openwakeword on NUC)
 │   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
 │   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
 │

@@ -16,7 +16,7 @@ Vector communicates exclusively via gRPC over WiFi.
 ## Directory Structure
 
 ```
-vector-orchestrator/
+nuc-vector-orchestrator/
 ├── apps/                          ← runnable applications
 │   ├── control_plane/
 │   │   └── agent_loop/            ← main agent loop (dispatches workers)

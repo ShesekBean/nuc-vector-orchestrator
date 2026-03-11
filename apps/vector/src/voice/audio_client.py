@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Vector's native mic sample rate (from SDK protocol constant)
 NATIVE_SAMPLE_RATE = 15_625
 
-# Target rate expected by openwakeword / Whisper
+# Target rate expected by openwakeword + OpenClaw Talk Mode STT
 TARGET_SAMPLE_RATE = 16_000
 
 # Rolling window size for chunks-per-second metric

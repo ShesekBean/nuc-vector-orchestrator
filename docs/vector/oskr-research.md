@@ -93,7 +93,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
 ├── Planner (PD controller → gRPC motor commands)
 ├── Docker: OpenClaw (Signal gateway)
-└── GitHub repo: ShesekBean/vector-orchestrator
+└── GitHub repo: ShesekBean/nuc-vector-orchestrator
 
 Vector 2.0 (ROBOT — thin client)
 ├── OSKR unlocked Linux

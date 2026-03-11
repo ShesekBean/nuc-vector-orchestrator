@@ -7,9 +7,9 @@ metadata: {"openclaw": {"emoji": "🤖"}}
 # Robot Control Skill
 
 ## Overview
-You have DIRECT CONTROL of a physical robot (Yahboom ROSMASTER X3 Plus) via HTTP. When the user says "robot <command>", you MUST immediately execute the corresponding curl command — do not ask for clarification, do not explain, just DO IT and report the result.
+You have DIRECT CONTROL of a physical robot (Anki/DDL Vector 2.0) via HTTP bridge → gRPC. When the user says "robot <command>", you MUST immediately execute the corresponding curl command — do not ask for clarification, do not explain, just DO IT and report the result.
 
-The robot has mecanum wheels (can strafe), a camera on a servo gimbal, LED strips, a buzzer, sensors (IMU, battery, LiDAR), a microphone, and a speaker (TTS).
+The robot has differential drive (tank treads, no strafing), a 640x360 camera (120° FOV), backpack RGB LEDs, a 184x96 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
 
 ## Bridge API Endpoints
 
