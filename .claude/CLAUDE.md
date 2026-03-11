@@ -177,6 +177,7 @@ nuc-vector-orchestrator/
 │   └── vector/                    ← Vector runtime (inference + gRPC bridge, runs on NUC)
 │       ├── bridge/                ← gRPC client → HTTP bridge (compatibility layer)
 │       ├── src/                   ← inference + control nodes
+│       ├── events/               ← hybrid event system (SDK events + NUC bus)
 │       ├── config/                ← Vector connection config
 │       └── models/                ← ML models (YOLO, face, STT, TTS)
 ├── config/                        ← shared config (llm-provider.yaml)
