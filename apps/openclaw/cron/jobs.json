@@ -23,6 +23,27 @@
       }
     },
     {
+      "id": "sleep-coach",
+      "name": "Morning sleep coaching (Oura)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "45 7 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Pull last night's sleep data from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and readiness: GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (it's a personal access token, doesn't expire). If no data found for last night, Ophir probably hasn't synced his ring yet — remind him: 'Open the Oura app to sync your ring, then I'll check again.' If data found, act as his health coach: report sleep score, total sleep time, REM/deep/light breakdown percentages, readiness score, and give 2-3 lines of personalized advice based on the data (e.g., 'You only got 45 min of deep sleep — try no screens 1h before bed tonight' or 'Great REM at 2h — whatever you did yesterday, keep it up'). Be direct, specific, and actionable. Not generic wellness platitudes."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      }
+    },
+    {
       "id": "weight-checkin",
       "name": "Morning weight check-in",
       "enabled": true,
