@@ -1,0 +1,231 @@
+"""Camera client for consuming frames from Vector over WiFi.
+
+Connects to Vector via the wirepod-vector-sdk, subscribes to camera
+image events, and maintains a thread-safe ring buffer of decoded
+numpy frames for downstream consumers (detection, scene description,
+photo capture).
+"""
+
+from __future__ import annotations
+
+import logging
+import threading
+import time
+from collections import deque
+from typing import TYPE_CHECKING
+
+import cv2
+import numpy as np
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import anki_vector
+
+from anki_vector.events import Events
+
+logger = logging.getLogger(__name__)
+
+# Number of recent timestamps used for rolling FPS calculation
+_FPS_WINDOW = 30
+
+
+class CameraClient:
+    """Consumes camera frames from Vector and buffers them for consumers.
+
+    Args:
+        robot: Connected ``anki_vector.Robot`` instance.
+        buffer_size: Maximum number of frames to keep in the ring buffer.
+    """
+
+    def __init__(self, robot: anki_vector.Robot, buffer_size: int = 10) -> None:
+        if buffer_size < 1:
+            raise ValueError("buffer_size must be >= 1")
+
+        self._robot = robot
+        self._buffer_size = buffer_size
+
+        # Ring buffer of BGR numpy arrays (thread-safe for single-producer)
+        self._frames: deque[np.ndarray] = deque(maxlen=buffer_size)
+        # Parallel buffer of JPEG bytes
+        self._jpegs: deque[bytes] = deque(maxlen=buffer_size)
+        # Timestamps for FPS calculation
+        self._timestamps: deque[float] = deque(maxlen=_FPS_WINDOW)
+
+        self._frame_count = 0
+        self._streaming = False
+        self._lock = threading.Lock()
+
+        # Reconnection state
+        self._reconnect_thread: threading.Thread | None = None
+        self._should_reconnect = False
+        self._max_reconnect_delay = 30.0
+        self._on_connection_lost: Callable[[], None] | None = None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def start(self) -> None:
+        """Start the camera feed and subscribe to frame events."""
+        if self._streaming:
+            logger.warning("Camera feed already streaming")
+            return
+
+        self._should_reconnect = True
+        self._start_feed()
+
+    def stop(self) -> None:
+        """Stop the camera feed and unsubscribe from events."""
+        self._should_reconnect = False
+        self._stop_feed()
+
+        # Wait for any in-progress reconnect thread
+        if self._reconnect_thread and self._reconnect_thread.is_alive():
+            self._reconnect_thread.join(timeout=5.0)
+            self._reconnect_thread = None
+
+    def get_latest_frame(self) -> np.ndarray | None:
+        """Return the most recent frame as a BGR numpy array, or None."""
+        with self._lock:
+            return self._frames[-1].copy() if self._frames else None
+
+    def get_latest_jpeg(self) -> bytes | None:
+        """Return the most recent frame as raw JPEG bytes, or None."""
+        with self._lock:
+            return self._jpegs[-1] if self._jpegs else None
+
+    def get_frame_buffer(self) -> list[np.ndarray]:
+        """Return a copy of all buffered frames (oldest first)."""
+        with self._lock:
+            return [f.copy() for f in self._frames]
+
+    def set_connection_lost_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback invoked when the robot connection drops."""
+        self._on_connection_lost = callback
+
+    @property
+    def fps(self) -> float:
+        """Rolling frames-per-second over the last *_FPS_WINDOW* frames."""
+        with self._lock:
+            if len(self._timestamps) < 2:
+                return 0.0
+            elapsed = self._timestamps[-1] - self._timestamps[0]
+            if elapsed <= 0:
+                return 0.0
+            return (len(self._timestamps) - 1) / elapsed
+
+    @property
+    def frame_count(self) -> int:
+        return self._frame_count
+
+    @property
+    def is_streaming(self) -> bool:
+        return self._streaming
+
+    @property
+    def buffer_size(self) -> int:
+        return self._buffer_size
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _start_feed(self) -> None:
+        """Initialize camera feed and subscribe to events."""
+        try:
+            self._robot.camera.init_camera_feed()
+            self._robot.events.subscribe(
+                self._on_new_image, Events.new_camera_image
+            )
+            self._streaming = True
+            logger.info("Camera feed started (buffer_size=%d)", self._buffer_size)
+        except Exception:
+            logger.exception("Failed to start camera feed")
+            self._streaming = False
+            raise
+
+    def _stop_feed(self) -> None:
+        """Close camera feed and unsubscribe from events."""
+        if not self._streaming:
+            return
+        try:
+            self._robot.events.unsubscribe(
+                self._on_new_image, Events.new_camera_image
+            )
+        except Exception:
+            logger.debug("Unsubscribe failed (may already be unsubscribed)")
+        try:
+            self._robot.camera.close_camera_feed()
+        except Exception:
+            logger.debug("close_camera_feed failed (may already be closed)")
+        self._streaming = False
+        logger.info("Camera feed stopped (total frames: %d)", self._frame_count)
+
+    def _on_new_image(self, _robot: object, _event_type: object, msg: object) -> None:
+        """Callback fired by SDK on each new camera frame."""
+        now = time.monotonic()
+        try:
+            image = self._robot.camera.latest_image
+            if image is None:
+                return
+
+            pil_img = image.raw_image
+
+            # Convert PIL RGB → numpy BGR (OpenCV convention)
+            rgb_array = np.asarray(pil_img)
+            bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+
+            # Encode to JPEG for consumers that want raw bytes
+            ok, jpeg_buf = cv2.imencode(".jpg", bgr_array)
+            jpeg_bytes = jpeg_buf.tobytes() if ok else b""
+
+            with self._lock:
+                self._frames.append(bgr_array)
+                self._jpegs.append(jpeg_bytes)
+                self._timestamps.append(now)
+
+            self._frame_count += 1
+
+        except Exception:
+            logger.exception("Error processing camera frame")
+
+    def _on_connection_lost(self) -> None:
+        """Handle SDK connection_lost event — attempt reconnection."""
+        logger.warning("Vector connection lost — will attempt reconnect")
+        self._streaming = False
+
+        if self._on_connection_lost:
+            try:
+                self._on_connection_lost()
+            except Exception:
+                logger.exception("connection_lost callback raised")
+
+        if self._should_reconnect:
+            self._schedule_reconnect()
+
+    def _schedule_reconnect(self) -> None:
+        """Spawn a background thread to reconnect with exponential backoff."""
+        if self._reconnect_thread and self._reconnect_thread.is_alive():
+            return  # reconnect already in progress
+
+        self._reconnect_thread = threading.Thread(
+            target=self._reconnect_loop, daemon=True
+        )
+        self._reconnect_thread.start()
+
+    def _reconnect_loop(self) -> None:
+        """Try to restart the camera feed with exponential backoff."""
+        delay = 1.0
+        while self._should_reconnect and not self._streaming:
+            logger.info("Reconnect attempt in %.1fs...", delay)
+            time.sleep(delay)
+            if not self._should_reconnect:
+                break
+            try:
+                self._start_feed()
+                logger.info("Reconnected to camera feed")
+                return
+            except Exception:
+                logger.warning("Reconnect failed, retrying...")
+                delay = min(delay * 2, self._max_reconnect_delay)
