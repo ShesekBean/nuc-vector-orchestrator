@@ -209,6 +209,9 @@ class LedController:
         if duration_s is None:
             duration_s = self._override_duration_s
 
+        hue = max(0.0, min(1.0, hue))
+        saturation = max(0.0, min(1.0, saturation))
+
         with self._lock:
             self._override_hue = hue
             self._override_sat = saturation
