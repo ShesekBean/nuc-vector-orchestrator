@@ -1,0 +1,1 @@
+{"issue":30,"date":"2026-03-11","repo":"nuc","cat":"feature","lesson":"PGM auto-unstick parses ## Dependencies sections and checks issue states — keep dependency format consistent across issues","fix":"Added _check_stuck_dependencies() to PGM bash pre-checks with _parse_dependencies() static parser"}

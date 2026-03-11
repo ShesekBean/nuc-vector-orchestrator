@@ -168,7 +168,7 @@ def mode_login() -> None:
         print("Email required.")
         sys.exit(1)
 
-    password = getpass.getpass("Password: ")
+    password = getpass.getpass("Password: ")  # password from interactive prompt, not hardcoded
     if not password:
         print("Password required.")
         sys.exit(1)

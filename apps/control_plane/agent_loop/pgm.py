@@ -383,7 +383,10 @@ class PGMManager:
                                       f"(open >24h, needs triage) — {title}")
                     log.info("PGM: flagged orphaned issue %s#%s", prefix, num)
 
-        # 5. CI failures → escalate to LLM
+        # 5. Auto-unstick: check stuck issues whose dependencies are all closed
+        self._check_stuck_dependencies()
+
+        # 6. CI failures → escalate to LLM
         for repo in [cfg.nuc_repo]:
             runs_raw = gh.gh(
                 "run", "list", "-R", repo, "-L", "5",
@@ -395,6 +398,75 @@ class PGMManager:
                 return True
 
         return False
+
+    def _check_stuck_dependencies(self) -> None:
+        """Auto-unstick issues whose dependency issues are all closed."""
+        for repo in [self.cfg.nuc_repo]:
+            stuck_issues = gh.issue_list(
+                repo, label="stuck",
+                fields="number,title,body",
+            )
+            for issue in stuck_issues:
+                num = issue.get("number")
+                title = issue.get("title", "")
+                body = issue.get("body", "")
+                if not num or not body:
+                    continue
+
+                deps = self._parse_dependencies(body)
+                if not deps:
+                    continue  # No parseable dependencies — skip
+
+                # Check if ALL dependency issues are closed
+                all_closed = True
+                for dep_num in deps:
+                    state = gh.issue_view(
+                        repo, dep_num,
+                        fields="state", jq=".state",
+                    )
+                    if state.upper() != "CLOSED":
+                        all_closed = False
+                        break
+
+                if all_closed:
+                    gh.issue_edit_labels(
+                        repo, num,
+                        remove=["stuck"],
+                        add=["assigned:worker"],
+                    )
+                    self._signal_gate(
+                        "general", str(num),
+                        f"📊 PGM: Issue #{num} unblocked — "
+                        f"all dependencies resolved. Title: {title}",
+                    )
+                    log.info(
+                        "PGM: auto-unstuck #%d — all %d dependencies closed",
+                        num, len(deps),
+                    )
+
+    @staticmethod
+    def _parse_dependencies(body: str) -> list[int]:
+        """Parse issue references from a '## Dependencies' section.
+
+        Returns a list of issue numbers, or empty list if no section found.
+        """
+        in_deps = False
+        dep_nums: list[int] = []
+        for line in body.splitlines():
+            stripped = line.strip()
+            if re.match(r"^##\s+Dependencies", stripped, re.IGNORECASE):
+                in_deps = True
+                continue
+            if in_deps:
+                # Stop at next heading
+                if stripped.startswith("## "):
+                    break
+                # Extract #N references
+                for m in re.finditer(r"#(\d+)", stripped):
+                    num = int(m.group(1))
+                    if num not in dep_nums:
+                        dep_nums.append(num)
+        return dep_nums
 
     def _signal_gate(self, event_type: str, issue_id: str, message: str) -> None:
         """Send Signal notification via the rate-limited gate script."""
