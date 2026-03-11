@@ -113,7 +113,7 @@ All API secrets are stored in `~/.openclaw/.env` (chmod 600) and referenced in c
 - **Max concurrent agents:** 4
 - **Max concurrent subagents:** 8
 - **Compaction:** safeguard mode
-- **Sandbox:** `non-main` (secondary agents sandboxed, main Signal agent unsandboxed), read-only workspace
+- **Sandbox:** `off` (Docker binary not in container — `non-main` caused `spawn docker EACCES`), read-only workspace
 
 ### Signal Channel
 - **Account:** +14086469950 (Shon's Signal number)
@@ -173,10 +173,27 @@ Located at `~/.openclaw/workspace/` (bind-mounted into container).
 |-------|---------|-------------|
 | `robot-control` | "robot \<cmd\>" | Controls physical robot via HTTP bridge at 192.168.1.71:8081 |
 | `fitness` | fitness-related messages | Strava/Withings/Oura integration |
+| `monarch-money` | money/finance/spending/budget/balance keywords | Read-only Monarch Money GraphQL queries (balances, spending, transactions, budgets, net worth, recurring bills) |
 
 ### Memory
 - `memory/fitness-log.json` — fitness tracking data
+- `memory/monarch-log.json` — Monarch Money session token (auth)
 - Skills can read/write JSON files in `memory/`
+
+### Session Skill Snapshots (Gotcha)
+
+Skills list is cached per-session at creation time. New skills won't appear in existing Signal sessions.
+
+**Fix:** Delete `skillsSnapshot` from all entries in `agents/main/sessions/sessions.json` inside the container and restart:
+```bash
+docker exec openclaw-gateway sh -c "cd /home/node/.openclaw && python3 -c \"
+import json
+with open('agents/main/sessions/sessions.json') as f: d = json.load(f)
+for s in d: s.pop('skillsSnapshot', None)
+with open('agents/main/sessions/sessions.json', 'w') as f: json.dump(d, f, indent=2)
+\""
+systemctl --user restart openclaw-gateway.service
+```
 
 ---
 
@@ -230,6 +247,12 @@ Robot hardware (motors, servos, camera, etc.)
 1. Check signal-cli inside container: `docker exec openclaw-gateway signal-cli --version`
 2. Check data volume: `docker volume inspect openclaw_signal_cli_data`
 3. If `exec format error` or `ENOENT` — wrong image (generic instead of custom)
+
+### Monarch Money token expired
+1. Symptom: Monarch queries return 401/403, Shon says "session has expired"
+2. Fix: `python3 scripts/monarch-login.py --token` (paste from browser DevTools)
+3. Token saved to `~/.openclaw/workspace/memory/monarch-log.json`
+4. No restart needed — skill reads token on each query
 
 ### Config broken
 1. Backups at `~/.openclaw/openclaw.json.bak*` (multiple generations)
