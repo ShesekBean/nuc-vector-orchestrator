@@ -54,8 +54,8 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Inference Pipeline (ALL runs on NUC)
 │   ├── YOLO person detection (~15fps on NUC)
 │   ├── Face recognition (YuNet + SFace)
-│   ├── Whisper STT
-│   └── Kokoro/Piper TTS
+│   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
+│   └── TTS (OpenAI TTS via OpenClaw Talk Mode)
 │
 ├── Planner (PD controller → gRPC motor commands)
 │
