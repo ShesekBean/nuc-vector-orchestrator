@@ -23,6 +23,7 @@ EMERGENCY_STOP = "emergency_stop"
 CLIFF_TRIGGERED = "cliff_triggered"
 TOUCH_DETECTED = "touch_detected"
 TRACKED_PERSON = "tracked_person"
+SCENE_DESCRIPTION = "scene_description"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -142,3 +143,13 @@ class TrackedPersonEvent:
     confidence: float  # last YOLO confidence
     frame_width: int = 640
     frame_height: int = 360
+
+
+@dataclass(frozen=True)
+class SceneDescriptionEvent:
+    """Emitted when a scene description is generated from camera + YOLO + LLM."""
+
+    description: str
+    detection_count: int
+    detection_labels: tuple[str, ...] = ()
+    timestamp: float = 0.0
