@@ -55,7 +55,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   ├── YOLO person detection (~15fps on NUC)
 │   ├── Face recognition (YuNet + SFace)
 │   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
-│   └── TTS (OpenAI TTS via OpenClaw Talk Mode)
+│   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
 │
 ├── Planner (PD controller → gRPC motor commands)
 │
@@ -88,7 +88,7 @@ Vector ──gRPC (WiFi)──► NUC
                          ├── Camera frames → YOLO → detection
                          ├── Mic audio → wake word → STT → command
                          ├── Planner → motor commands → gRPC → Vector
-                         └── TTS audio → gRPC → Vector speaker
+                         └── say_text() → Vector speaker (built-in TTS)
 
 Signal ──OpenClaw──► NUC ──gRPC──► Vector
 
