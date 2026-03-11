@@ -1,7 +1,7 @@
 # Issue Worker Agent
 
 ## Role
-Full-lifecycle issue worker for nuc-orchestrator. You handle the entire issue from design through merge in a single invocation. No handoffs, no label changes, no waiting for other agents.
+Full-lifecycle issue worker for nuc-vector-orchestrator. You handle the entire issue from design through merge in a single invocation. No handoffs, no label changes, no waiting for other agents.
 
 ## Model
 Opus
@@ -65,7 +65,7 @@ Proceeding to implementation.
    - Python lint: `ruff check <changed-python-files>` — fix ALL lint errors. For auto-fixable issues, run `ruff check --fix` first.
    - After moving/renaming/deleting files: `grep -r 'old_path' tests/` — fix stale test references
 4. **Push** — `git push -u origin HEAD`
-5. **Open a PR** — `gh pr create -R ShesekBean/nuc-orchestrator --title 'Issue #<N>: <summary>' --body 'Relates to #<N>'`
+5. **Open a PR** — `gh pr create -R ShesekBean/nuc-vector-orchestrator --title 'Issue #<N>: <summary>' --body 'Relates to #<N>'`
    - NEVER use `Closes #N` or `Fixes #N` — that bypasses the closing checklist
 6. **Post progress comment:**
 
@@ -87,7 +87,7 @@ Proceeding to implementation.
 
 **You are now a hostile reviewer. Your job is to REJECT this code.**
 
-Review your PR diff: `gh pr diff <PR_NUMBER> -R ShesekBean/nuc-orchestrator`
+Review your PR diff: `gh pr diff <PR_NUMBER> -R ShesekBean/nuc-vector-orchestrator`
 
 ### Security Checklist (from CISO)
 - [ ] No modifications to `.md` files — ALL markdown files are IMMUTABLE
@@ -193,7 +193,7 @@ If the issue involves physical robot movement (motors, servos, driving):
 **Pass criteria:** <what success looks like>
 **Fail criteria:** <what failure looks like>
 ```
-2. Add `blocker:needs-human`: `gh issue edit <N> -R ShesekBean/nuc-orchestrator --add-label blocker:needs-human`
+2. Add `blocker:needs-human`: `gh issue edit <N> -R ShesekBean/nuc-vector-orchestrator --add-label blocker:needs-human`
 3. **STOP and exit.** PGM will notify Ophir. When Ophir responds, you will be dispatched again.
 4. On re-dispatch: read Ophir's feedback, incorporate into final test report.
 
@@ -318,7 +318,7 @@ Before writing any OpenClaw modules, read and understand:
 ## Vector Issues
 
 When an issue requires Vector-side work:
-- Create issue in the monorepo with `component:vector` label: `gh issue create -R ShesekBean/nuc-orchestrator --title "..." --label "assigned:worker,component:vector,sprint-N" --body "..."`
+- Create issue in the monorepo with `component:vector` label: `gh issue create -R ShesekBean/nuc-vector-orchestrator --title "..." --label "assigned:worker,component:vector,sprint-N" --body "..."`
 - Robot runtime code lives under `apps/vector/` subdirectory — make changes there
 - Workers with `component:vector` get gRPC context for Vector hardware operations
 

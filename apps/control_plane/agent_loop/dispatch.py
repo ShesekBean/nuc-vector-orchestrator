@@ -109,6 +109,28 @@ You are working on **Vector robot code** located at `apps/vector/` in this monor
 - Vector communicates via gRPC over WiFi — all inference runs on NUC, Vector is a thin client.
 - wire-pod on NUC replaces Anki cloud services.
 
+**VECTOR CONNECTION (ACTIVE — verified 2026-03-11):**
+- Name: Vector-D2C9, ESN: 0dd1cdcf, IP: 192.168.1.73
+- SSH: `ssh -i ~/.ssh/id_rsa_Vector-D2C9 -o PubkeyAcceptedAlgorithms=+ssh-rsa -o HostKeyAlgorithms=+ssh-rsa root@192.168.1.73` (or `ssh vector` alias)
+- SDK: `wirepod-vector-sdk` 0.8.1 (imports as `import anki_vector`)
+- SDK config: `~/.anki_vector/sdk_config.ini` (serial=0dd1cdcf, cert, guid all configured)
+- wire-pod: running on NUC (localhost:8080 HTTP, localhost:443 TLS)
+- Vector's server_config points to NUC (192.168.1.62:443)
+
+**QUICK-START — Connect to Vector from Python:**
+```python
+import anki_vector
+robot = anki_vector.Robot(serial="0dd1cdcf", default_logging=False)
+robot.connect()
+# Use robot.behavior, robot.motors, robot.camera, etc.
+robot.behavior.say_text("Hello!")
+batt = robot.get_battery_state()
+robot.disconnect()
+```
+
+**IMPORTANT: You are the ONLY worker with robot access (max_vector_workers=1).
+Do NOT leave robot.connect() open when done — always disconnect.**
+
 **ARCHITECTURE:**
 - No Docker on Vector — too resource-constrained (Snapdragon 212)
 - No ROS2 — gRPC replaces ROS2 topics
@@ -116,10 +138,23 @@ You are working on **Vector robot code** located at `apps/vector/` in this monor
 - Camera frames stream from Vector → NUC for processing
 - Motor commands stream from NUC → Vector via gRPC
 
-**KEY APIs (Vector gRPC):**
-- Camera: `CameraFeed` stream (640x360 JPEG)
+**KEY APIs (Vector SDK — `robot.*`):**
+- Say text: `robot.behavior.say_text("text")`
+- Drive: `robot.motors.set_wheel_motors(left, right)`, `robot.behavior.drive_straight(distance_mm(N), speed_mmps(N))`
+- Turn: `robot.behavior.turn_in_place(degrees(N))`
+- Head: `robot.behavior.set_head_angle(degrees(N))` — range -22° to 45°
+- Lift: `robot.behavior.set_lift_height(0.0–1.0)`
+- LEDs: `robot.behavior.set_backpack_lights(...)` — see SDK docs
+- Camera: `robot.camera.capture_single_image()` or `robot.camera.init_camera_feed()`
+- Audio: `robot.audio.stream_wav_file(path)`
+- Display: `robot.screen.set_screen_with_image_data(image_bytes, duration_sec)`
+- Battery: `robot.get_battery_state()` → voltage, level, charging
+- Events: `robot.events.subscribe(event_type, callback)`
+
+**KEY APIs (raw gRPC — for advanced/low-level use):**
+- Camera: `CameraFeed` stream (640x360)
 - Motors: `DriveWheels(left, right, accel)`, `DriveStraight(dist, speed)`, `TurnInPlace(angle, speed)`
-- Head: `SetHeadAngle(angle_deg, speed_dps)` — range -22° to 45°
+- Head: `SetHeadAngle(angle_deg, speed_dps)`
 - Lift: `SetLiftHeight(height_mm, speed_mmps)`
 - LEDs: `SetBackpackLights(front, middle, back)` — RGBA per segment
 - Audio: `PlayAudio(wav_bytes)`, `AudioFeed` (raw gRPC for mic)
@@ -129,7 +164,8 @@ You are working on **Vector robot code** located at `apps/vector/` in this monor
 **RULES:**
 - Vector is differential drive (tank treads) — NO strafing. Use turn-then-drive.
 - No LiDAR — use camera-based obstacle detection or cliff sensors only.
-- Test Vector connectivity: `python3 -m apps.vector.bridge.health_check`
+- Always `robot.disconnect()` when done — other workers may need the robot.
+- Full setup guide: `docs/vector/setup-guide.md`
 === END VECTOR CONTEXT ===
 """
 
