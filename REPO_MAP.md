@@ -78,6 +78,7 @@ vector-orchestrator/
 │       │       ├── test_leds.py
 │       │       ├── test_display.py
 │       │       ├── test_audio.py
+│       │       ├── test_mic.py
 │       │       ├── test_sensors.py
 │       │       ├── test_detection.py
 │       │       └── test_follow_standalone.py
