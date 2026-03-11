@@ -77,7 +77,9 @@ class WakeWordDetector:
         self._oww_thread: threading.Thread | None = None
         self._oww_stop = threading.Event()
         self._oww_model_names: list[str] = []
+        self._oww_threshold: float = threshold
         self._audio_client: AudioClient | None = None
+        self._last_chunk_id: int = -1  # track processed chunks
 
         # SDK state
         self._sdk_robot: Any = None
@@ -132,7 +134,7 @@ class WakeWordDetector:
             return
 
         if threshold is not None:
-            self._threshold = threshold
+            self._oww_threshold = threshold
 
         self._audio_client = audio_client
         self._oww_stop.clear()
@@ -156,7 +158,7 @@ class WakeWordDetector:
         logger.info(
             "openwakeword loaded models: %s (threshold=%.2f)",
             self._oww_model_names,
-            self._threshold,
+            self._oww_threshold,
         )
 
         self._oww_thread = threading.Thread(
@@ -245,10 +247,18 @@ class WakeWordDetector:
             if self._audio_client is None:
                 break
 
+            current_id = self._audio_client.chunk_count
+            if current_id == self._last_chunk_id:
+                # No new audio — wait and retry
+                self._oww_stop.wait(0.05)
+                continue
+
             chunk = self._audio_client.get_latest_chunk()
             if chunk is None:
                 self._oww_stop.wait(0.05)
                 continue
+
+            self._last_chunk_id = current_id
 
             # Accumulate PCM into OWW_CHUNK_BYTES-sized pieces
             residual += chunk
@@ -275,7 +285,7 @@ class WakeWordDetector:
 
         for model_name in self._oww_model_names:
             score = prediction.get(model_name, 0.0)
-            if score >= self._threshold:
+            if score >= self._oww_threshold:
                 direction = -1
                 if self._audio_client is not None:
                     direction = self._audio_client.source_direction

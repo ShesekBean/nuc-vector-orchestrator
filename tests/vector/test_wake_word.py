@@ -77,8 +77,6 @@ class TestSdkWakeWord:
         detector = WakeWordDetector(bus)
 
         robot = MagicMock()
-        with patch("apps.vector.src.voice.wake_word.WakeWordDetector.start_sdk_listener.__module__"):
-            pass
         # Patch Events import inside start_sdk_listener
         mock_events = MagicMock()
         mock_events.wake_word = "wake_word"
