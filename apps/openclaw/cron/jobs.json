@@ -23,8 +23,8 @@
       }
     },
     {
-      "id": "sleep-coach",
-      "name": "Morning sleep coaching (Oura)",
+      "id": "health-coach",
+      "name": "Morning health coach (Oura sleep + readiness)",
       "enabled": true,
       "schedule": {
         "kind": "cron",
@@ -35,7 +35,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Load the fitness skill. Pull last night's sleep data from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and readiness: GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (it's a personal access token, doesn't expire). If no data found for last night, Ophir probably hasn't synced his ring yet — remind him: 'Open the Oura app to sync your ring, then I'll check again.' If data found, act as his health coach: report sleep score, total sleep time, REM/deep/light breakdown percentages, readiness score, and give 2-3 lines of personalized advice based on the data (e.g., 'You only got 45 min of deep sleep — try no screens 1h before bed tonight' or 'Great REM at 2h — whatever you did yesterday, keep it up'). Be direct, specific, and actionable. Not generic wellness platitudes."
+        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring — remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together — e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down — great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
       },
       "delivery": {
         "mode": "announce",
