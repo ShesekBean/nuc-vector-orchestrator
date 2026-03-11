@@ -53,6 +53,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │
 ├── Inference Pipeline (ALL runs on NUC)
 │   ├── YOLO person detection (~15fps on NUC, OpenVINO IR)
+│   │   └── Kalman filter tracker (smooths detections at 10Hz)
 │   ├── Face recognition (YuNet + SFace)
 │   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
 │   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
@@ -85,7 +86,7 @@ Vector 2.0 (ROBOT — THIN CLIENT ONLY)
 
 ```
 Vector ──gRPC (WiFi)──► NUC
-                         ├── Camera frames → YOLO → detection
+                         ├── Camera frames → YOLO → Kalman tracker → detection
                          ├── Mic audio → wake word → STT → command
                          ├── Planner → motor commands → gRPC → Vector
                          └── say_text() → Vector speaker (built-in TTS)
