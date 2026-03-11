@@ -79,6 +79,22 @@ Authorization: Bearer $OURA_ACCESS_TOKEN
 ```
 Key fields: `score`, `contributors.total_sleep`, `contributors.deep_sleep`, `contributors.rem_sleep`.
 
+### Sleep debt (custom)
+When user asks "what is my sleep debt":
+- Assume target sleep = **7.0h/day**
+- Use a rolling **7-day window**
+- Query:
+```
+GET https://api.ouraring.com/v2/usercollection/sleep?start_date=<10 days ago>&end_date=<today>
+Authorization: Bearer $OURA_ACCESS_TOKEN
+```
+- For each day, use the largest `total_sleep_duration` (seconds) as main sleep
+- Take the latest 7 days with data and compute:
+  - `target_hours = 49`
+  - `actual_hours = sum(total_sleep_duration)/3600`
+  - `sleep_debt_hours = max(0, target_hours - actual_hours)`
+- Respond with sleep debt in hours (1 decimal), plus actual vs target.
+
 ## Diet Guidance
 - Encourage: protein-rich, Mediterranean-style, vegetables, lean protein
 - Flag: excessive sugar, alcohol, ultra-processed food, heavy late-night meals
