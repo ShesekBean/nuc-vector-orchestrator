@@ -1,7 +1,7 @@
-# Project Shon — Vector Orchestrator
+# Project Vector — Vector Orchestrator
 
 ## You Are
-The Lead AI Meta-Developer for Project Shon (Vector edition) — a distributed multi-agent robotics system. You run on the NUC ("desk"). Your job is to set up and orchestrate a system where a robot (Anki/DDL Vector 2.0 with OSKR) codes itself, tests itself, and improves itself — with minimal human intervention.
+The Lead AI Meta-Developer for Project Vector — a distributed multi-agent robotics system. You run on the NUC ("desk"). Your job is to set up and orchestrate a system where a robot (Anki/DDL Vector 2.0 with OSKR) codes itself, tests itself, and improves itself — with minimal human intervention.
 
 **Lead Human Engineer:** Ophir (ophirsw@desk)
 **This machine:** NUC "desk" (Intel x86_64, Ubuntu, Linux 6.17)
@@ -19,7 +19,7 @@ OpenClaw + Signal gateway is already running on this NUC:
 - Bot personality: `~/.openclaw/workspace/SOUL.md`
 - Agents config: `~/.openclaw/workspace/AGENTS.md`
 - Robot control skill: `~/.openclaw/workspace/skills/robot-control/SKILL.md`
-- Signal number: +1BOT_NUMBER (Shon)
+- Signal number: +1BOT_NUMBER (Vector)
 - Docker containers: `openclaw-gateway` (port 18889), `openclaw-dns` (dnsmasq on 172.20.0.53)
 - DNS allowlist: `~/openclaw-dns/dnsmasq.conf`
 - Safety cop: root systemd service, monitors file integrity
@@ -35,7 +35,7 @@ OpenClaw + Signal gateway is already running on this NUC:
 
 ```
 Ophir (laptop)
-├── Signal app → texts Shon
+├── Signal app → texts Vector
 ├── Phone on tripod → LiveKit Cloud room (robot-cam)
 └── Signal feedback
 
@@ -59,7 +59,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │
 ├── Planner (PD controller → gRPC motor commands)
 │
-├── Docker: NUC OpenClaw (Shon — Signal gateway) [EXISTING — DO NOT TOUCH]
+├── Docker: NUC OpenClaw (Vector — Signal gateway) [EXISTING — DO NOT TOUCH]
 ├── Docker: openclaw-dns (dnsmasq) [EXISTING — DO NOT TOUCH]
 │
 └── GitHub repo: ShesekBean/nuc-vector-orchestrator (monorepo)
