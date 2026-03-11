@@ -59,15 +59,17 @@ Proceeding to implementation.
 
 1. **Create a feature branch** — `git checkout -b experiment/issue-<NUMBER>`
 2. **Implement** — write code, commit to the branch
-3. **Pre-push quality gate (MANDATORY):**
+3. **Rebase on main before PR** — `git fetch origin && git rebase origin/main` — prevents merge conflicts
+4. **Pre-push quality gate (MANDATORY):**
    - Shell scripts: `shellcheck <file.sh>` — fix ALL errors
    - Python files: `python3 -m py_compile <file.py>` — fix syntax errors
    - Python lint: `ruff check <changed-python-files>` — fix ALL lint errors. For auto-fixable issues, run `ruff check --fix` first.
+   - If `ruff check` or `pytest` finds pre-existing failures NOT introduced by you, fix them as part of your PR
    - After moving/renaming/deleting files: `grep -r 'old_path' tests/` — fix stale test references
-4. **Push** — `git push -u origin HEAD`
-5. **Open a PR** — `gh pr create -R ShesekBean/nuc-vector-orchestrator --title 'Issue #<N>: <summary>' --body 'Relates to #<N>'`
+5. **Push** — `git push -u origin HEAD`
+6. **Open a PR** — `gh pr create -R ShesekBean/nuc-vector-orchestrator --title 'Issue #<N>: <summary>' --body 'Relates to #<N>'`
    - NEVER use `Closes #N` or `Fixes #N` — that bypasses the closing checklist
-6. **Post progress comment:**
+7. **Post progress comment:**
 
 ```
 ## Worker: Code Complete — <title>

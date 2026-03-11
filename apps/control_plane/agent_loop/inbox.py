@@ -660,7 +660,7 @@ def _handle_approve(cfg: Config, issue_num: int, timestamps: set[int]) -> None:
         state = gh.issue_view(repo, issue_num, fields="state", jq=".state")
         if state == "OPEN":
             gh.issue_edit_labels(repo, issue_num,
-                                 add=["human-approved"],
+                                 add=["human-approved", "assigned:worker"],
                                  remove=["blocker:needs-human", "stuck"])
             gate_file = cfg.state_dir / "pgm-signal-sent.tsv"
             delete_tsv_entries(gate_file, rf"-{issue_num}\t")

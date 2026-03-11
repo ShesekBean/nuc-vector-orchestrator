@@ -52,7 +52,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── wire-pod (Vector cloud replacement)
 │
 ├── Inference Pipeline (ALL runs on NUC)
-│   ├── YOLO person detection (~15fps on NUC)
+│   ├── YOLO person detection (~15fps on NUC, OpenVINO IR)
 │   ├── Face recognition (YuNet + SFace)
 │   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
 │   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
