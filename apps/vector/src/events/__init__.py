@@ -2,6 +2,8 @@
 
 from apps.vector.src.events.nuc_event_bus import NucEventBus
 from apps.vector.src.events.event_types import (
+    BatteryLowEvent,
+    BatteryStateEvent,
     CliffTriggeredEvent,
     EmergencyStopEvent,
     FaceRecognizedEvent,
@@ -19,6 +21,8 @@ from apps.vector.src.events.sdk_events import SdkEventBridge
 __all__ = [
     "NucEventBus",
     "SdkEventBridge",
+    "BatteryLowEvent",
+    "BatteryStateEvent",
     "CliffTriggeredEvent",
     "CommandReceivedEvent",
     "EmergencyStopEvent",

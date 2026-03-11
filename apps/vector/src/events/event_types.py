@@ -26,6 +26,8 @@ TRACKED_PERSON = "tracked_person"
 SCENE_DESCRIPTION = "scene_description"
 WAKE_WORD_DETECTED = "wake_word_detected"
 LIFT_HEIGHT_CHANGED = "lift_height_changed"
+BATTERY_STATE = "battery_state"
+BATTERY_LOW = "battery_low"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -145,6 +147,25 @@ class TrackedPersonEvent:
     confidence: float  # last YOLO confidence
     frame_width: int = 640
     frame_height: int = 360
+
+
+@dataclass(frozen=True)
+class BatteryStateEvent:
+    """Emitted from SDK robot_state — current battery telemetry."""
+
+    voltage: float
+    level: int  # SDK battery_level (0=unknown, 1=low, 2=nominal, 3=full)
+    is_charging: bool
+    is_on_charger: bool = False
+
+
+@dataclass(frozen=True)
+class BatteryLowEvent:
+    """Emitted when battery transitions to a warning or critical state."""
+
+    voltage: float
+    level: int
+    severity: str  # "low" or "critical"
 
 
 @dataclass(frozen=True)

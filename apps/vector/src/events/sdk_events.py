@@ -11,9 +11,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from apps.vector.src.events.event_types import (
+    BATTERY_STATE,
     CLIFF_TRIGGERED,
     EMERGENCY_STOP,
     TOUCH_DETECTED,
+    BatteryStateEvent,
     CliffTriggeredEvent,
     EmergencyStopEvent,
     TouchDetectedEvent,
@@ -108,6 +110,19 @@ class SdkEventBridge:
             self._bus.emit(
                 TOUCH_DETECTED,
                 TouchDetectedEvent(location="head", is_pressed=True),
+            )
+
+        # Battery state → battery_state
+        voltage = getattr(msg, "battery_voltage", None)
+        if voltage is not None:
+            self._bus.emit(
+                BATTERY_STATE,
+                BatteryStateEvent(
+                    voltage=voltage,
+                    level=getattr(msg, "battery_level", 0),
+                    is_charging=getattr(msg, "is_charging", False),
+                    is_on_charger=getattr(msg, "is_on_charger_platform", False),
+                ),
             )
 
     def _on_connection_lost(self, _robot: Any, _name: str, _msg: Any) -> None:
