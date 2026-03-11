@@ -1,0 +1,7 @@
+# ML model files — too large for git.
+# Run scripts/export-openvino-models.py to download/export.
+*.pt
+*.onnx
+*.xml
+*.bin
+*_openvino_model/
