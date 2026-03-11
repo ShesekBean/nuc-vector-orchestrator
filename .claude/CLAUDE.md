@@ -55,6 +55,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   ├── YOLO person detection (~15fps on NUC, OpenVINO IR)
 │   │   └── Kalman filter tracker (smooths detections at 10Hz)
 │   ├── Face recognition (YuNet + SFace)
+│   ├── Scene description (camera + Claude Vision API)
 │   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
 │   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
 │
