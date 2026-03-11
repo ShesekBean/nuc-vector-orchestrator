@@ -26,6 +26,7 @@ TRACKED_PERSON = "tracked_person"
 SCENE_DESCRIPTION = "scene_description"
 WAKE_WORD_DETECTED = "wake_word_detected"
 LIFT_HEIGHT_CHANGED = "lift_height_changed"
+LED_STATE_CHANGED = "led_state_changed"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -173,3 +174,11 @@ class LiftHeightChangedEvent:
 
     height: float  # normalised 0.0 (down) to 1.0 (full up)
     preset: str | None = None  # preset name if used, else None
+
+
+@dataclass(frozen=True)
+class LedStateChangedEvent:
+    """Emitted when the LED controller changes the active visual state."""
+
+    state: str  # "idle", "searching", "person_detected", "following", etc.
+    previous_state: str | None = None
