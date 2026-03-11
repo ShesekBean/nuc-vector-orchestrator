@@ -14,15 +14,11 @@ import time
 from collections import deque
 from typing import TYPE_CHECKING
 
-import cv2
-import numpy as np
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     import anki_vector
-
-from anki_vector.events import Events
+    import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +42,7 @@ class CameraClient:
         self._buffer_size = buffer_size
 
         # Ring buffer of BGR numpy arrays (thread-safe for single-producer)
-        self._frames: deque[np.ndarray] = deque(maxlen=buffer_size)
+        self._frames: deque = deque(maxlen=buffer_size)
         # Parallel buffer of JPEG bytes
         self._jpegs: deque[bytes] = deque(maxlen=buffer_size)
         # Timestamps for FPS calculation
@@ -88,7 +84,10 @@ class CameraClient:
     def get_latest_frame(self) -> np.ndarray | None:
         """Return the most recent frame as a BGR numpy array, or None."""
         with self._lock:
-            return self._frames[-1].copy() if self._frames else None
+            if not self._frames:
+                return None
+            import numpy as np
+            return np.copy(self._frames[-1])
 
     def get_latest_jpeg(self) -> bytes | None:
         """Return the most recent frame as raw JPEG bytes, or None."""
@@ -97,8 +96,9 @@ class CameraClient:
 
     def get_frame_buffer(self) -> list[np.ndarray]:
         """Return a copy of all buffered frames (oldest first)."""
+        import numpy as np
         with self._lock:
-            return [f.copy() for f in self._frames]
+            return [np.copy(f) for f in self._frames]
 
     def set_connection_lost_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback invoked when the robot connection drops."""
@@ -133,6 +133,8 @@ class CameraClient:
 
     def _start_feed(self) -> None:
         """Initialize camera feed and subscribe to events."""
+        from anki_vector.events import Events
+
         try:
             self._robot.camera.init_camera_feed()
             self._robot.events.subscribe(
@@ -147,6 +149,8 @@ class CameraClient:
 
     def _stop_feed(self) -> None:
         """Close camera feed and unsubscribe from events."""
+        from anki_vector.events import Events
+
         if not self._streaming:
             return
         try:
@@ -164,6 +168,9 @@ class CameraClient:
 
     def _on_new_image(self, _robot: object, _event_type: object, msg: object) -> None:
         """Callback fired by SDK on each new camera frame."""
+        import cv2
+        import numpy as np
+
         now = time.monotonic()
         try:
             image = self._robot.camera.latest_image
