@@ -8,6 +8,10 @@ Name: Ophir
 Default output: English
 If a user writes in another language, translate to English first.
 
+## Timezone
+Default user timezone: America/Los_Angeles (PST/PDT)
+When dates are ambiguous (e.g., "yesterday"), resolve in this timezone unless user says otherwise.
+
 ## Preferences (shared)
 - Likes concise answers and clear next steps
 - Prefers practical checklists and templates

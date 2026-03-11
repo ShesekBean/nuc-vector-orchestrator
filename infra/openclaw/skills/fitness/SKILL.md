@@ -30,8 +30,8 @@ Schema:
 
 ## Withings API (weight from scale)
 
-Tokens are managed by a background refresh script. Do NOT attempt to refresh — just use the cached token.
-If `withings_token_cache.expires_at < now`, tell the user the token is being refreshed and to try again in a few minutes.
+Tokens are refreshed automatically every 2 hours by `fitness-token-refresh.timer` (systemd user timer on NUC). The timer runs `scripts/refresh-fitness-tokens.py` inside the openclaw-gateway container.
+If `withings_token_cache.expires_at < now`, the timer will refresh it within 2 hours. Tell the user the token is being refreshed and to try again shortly. Do NOT attempt to refresh tokens yourself.
 
 ```
 GET https://wbsapi.withings.net/measure?action=getmeas&meastypes=1&category=1&lastupdate=<unix 48h ago>
@@ -47,8 +47,8 @@ Log result to `weights` array in fitness-log.json.
 
 ## Strava API (swim + run)
 
-Tokens are managed by a background refresh script. Do NOT attempt to refresh — just use the cached token.
-If `strava_token_cache.expires_at < now`, tell the user the token is being refreshed and to try again shortly.
+Tokens are refreshed automatically every 2 hours by `fitness-token-refresh.timer` (systemd user timer on NUC). The timer runs `scripts/refresh-fitness-tokens.py` inside the openclaw-gateway container.
+If `strava_token_cache.expires_at < now`, the timer will refresh it within 2 hours. Tell the user the token is being refreshed and to try again shortly. Do NOT attempt to refresh tokens yourself.
 
 ```
 GET https://www.strava.com/api/v3/athlete/activities?after=<unix midnight today>&per_page=20
@@ -60,12 +60,40 @@ Authorization: Bearer <strava_token_cache.access_token from fitness-log.json>
 
 For weekly runs use `after=<unix midnight Monday this week>`.
 
-## Oura API (readiness context)
+## Oura API (readiness + sleep)
+
+Oura uses a Personal Access Token (does not expire, no refresh needed).
+Token is in `.env` as `OURA_ACCESS_TOKEN`.
+
+### Readiness
 ```
 GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
-Authorization: Bearer <your-oura-personal-access-token>
+Authorization: Bearer $OURA_ACCESS_TOKEN
 ```
-Use `score` as optional context. Score < 60 → acknowledge lower readiness.
+Use `score` as context. Score < 60 → acknowledge lower readiness, suggest recovery day.
+
+### Sleep
+```
+GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+Authorization: Bearer $OURA_ACCESS_TOKEN
+```
+Key fields: `score`, `contributors.total_sleep`, `contributors.deep_sleep`, `contributors.rem_sleep`.
+
+### Sleep debt (custom)
+When user asks "what is my sleep debt":
+- Assume target sleep = **7.0h/day**
+- Use a rolling **7-day window**
+- Query:
+```
+GET https://api.ouraring.com/v2/usercollection/sleep?start_date=<10 days ago>&end_date=<today>
+Authorization: Bearer $OURA_ACCESS_TOKEN
+```
+- For each day, use the largest `total_sleep_duration` (seconds) as main sleep
+- Take the latest 7 days with data and compute:
+  - `target_hours = 49`
+  - `actual_hours = sum(total_sleep_duration)/3600`
+  - `sleep_debt_hours = max(0, target_hours - actual_hours)`
+- Respond with sleep debt in hours (1 decimal), plus actual vs target.
 
 ## Diet Guidance
 - Encourage: protein-rich, Mediterranean-style, vegetables, lean protein
