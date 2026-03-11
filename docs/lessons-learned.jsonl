@@ -1,0 +1,1 @@
+{"issue":36,"date":"2026-03-11","repo":"nuc","cat":"feature","lesson":"Hybrid event architecture (SDK events + NUC bus) avoids reinventing hardware event plumbing while keeping custom compute events lightweight.","fix":"Use SDK events for hardware (cliff, touch, face), NUC bus for AI-computed events (YOLO, follow state, STT)."}
