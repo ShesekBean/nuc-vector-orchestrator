@@ -522,34 +522,51 @@ def _run_hw_sanity_for_pr(cfg: Config, repo: str, issue_num: int, source_repo_di
 
 
 def _auto_rebase_pr(repo_dir: Path, pr_branch: str) -> bool:
-    """Attempt to auto-rebase a PR branch onto main. Returns True on success."""
+    """Attempt to auto-rebase a PR branch onto main. Returns True on success.
+
+    Uses a temporary worktree to avoid interfering with the main repo checkout,
+    which is important since multiple merge gates can run in parallel threads.
+    """
+    import shutil
+
+    rebase_dir = Path(f"/tmp/auto-rebase-{pr_branch.replace('/', '-')}")
+    if rebase_dir.exists():
+        shutil.rmtree(rebase_dir, ignore_errors=True)
+
     try:
-        # Checkout the PR branch
+        # Fetch the PR branch
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "fetch", "origin", pr_branch],
+            capture_output=True, text=True, timeout=30,
+        )
+
+        # Create a temporary worktree on the PR branch
         result = subprocess.run(
-            ["git", "-C", str(repo_dir), "checkout", pr_branch],
+            ["git", "-C", str(repo_dir), "worktree", "add",
+             str(rebase_dir), f"origin/{pr_branch}"],
             capture_output=True, text=True, timeout=15,
         )
         if result.returncode != 0:
-            log.warning("Auto-rebase: checkout failed: %s", result.stderr.strip())
+            log.warning("Auto-rebase: worktree creation failed: %s", result.stderr.strip())
             return False
 
-        # Rebase onto origin/main
+        # Rebase onto origin/main inside the worktree
         result = subprocess.run(
-            ["git", "-C", str(repo_dir), "rebase", "origin/main"],
+            ["git", "-C", str(rebase_dir), "rebase", "origin/main"],
             capture_output=True, text=True, timeout=60,
         )
         if result.returncode != 0:
             log.warning("Auto-rebase: rebase failed (conflicts?): %s", result.stderr.strip())
-            # Abort the failed rebase
             subprocess.run(
-                ["git", "-C", str(repo_dir), "rebase", "--abort"],
+                ["git", "-C", str(rebase_dir), "rebase", "--abort"],
                 capture_output=True, text=True, timeout=10,
             )
             return False
 
         # Force-push the rebased branch
         result = subprocess.run(
-            ["git", "-C", str(repo_dir), "push", "origin", pr_branch, "--force-with-lease"],
+            ["git", "-C", str(rebase_dir), "push", "origin", "HEAD:" + pr_branch,
+             "--force-with-lease"],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode != 0:
@@ -561,11 +578,14 @@ def _auto_rebase_pr(repo_dir: Path, pr_branch: str) -> bool:
         log.warning("Auto-rebase failed: %s", e)
         return False
     finally:
-        # Always return to main
+        # Always clean up the temporary worktree
         subprocess.run(
-            ["git", "-C", str(repo_dir), "checkout", "main"],
+            ["git", "-C", str(repo_dir), "worktree", "remove",
+             str(rebase_dir), "--force"],
             capture_output=True, text=True, timeout=10,
         )
+        if rebase_dir.exists():
+            shutil.rmtree(rebase_dir, ignore_errors=True)
 
 
 def _check_pr_up_to_date(cfg: Config, repo: str, pr_number: int, issue_num: int) -> None:
