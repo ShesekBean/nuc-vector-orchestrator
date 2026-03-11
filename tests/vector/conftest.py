@@ -42,5 +42,11 @@ def pytest_configure(config):
         events_mod = types.ModuleType("anki_vector.events")
         events_mod.Events = MagicMock()
         anki_vector_mod.events = events_mod
+        util_mod = types.ModuleType("anki_vector.util")
+        util_mod.degrees = MagicMock(side_effect=lambda x: x)
+        util_mod.distance_mm = MagicMock(side_effect=lambda x: x)
+        util_mod.speed_mmps = MagicMock(side_effect=lambda x: x)
+        anki_vector_mod.util = util_mod
         sys.modules["anki_vector"] = anki_vector_mod
         sys.modules["anki_vector.events"] = events_mod
+        sys.modules["anki_vector.util"] = util_mod

@@ -514,9 +514,8 @@ def _handle_sprint_status(cfg: Config, timestamps: set[int]) -> None:
     total_open = len(open_issues)
     total_closed = len(closed_issues)
     active = [i for i in open_issues if "assigned:worker" in _label_names(i)]
-    stuck = [i for i in open_issues if "stuck" in _label_names(i)]
     blocked = [i for i in open_issues
-               if any(l.startswith("blocker:") for l in _label_names(i))]
+               if any(lb.startswith("blocker:") for lb in _label_names(i))]
 
     lines = [f"📊 Project Status ({total_closed} closed, {total_open} open)\n"]
 
