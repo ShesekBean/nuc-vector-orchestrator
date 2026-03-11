@@ -34,30 +34,18 @@ def export_yolo(model_dir: str) -> None:
 
     print("[1/3] Exporting YOLO11s to OpenVINO IR...")
 
-    # Download and load YOLO11s
-    model = YOLO("yolo11s.pt")
+    # Work in model_dir so downloads and exports land there
+    prev_dir = os.getcwd()
+    os.chdir(model_dir)
+    try:
+        # Download and load YOLO11s
+        model = YOLO("yolo11s.pt")
 
-    # Export to OpenVINO format (creates yolo11s_openvino_model/ directory)
-    export_path = model.export(format="openvino", imgsz=640, half=False)
-    print(f"  Exported to: {export_path}")
-
-    # Move to model directory if not already there
-    dest = os.path.join(model_dir, "yolo11s_openvino_model")
-    if os.path.abspath(export_path) != os.path.abspath(dest):
-        import shutil
-
-        if os.path.exists(dest):
-            shutil.rmtree(dest)
-        shutil.move(export_path, dest)
-        print(f"  Moved to: {dest}")
-
-    # Also keep the .pt for ultralytics compatibility
-    pt_src = "yolo11s.pt"
-    pt_dest = os.path.join(model_dir, "yolo11s.pt")
-    if os.path.exists(pt_src) and not os.path.exists(pt_dest):
-        import shutil
-
-        shutil.move(pt_src, pt_dest)
+        # Export to OpenVINO format (creates yolo11s_openvino_model/ directory)
+        export_path = model.export(format="openvino", imgsz=640, half=False)
+        print(f"  Exported to: {export_path}")
+    finally:
+        os.chdir(prev_dir)
 
     print("  YOLO11s export complete.")
 

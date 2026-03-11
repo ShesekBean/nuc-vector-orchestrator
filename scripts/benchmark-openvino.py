@@ -11,8 +11,6 @@ import os
 import sys
 import time
 
-import numpy as np
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 MODEL_DIR = os.path.join(REPO_ROOT, "apps", "vector", "models")
@@ -26,6 +24,7 @@ IMG_HEIGHT = 360
 
 def benchmark_ultralytics(model_path: str, device: str) -> dict:
     """Benchmark YOLO via ultralytics (high-level API)."""
+    import numpy as np
     from ultralytics import YOLO
 
     model = YOLO(model_path)
@@ -62,6 +61,7 @@ def benchmark_ultralytics(model_path: str, device: str) -> dict:
 
 def benchmark_openvino_direct(model_dir: str, device: str) -> dict:
     """Benchmark YOLO via OpenVINO Core API (low-level)."""
+    import numpy as np
     import openvino as ov
 
     core = ov.Core()

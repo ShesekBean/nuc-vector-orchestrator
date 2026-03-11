@@ -12,16 +12,16 @@ echo ""
 
 # ---------- Python packages ----------
 echo "[1/4] Installing OpenVINO runtime..."
-pip install --quiet openvino
+pip3 install --quiet openvino
 
 echo "[2/4] Installing ultralytics (YOLO)..."
-pip install --quiet ultralytics
+pip3 install --quiet ultralytics
 
 echo "[3/4] Installing OpenCV headless..."
-pip install --quiet opencv-python-headless
+pip3 install --quiet opencv-python-headless
 
 echo "[4/4] Installing ONNX runtime (fallback backend)..."
-pip install --quiet onnxruntime-openvino
+pip3 install --quiet onnxruntime-openvino
 
 # ---------- Verify imports ----------
 echo ""
