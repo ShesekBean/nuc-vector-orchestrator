@@ -64,6 +64,18 @@ vector-orchestrator/
 │       │   ├── planner/           ← PD controller → gRPC motor commands
 │       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
 │       │   └── camera/            ← gRPC camera feed consumer
+│       ├── tests/
+│       │   └── standalone/        ← standalone subsystem test scripts (run individually)
+│       │       ├── test_camera.py
+│       │       ├── test_motors.py
+│       │       ├── test_head.py
+│       │       ├── test_lift.py
+│       │       ├── test_leds.py
+│       │       ├── test_display.py
+│       │       ├── test_audio.py
+│       │       ├── test_sensors.py
+│       │       ├── test_detection.py
+│       │       └── test_follow_standalone.py
 │       ├── config/                ← Vector connection config
 │       └── models/                ← ML models (YOLO, face)
 ├── config/                        ← shared cross-component configuration
@@ -118,3 +130,12 @@ vector-orchestrator/
 2. **wire-pod**: Docker container or native service on NUC
 3. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility)
 4. **Process Management**: `bash scripts/start-all.sh` / `bash scripts/kill-all.sh`
+
+## Testing
+
+Vector tests exist in two locations:
+
+- **`tests/vector/`** — pytest-based integration tests (run with `pytest tests/vector/ -v`)
+- **`apps/vector/tests/standalone/`** — standalone scripts for subsystem validation (run individually, e.g. `python3 apps/vector/tests/standalone/test_camera.py`)
+
+Standalone scripts are self-contained: each connects to Vector directly and validates a single subsystem (camera, motors, head, lift, LEDs, display, audio, sensors, detection, follow). Use these for quick hardware validation without the full test harness.
