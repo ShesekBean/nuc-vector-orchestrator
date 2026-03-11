@@ -25,6 +25,7 @@ TOUCH_DETECTED = "touch_detected"
 TRACKED_PERSON = "tracked_person"
 SCENE_DESCRIPTION = "scene_description"
 WAKE_WORD_DETECTED = "wake_word_detected"
+LIFT_HEIGHT_CHANGED = "lift_height_changed"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -164,3 +165,11 @@ class WakeWordDetectedEvent:
     confidence: float
     source: str  # "sdk" or "openwakeword"
     source_direction: int = -1  # beamforming direction (0-11), -1 if unknown
+
+
+@dataclass(frozen=True)
+class LiftHeightChangedEvent:
+    """Emitted when the lift moves to a new height."""
+
+    height: float  # normalised 0.0 (down) to 1.0 (full up)
+    preset: str | None = None  # preset name if used, else None
