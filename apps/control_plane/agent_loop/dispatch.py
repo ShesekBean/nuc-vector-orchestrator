@@ -521,6 +521,53 @@ def _run_hw_sanity_for_pr(cfg: Config, repo: str, issue_num: int, source_repo_di
             shutil.rmtree(sanity_dir, ignore_errors=True)
 
 
+def _auto_rebase_pr(repo_dir: Path, pr_branch: str) -> bool:
+    """Attempt to auto-rebase a PR branch onto main. Returns True on success."""
+    try:
+        # Checkout the PR branch
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "checkout", pr_branch],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode != 0:
+            log.warning("Auto-rebase: checkout failed: %s", result.stderr.strip())
+            return False
+
+        # Rebase onto origin/main
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "rebase", "origin/main"],
+            capture_output=True, text=True, timeout=60,
+        )
+        if result.returncode != 0:
+            log.warning("Auto-rebase: rebase failed (conflicts?): %s", result.stderr.strip())
+            # Abort the failed rebase
+            subprocess.run(
+                ["git", "-C", str(repo_dir), "rebase", "--abort"],
+                capture_output=True, text=True, timeout=10,
+            )
+            return False
+
+        # Force-push the rebased branch
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "push", "origin", pr_branch, "--force-with-lease"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            log.warning("Auto-rebase: push failed: %s", result.stderr.strip())
+            return False
+
+        return True
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log.warning("Auto-rebase failed: %s", e)
+        return False
+    finally:
+        # Always return to main
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "checkout", "main"],
+            capture_output=True, text=True, timeout=10,
+        )
+
+
 def _check_pr_up_to_date(cfg: Config, repo: str, pr_number: int, issue_num: int) -> None:
     """Check if PR branch is rebased on latest main. If not, comment and let the worker know."""
     source_repo_dir = cfg.repo_dir
@@ -778,11 +825,12 @@ def merge_if_approved(cfg: Config, repo: str, issue_num: int) -> bool:
         log.info("Merge gate: review hook verdict unclear — skipping")
         return False
 
-    # Gate 2: PR must be up-to-date with main
+    # Gate 2: PR must be up-to-date with main (auto-rebase if behind)
     is_vector = _is_vector_issue(repo, issue_num)
     source_repo_dir = cfg.repo_dir
     pr_branch = gh.pr_view(repo, pr_number, fields="headRefName", jq=".headRefName")
     if pr_branch:
+        pr_branch = pr_branch.strip()
         try:
             subprocess.run(
                 ["git", "-C", str(source_repo_dir), "fetch", "origin"],
@@ -790,12 +838,16 @@ def merge_if_approved(cfg: Config, repo: str, issue_num: int) -> bool:
             )
             result = subprocess.run(
                 ["git", "-C", str(source_repo_dir), "merge-base", "--is-ancestor",
-                 "origin/main", f"origin/{pr_branch.strip()}"],
+                 "origin/main", f"origin/{pr_branch}"],
                 capture_output=True, text=True, timeout=10,
             )
             if result.returncode != 0:
-                log.info("Merge gate: PR #%d is behind main — needs rebase", pr_number)
-                return False
+                log.info("Merge gate: PR #%d is behind main — attempting auto-rebase", pr_number)
+                rebased = _auto_rebase_pr(source_repo_dir, pr_branch)
+                if not rebased:
+                    log.info("Merge gate: auto-rebase failed for PR #%d — needs manual rebase", pr_number)
+                    return False
+                log.info("Merge gate: auto-rebase succeeded for PR #%d", pr_number)
         except (subprocess.TimeoutExpired, OSError):
             pass  # Non-fatal
 
@@ -892,6 +944,20 @@ def _post_merge_doc_check(cfg: Config, repo: str, pr_number: int, issue_num: int
 
     # Skip tiny diffs (unlikely to affect docs)
     if diff.count("\n") < 10:
+        return
+
+    # Skip doc-only PRs — they can't introduce behavior drift, and checking
+    # them creates recursive doc-update issues (see retro issue #60)
+    changed_files = []
+    for line in diff.split("\n"):
+        if line.startswith("+++ b/") or line.startswith("--- a/"):
+            fname = line.split("/", 1)[-1] if "/" in line else ""
+            if fname and fname != "/dev/null":
+                changed_files.append(fname)
+    code_files = [f for f in changed_files
+                  if not f.endswith((".md", ".txt", ".yml", ".yaml", ".json", ".jsonl"))]
+    if not code_files:
+        log.info("Doc check: skipping doc-only PR #%d", pr_number)
         return
 
     # Skip if a doc-update issue was already created for this PR
