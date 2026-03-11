@@ -22,6 +22,7 @@ LIVEKIT_SESSION = "livekit_session"
 EMERGENCY_STOP = "emergency_stop"
 CLIFF_TRIGGERED = "cliff_triggered"
 TOUCH_DETECTED = "touch_detected"
+TRACKED_PERSON = "tracked_person"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -125,3 +126,19 @@ class TouchDetectedEvent:
 
     location: str = "head"  # Vector only has head touch
     is_pressed: bool = True
+
+
+@dataclass(frozen=True)
+class TrackedPersonEvent:
+    """Emitted by Kalman tracker — smoothed detection at prediction rate."""
+
+    track_id: int
+    cx: float
+    cy: float
+    width: float  # frozen at last measurement
+    height: float  # frozen at last measurement
+    age_frames: int  # total frames since track creation
+    hits: int  # number of YOLO measurements received
+    confidence: float  # last YOLO confidence
+    frame_width: int = 640
+    frame_height: int = 360
