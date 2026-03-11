@@ -191,6 +191,7 @@ nuc-vector-orchestrator/
 
 - **NUC tests:** `python3 -m pytest tests/` (run on NUC)
 - **Vector tests:** `tests/vector/` (run on NUC against Vector gRPC)
+- **Standalone scripts:** `apps/vector/tests/standalone/` — self-contained per-subsystem test scripts (run directly, no pytest)
 - Unlike R3 (which needed SSH + Docker exec), Vector tests run locally on NUC since all inference code runs here
 
 ---
