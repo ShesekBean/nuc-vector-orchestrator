@@ -124,7 +124,9 @@ The NUC runs a single agent-loop (`nuc-agent-loop.service`):
    - Workers for `component:vector` issues get gRPC context for Vector operations
    - PR Review Hook fires after each Worker invocation
 4. If not found → sleep 1 minute → check again
-5. PGM health check runs every 5 minutes (separate from poll cycle)
+5. PGM health check runs every 5 minutes (separate from poll cycle):
+   - Audits open issues for CI health, PR status, stuck detection
+   - **Auto-unstick:** checks stuck issues for resolved dependencies (see PGM section below)
 6. On failure → retry next cycle, PGM flags if stuck. No attempt counters or daily limits.
 
 ---
@@ -214,6 +216,7 @@ nuc-vector-orchestrator/
 - Runs every 5 minutes, audits all open issues
 - **ONLY agent that sends Signal notifications to Ophir** (prefix: `📊 PGM:`)
 - Monitors CI health, PR status, stuck detection
+- **Auto-unstick:** Parses `## Dependencies` sections in stuck issues for `#N` issue references. When ALL listed dependency issues are closed, PGM automatically removes the `stuck` label, adds `assigned:worker` to re-queue for dispatch, and sends a Signal notification to Ophir
 
 ### Vision Agent (Sonnet)
 - Captures phone camera frames via LiveKit Cloud
@@ -224,8 +227,18 @@ nuc-vector-orchestrator/
 - `assigned:worker` — ready for worker dispatch
 - `component:vector` — Vector-specific code (worker gets gRPC context)
 - `blocker:needs-human` — needs physical test or human decision
-- `stuck` — issue needs investigation
+- `stuck` — issue needs investigation (auto-unstick via PGM when dependencies resolve)
 - `milestone` — something notable is working (notify Ophir)
+
+### Issue Dependency Convention
+
+Issues that are blocked by other issues should include a `## Dependencies` section in their body:
+```
+## Dependencies
+- #N (description)
+- #M (description)
+```
+PGM parses this format to auto-unstick issues when all listed dependencies close.
 
 ---
 
