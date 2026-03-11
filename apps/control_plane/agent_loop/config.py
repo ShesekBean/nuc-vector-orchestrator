@@ -37,7 +37,7 @@ class Config:
     nuc_repo: str = "ShesekBean/nuc-vector-orchestrator"
     dispatch_label: str = "assigned:worker"
     max_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_WORKERS", "4")))
-    max_vector_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_VECTOR_WORKERS", "1")))
+    max_vector_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_VECTOR_WORKERS", "2")))
 
     alert_group_id: str = "BUrA+nRRpsfdYgftby/jpJ7Ugy5PBzYWg89oNNr4nF4="
     bot_container: str = "openclaw-gateway"
