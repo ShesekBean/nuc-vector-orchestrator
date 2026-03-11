@@ -3,7 +3,7 @@
 # No auto-reply — the orchestrator session reads the inbox and responds.
 set -uo pipefail
 
-STATE_DIR="/home/ophirsw/Documents/claude/nuc-orchestrator/.claude/state"
+STATE_DIR="/home/ophirsw/Documents/claude/nuc-vector-orchestrator/.claude/state"
 INBOX_FILE="$STATE_DIR/signal-inbox.jsonl"
 LOCKFILE="$STATE_DIR/group-monitor.lock"
 

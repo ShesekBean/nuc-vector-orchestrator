@@ -52,7 +52,7 @@ if [[ "$EVENT_TYPE" == "general" ]]; then
     fi
 fi
 
-STATE_DIR="${REPO_DIR:-$HOME/Documents/claude/nuc-orchestrator}/.claude/state"
+STATE_DIR="${REPO_DIR:-$HOME/Documents/claude/nuc-vector-orchestrator}/.claude/state"
 SENT_LOG="$STATE_DIR/pgm-signal-sent.tsv"
 mkdir -p "$STATE_DIR"
 touch "$SENT_LOG"

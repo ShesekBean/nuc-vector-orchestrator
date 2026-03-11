@@ -25,7 +25,7 @@ if [[ ! -x "$REAL_CLAUDE" ]]; then
 fi
 
 # Determine TSV file location
-TOKEN_USAGE_FILE="${TOKEN_USAGE_FILE:-$HOME/Documents/claude/nuc-orchestrator/.claude/state/token-usage.tsv}"
+TOKEN_USAGE_FILE="${TOKEN_USAGE_FILE:-$HOME/Documents/claude/nuc-vector-orchestrator/.claude/state/token-usage.tsv}"
 
 # Create a temp file for stderr capture
 stderr_capture=$(mktemp /tmp/claude-stderr-XXXXXX.txt 2>/dev/null) || stderr_capture=""

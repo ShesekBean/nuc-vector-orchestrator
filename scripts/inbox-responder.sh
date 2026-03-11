@@ -3,8 +3,8 @@
 # Combines SSE monitoring + response in one process. No separate monitor needed.
 set -uo pipefail
 
-STATE_DIR="/home/ophirsw/Documents/claude/nuc-orchestrator/.claude/state"
-REPO_DIR="/home/ophirsw/Documents/claude/nuc-orchestrator"
+STATE_DIR="/home/ophirsw/Documents/claude/nuc-vector-orchestrator/.claude/state"
+REPO_DIR="/home/ophirsw/Documents/claude/nuc-vector-orchestrator"
 INBOX_FILE="$STATE_DIR/signal-inbox.jsonl"
 LOCKFILE="$STATE_DIR/inbox-responder.lock"
 LOG_FILE="$STATE_DIR/inbox-responder.log"

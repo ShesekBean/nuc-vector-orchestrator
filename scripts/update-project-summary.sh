@@ -25,7 +25,7 @@ rm -rf "$SUMMARY_DIR"
 mkdir -p "$SUMMARY_DIR"
 
 # ── NUC snapshot ──
-NUC_OUT="$SUMMARY_DIR/nuc-orchestrator"
+NUC_OUT="$SUMMARY_DIR/nuc-vector-orchestrator"
 mkdir -p "$NUC_OUT"/{agents,docs,.github/workflows,apps/control_plane,apps/test_harness,apps/openclaw,scripts,config,deploy,memory,tests}
 
 # Core config
