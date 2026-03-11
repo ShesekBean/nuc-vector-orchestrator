@@ -105,10 +105,11 @@ Vector 2.0 (ROBOT — thin client)
 ### Key Architecture Differences from R3
 
 1. **No Docker on Vector** — too resource-constrained. All code runs on NUC.
-2. **No ROS2** — gRPC replaces ROS2 topics. NUC runs Python nodes that talk gRPC.
-3. **No bridge.py** — gRPC SDK is the bridge. NUC talks directly to Vector.
-4. **All inference on NUC** — camera frames stream to NUC, commands stream back.
+2. **No ROS2** — Vector SDK events + lightweight NUC event bus replace ROS2 topics.
+3. **No bridge.py on Vector** — HTTP→gRPC bridge runs on NUC (`apps/vector/bridge/`).
+4. **All inference on NUC** — OpenVINO (no CUDA) for YOLO, face recognition, STT. Camera frames stream to NUC, commands stream back.
 5. **wire-pod on NUC** — handles Vector's cloud dependencies (auth, intent engine, TTS).
+6. **Hybrid event architecture** — Vector SDK provides 23 built-in events (face, object, sensors, wake word, connection state). NUC event bus adds custom events (YOLO detections, follow state, voice commands).
 
 ### Communication Flow
 
