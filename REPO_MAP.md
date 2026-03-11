@@ -64,6 +64,7 @@ vector-orchestrator/
 │       │   ├── planner/           ← PD controller → gRPC motor commands
 │       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
 │       │   ├── camera/            ← gRPC camera feed consumer
+│       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
 │       │   └── events/            ← hybrid event system (SDK events + NUC bus)
 │       │       ├── event_types.py ← event type definitions + priorities
 │       │       ├── nuc_event_bus.py ← pub/sub event bus for NUC-side events
