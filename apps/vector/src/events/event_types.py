@@ -24,6 +24,7 @@ CLIFF_TRIGGERED = "cliff_triggered"
 TOUCH_DETECTED = "touch_detected"
 TRACKED_PERSON = "tracked_person"
 SCENE_DESCRIPTION = "scene_description"
+WAKE_WORD_DETECTED = "wake_word_detected"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -153,3 +154,13 @@ class SceneDescriptionEvent:
     detection_count: int
     detection_labels: tuple[str, ...] = ()
     timestamp: float = 0.0
+
+
+@dataclass(frozen=True)
+class WakeWordDetectedEvent:
+    """Emitted when a wake word is detected (SDK or openwakeword)."""
+
+    model: str  # e.g. "hey_vector_sdk", "hey_jarvis"
+    confidence: float
+    source: str  # "sdk" or "openwakeword"
+    source_direction: int = -1  # beamforming direction (0-11), -1 if unknown
