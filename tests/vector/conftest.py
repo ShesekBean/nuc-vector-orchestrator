@@ -50,7 +50,14 @@ def pytest_configure(config):
         screen_mod = types.ModuleType("anki_vector.screen")
         screen_mod.convert_image_to_screen_data = MagicMock(return_value=b"\x00" * 100)
         anki_vector_mod.screen = screen_mod
+        messaging_mod = types.ModuleType("anki_vector.messaging")
+        protocol_mod = types.ModuleType("anki_vector.messaging.protocol")
+        protocol_mod.AudioFeedRequest = MagicMock
+        messaging_mod.protocol = protocol_mod
+        anki_vector_mod.messaging = messaging_mod
         sys.modules["anki_vector"] = anki_vector_mod
         sys.modules["anki_vector.events"] = events_mod
         sys.modules["anki_vector.util"] = util_mod
         sys.modules["anki_vector.screen"] = screen_mod
+        sys.modules["anki_vector.messaging"] = messaging_mod
+        sys.modules["anki_vector.messaging.protocol"] = protocol_mod
