@@ -491,7 +491,7 @@ def _handle_physical_test_result(cfg: Config, msg: str, timestamps: set[int]) ->
 
 
 def _handle_sprint_status(cfg: Config, timestamps: set[int]) -> None:
-    """Send a sprint-wide status summary via Signal."""
+    """Send a project-wide status summary via Signal, grouped by phase."""
     log.info("Sprint status requested via Signal")
     mark_inbox_replied(cfg.inbox_file, timestamps)
 
@@ -499,51 +499,74 @@ def _handle_sprint_status(cfg: Config, timestamps: set[int]) -> None:
         return [label.get("name", "") if isinstance(label, dict) else str(label)
                 for label in issue.get("labels", [])]
 
-    lines = ["📊 Sprint Status\n"]
+    def _get_phase(issue):
+        for name in _label_names(issue):
+            if name.startswith("phase:"):
+                return name
+        return ""
 
-    for repo, repo_label in [(cfg.nuc_repo, "NUC")]:
-        open_issues = gh.issue_list(repo, state="open",
-                                    fields="number,title,labels", limit=30)
-        closed_issues = gh.issue_list(repo, state="closed",
-                                      fields="number,title,labels", limit=20)
+    open_issues = gh.issue_list(cfg.nuc_repo, state="open",
+                                fields="number,title,labels", limit=60)
+    closed_issues = gh.issue_list(cfg.nuc_repo, state="closed",
+                                  fields="number,title,labels", limit=30)
 
-        # Find current sprint label
-        sprint_labels = set()
-        for issue in open_issues:
-            for name in _label_names(issue):
-                if name.startswith("sprint-"):
-                    sprint_labels.add(name)
-        if not sprint_labels:
+    # Count totals
+    total_open = len(open_issues)
+    total_closed = len(closed_issues)
+    active = [i for i in open_issues if "assigned:worker" in _label_names(i)]
+    stuck = [i for i in open_issues if "stuck" in _label_names(i)]
+    blocked = [i for i in open_issues
+               if any(l.startswith("blocker:") for l in _label_names(i))]
+
+    lines = [f"📊 Project Status ({total_closed} closed, {total_open} open)\n"]
+
+    # Active workers
+    if active:
+        lines.append("🔄 Active:")
+        for i in active:
+            lines.append(f"  #{i['number']} {i['title'][:45]}")
+    else:
+        lines.append("⏸️ No active workers")
+
+    # Blocked
+    if blocked:
+        lines.append(f"\n🚫 Blocked: {len(blocked)}")
+        for i in blocked:
+            lines.append(f"  #{i['number']} {i['title'][:45]}")
+
+    # Phase summary
+    phases: dict[str, dict[str, int]] = {}
+    for i in open_issues:
+        phase = _get_phase(i)
+        if not phase:
             continue
-        sprint_label = sorted(sprint_labels)[-1]
+        phases.setdefault(phase, {"open": 0, "stuck": 0})
+        phases[phase]["open"] += 1
+        if "stuck" in _label_names(i):
+            phases[phase]["stuck"] += 1
+    for i in closed_issues:
+        phase = _get_phase(i)
+        if not phase:
+            continue
+        phases.setdefault(phase, {"open": 0, "stuck": 0})
 
-        def classify(issue):
-            labels = _label_names(issue)
-            if any(label.startswith("blocker:") for label in labels):
-                return "🚫"
-            if "stuck" in labels:
-                return "🚫"
-            pr_num = gh.find_pr_for_issue(repo, issue["number"])
-            if pr_num:
-                return "🔄"
-            return "⏳"
+    # Count closed per phase from closed_issues
+    phase_closed: dict[str, int] = {}
+    for i in closed_issues:
+        phase = _get_phase(i)
+        if phase:
+            phase_closed[phase] = phase_closed.get(phase, 0) + 1
 
-        def short_title(issue):
-            t = issue.get("title", "")
-            return t.split(" — ")[-1][:50] if " — " in t else t[:50]
-
-        s_open = [i for i in open_issues if sprint_label in _label_names(i)]
-        s_closed = [i for i in closed_issues if sprint_label in _label_names(i)]
-
-        if s_open or s_closed:
-            lines.append(f"{repo_label} ({sprint_label}):")
-            # Sort: ✅ done, 🔄 in progress, 🚫 blocked, ⏳ queued
-            order = {"✅": 0, "🔄": 1, "🚫": 2, "⏳": 3}
-            tagged = [("✅", i) for i in s_closed]
-            tagged += [(classify(i), i) for i in s_open]
-            tagged.sort(key=lambda x: order.get(x[0], 9))
-            for icon, i in tagged:
-                lines.append(f"  {icon} #{i['number']} {short_title(i)}")
+    if phases:
+        lines.append("\nBy phase:")
+        for phase in sorted(phases):
+            c = phase_closed.get(phase, 0)
+            o = phases[phase]["open"]
+            s = phases[phase]["stuck"]
+            status = f"{c}✅ {o}⏳"
+            if s:
+                status += f" ({s} stuck)"
+            lines.append(f"  {phase}: {status}")
 
     send_signal(cfg, "\n".join(lines))
 
