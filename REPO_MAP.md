@@ -62,10 +62,10 @@ vector-orchestrator/
 │       │   ├── detector/          ← YOLO person detection (NUC GPU/CPU)
 │       │   ├── face_recognition/  ← YuNet + SFace (NUC)
 │       │   ├── planner/           ← PD controller → gRPC motor commands
-│       │   ├── voice/             ← wake word + STT + TTS (NUC)
+│       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
 │       │   └── camera/            ← gRPC camera feed consumer
 │       ├── config/                ← Vector connection config
-│       └── models/                ← ML models (YOLO, Kokoro, Whisper, face)
+│       └── models/                ← ML models (YOLO, face)
 ├── config/                        ← shared cross-component configuration
 │   ├── llm-provider.yaml         ← LLM provider + model selection
 │   └── sprint-definitions.yaml   ← sprint metadata

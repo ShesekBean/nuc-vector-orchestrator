@@ -37,9 +37,9 @@
 |---------|-------------|-------------|-------|
 | Person detection (YOLO) | Jetson GPU, ~3Hz | NUC GPU/CPU, ~15+ fps | Actually faster — no Jetson GPU contention |
 | Face recognition | YuNet + SFace on Jetson | Same models on NUC | Better — NUC has more compute |
-| Voice pipeline | Wake word → STT → Command → TTS | Same pipeline on NUC | 4-mic array is better than USB mic |
+| Voice pipeline | Wake word → STT → Command → TTS | Wake word → OpenClaw Talk Mode (gpt-4o-transcribe STT → Shon agent → OpenAI TTS) | 4-mic array + accent-friendly STT via OpenAI OAuth |
 | LED control | Rosmaster_Lib API | gRPC `SetBackpackLights` | Different API, same concept |
-| Text-to-speech | Kokoro/Piper on Jetson | Same on NUC → gRPC audio | Plus Vector has built-in face animations |
+| Text-to-speech | Kokoro/Piper on Jetson | OpenAI TTS via OpenClaw → gRPC audio | OpenAI OAuth, better voice quality, zero cost |
 | Signal integration | OpenClaw → bridge HTTP | OpenClaw → gRPC | Same architecture |
 | Intercom (text/photo) | Bridge → NUC HTTP → Signal | gRPC → NUC → Signal | Simpler — no Jetson bridge needed |
 | Agent loop / workers | GitHub Issues dispatch | Identical | No changes needed |
@@ -89,8 +89,8 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Inference Pipeline
 │   ├── YOLO person detection (~15fps on NUC)
 │   ├── Face recognition (YuNet + SFace)
-│   ├── STT (Whisper)
-│   └── TTS (Kokoro/Piper)
+│   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
+│   └── TTS (OpenAI TTS via OpenClaw Talk Mode)
 ├── Planner (PD controller → gRPC motor commands)
 ├── Docker: OpenClaw (Signal gateway)
 └── GitHub repo: ShesekBean/vector-orchestrator

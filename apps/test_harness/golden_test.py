@@ -163,7 +163,7 @@ def signal_send(msg: str):
 
 
 def robot_say(text: str, blocking: bool = False):
-    """Speak text through the robot's Kokoro TTS via the voice_io /voice/tts endpoint.
+    """Speak text through the robot's OpenAI TTS via the bridge /say endpoint.
 
     Non-blocking by default — fires and forgets so TTS doesn't hold up the test.
     """

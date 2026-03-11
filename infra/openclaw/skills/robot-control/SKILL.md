@@ -103,7 +103,7 @@ POST /say
 Content-Type: application/json
 {"text": "hello there"}
 
-Speaks the given text aloud through the robot's speakers via Piper TTS.
+Speaks the given text aloud through the robot's speakers via OpenAI TTS (OpenClaw Talk Mode).
 Text is capped at 400 characters.
 ```
 
