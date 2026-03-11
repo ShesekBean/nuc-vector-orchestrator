@@ -116,10 +116,10 @@ Voice interaction through OpenClaw Talk Mode — Vector agent handles everything
 |---|-------|-------------|--------|-------------|
 | 18 | [Mic audio streaming](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/18) | #3 | stuck | Raw `AudioFeed` gRPC from Vector's 4-mic beamforming array. 16kHz PCM. |
 | 19 | [Wake word detection](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/19) | #18 | stuck | OpenWakeWord "hey jarvis" on NUC. Gates audio send to OpenClaw. |
-| 20 | [OpenClaw Talk Mode integration](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/20) | #18, #19, #3 | stuck | **Core voice issue.** Pipes mic audio → OpenClaw Talk Mode (gpt-4o-transcribe STT → Vector agent → OpenAI TTS). All via OpenAI OAuth, zero API cost. Solves accent problem. |
-| 21 | [OpenAI TTS + gRPC playback](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/21) | #3, #20 | stuck | Receive TTS audio from OpenClaw, forward to Vector speaker via `PlayAudio` gRPC. |
+| 20 | [OpenClaw Talk Mode integration](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/20) | #18, #19, #3 | stuck | **Core voice issue.** Pipes mic audio → OpenClaw Talk Mode (gpt-4o-transcribe STT → Vector agent → say_text()). All via OpenAI OAuth, zero API cost. Solves accent problem. |
+| 21 | [TTS via say_text()](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/21) | #3, #20 | stuck | Use Vector's built-in say_text() for speech output — no OpenAI TTS or PlayAudio needed. |
 | 22 | [Voice command routing](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/22) | #20, #23, #32 | stuck | No custom router — Vector agent handles all commands via existing skills. Voice and Signal share the same routing. |
-| 37 | [Echo cancellation](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/37) | #18, #19, #21 | stuck | Mute mic during TTS playback + hold-off. Prevents wake word re-trigger loop. |
+| 37 | [Echo cancellation](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/37) | #18, #19, #21 | stuck | Pause mic during say_text() (blocking call) + hold-off. Prevents wake word re-trigger loop. |
 
 #### Voice Architecture Decision
 
@@ -132,10 +132,10 @@ Vector mic ──gRPC──► NUC wake word (OpenWakeWord)
                       └── triggered ──► OpenClaw Talk Mode
                                          ├── STT: gpt-4o-transcribe (accent-friendly)
                                          ├── Agent: Vector agent (all skills work)
-                                         └── TTS: OpenAI
+                                         └── text response
                                          │
                                          ▼
-                              gRPC PlayAudio ──► Vector speaker
+                              say_text(response) ──► Vector speaker
 ```
 
 **Key insight:** Voice commands go through the same Vector agent as Signal DMs. No separate command router to maintain. Any new skill added to OpenClaw automatically works via voice too.

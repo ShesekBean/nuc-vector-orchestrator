@@ -37,9 +37,9 @@
 |---------|-------------|-------------|-------|
 | Person detection (YOLO) | Jetson GPU, ~3Hz | NUC GPU/CPU, ~15+ fps | Actually faster — no Jetson GPU contention |
 | Face recognition | YuNet + SFace on Jetson | Same models on NUC | Better — NUC has more compute |
-| Voice pipeline | Wake word → STT → Command → TTS | Wake word → OpenClaw Talk Mode (gpt-4o-transcribe STT → Vector agent → OpenAI TTS) | 4-mic array + accent-friendly STT via OpenAI OAuth |
+| Voice pipeline | Wake word → STT → Command → TTS | Wake word → OpenClaw Talk Mode (gpt-4o-transcribe STT → Vector agent → say_text()) | 4-mic array + accent-friendly STT via OpenAI OAuth |
 | LED control | Rosmaster_Lib API | gRPC `SetBackpackLights` | Different API, same concept |
-| Text-to-speech | Kokoro/Piper on Jetson | OpenAI TTS via OpenClaw → gRPC audio | OpenAI OAuth, better voice quality, zero cost |
+| Text-to-speech | Kokoro/Piper on Jetson | say_text() (Vector built-in TTS) | Onboard, zero cost, no audio streaming needed |
 | Signal integration | OpenClaw → bridge HTTP | OpenClaw → gRPC | Same architecture |
 | Intercom (text/photo) | Bridge → NUC HTTP → Signal | gRPC → NUC → Signal | Simpler — no Jetson bridge needed |
 | Agent loop / workers | GitHub Issues dispatch | Identical | No changes needed |
@@ -90,7 +90,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   ├── YOLO person detection (~15fps on NUC)
 │   ├── Face recognition (YuNet + SFace)
 │   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
-│   └── TTS (OpenAI TTS via OpenClaw Talk Mode)
+│   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
 ├── Planner (PD controller → gRPC motor commands)
 ├── Docker: OpenClaw (Signal gateway)
 └── GitHub repo: ShesekBean/vector-orchestrator
@@ -119,7 +119,7 @@ Vector ──gRPC──► NUC (wire-pod + inference + planner)
                   ├── Camera frames → YOLO → detection
                   ├── Mic audio → wake word → STT → command
                   ├── Planner → motor commands → gRPC → Vector
-                  └── TTS audio → gRPC → Vector speaker
+                  └── say_text() → Vector speaker (built-in TTS)
 ```
 
 ## Latency Analysis

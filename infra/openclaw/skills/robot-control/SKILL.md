@@ -103,7 +103,7 @@ POST /say
 Content-Type: application/json
 {"text": "hello there"}
 
-Speaks the given text aloud through the robot's speakers via OpenAI TTS (OpenClaw Talk Mode).
+Speaks the given text aloud through the robot's speakers via say_text() (Vector's built-in TTS).
 Text is capped at 400 characters.
 ```
 
