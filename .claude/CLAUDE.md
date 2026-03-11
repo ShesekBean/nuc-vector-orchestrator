@@ -122,7 +122,9 @@ Never send a bare message without a prefix.
 The NUC runs a single agent-loop (`nuc-agent-loop.service`):
 1. `git pull` latest
 2. Check `gh issue list` for `assigned:worker` open Issues
-3. If found → dispatch up to 4 workers in parallel (one per issue)
+3. If found → dispatch up to 4 workers in parallel (one per issue, each in its own git worktree)
+   - **2 Vector slots** for `component:vector` issues (non-conflicting gRPC ops can parallelize)
+   - **2 NUC slots** for NUC-only issues (no robot access needed)
    - Each Worker handles full lifecycle: design → code → self-review → test → merge
    - Workers for `component:vector` issues get gRPC context for Vector operations
    - PR Review Hook fires after each Worker invocation
