@@ -87,19 +87,19 @@ class SdkEventBridge:
 
     def _on_robot_state(self, _robot: Any, _name: str, msg: Any) -> None:
         """Handle robot_state events — bridge cliff and touch to NUC bus."""
-        # Cliff detection → emergency_stop + cliff_triggered
+        # Cliff detection → emergency_stop FIRST (safety-critical), then cliff_triggered
         cliff = getattr(msg, "cliff_detected_flags", 0)
         if cliff:
-            self._bus.emit(
-                CLIFF_TRIGGERED,
-                CliffTriggeredEvent(cliff_flags=cliff),
-            )
             self._bus.emit(
                 EMERGENCY_STOP,
                 EmergencyStopEvent(
                     source="cliff",
                     details=f"cliff_flags={cliff}",
                 ),
+            )
+            self._bus.emit(
+                CLIFF_TRIGGERED,
+                CliffTriggeredEvent(cliff_flags=cliff),
             )
 
         # Touch detection → touch_detected

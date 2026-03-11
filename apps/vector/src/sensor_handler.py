@@ -11,6 +11,7 @@ stop synchronously in the event callback — no queuing or async overhead.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -58,6 +59,7 @@ class SensorHandler:
         self._bus = nuc_bus
         self._touch_debounce_s = touch_debounce_s
         self._last_touch_time: float = 0.0
+        self._touch_lock = threading.Lock()
         self._running = False
         self._touch_callbacks: list[Callable[[TouchDetectedEvent], None]] = []
         self._cliff_count = 0
@@ -126,9 +128,10 @@ class SensorHandler:
     def _on_touch_detected(self, event: TouchDetectedEvent) -> None:
         """Debounce touch events and forward to registered callbacks."""
         now = time.monotonic()
-        if now - self._last_touch_time < self._touch_debounce_s:
-            return
-        self._last_touch_time = now
+        with self._touch_lock:
+            if now - self._last_touch_time < self._touch_debounce_s:
+                return
+            self._last_touch_time = now
         logger.debug("Touch detected (location=%s)", event.location)
         for cb in list(self._touch_callbacks):
             try:
