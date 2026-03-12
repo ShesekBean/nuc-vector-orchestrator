@@ -184,6 +184,20 @@ class AudioClient:
 
         return n_samples
 
+    def clear_buffer(self) -> None:
+        """Discard all buffered audio chunks.
+
+        Called by :class:`~apps.vector.src.voice.echo_cancel.EchoSuppressor`
+        after TTS playback to remove echo-contaminated audio.  The stream
+        continues running — only the ring buffer contents are discarded.
+        ``chunk_count`` is preserved for continuity with consumers that
+        track processed chunk IDs.
+        """
+        with self._lock:
+            self._chunks.clear()
+            self._timestamps.clear()
+        logger.debug("Audio buffer cleared (%d chunks discarded)", self._buffer_size)
+
     def set_connection_lost_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback invoked when the robot connection drops."""
         self._connection_lost_callback = callback
