@@ -52,6 +52,7 @@ MIN_FEATURE_MATCHES = 10  # below this, fall back to dead reckoning
 LOOP_CLOSURE_MATCH_THRESHOLD = 30  # min matches to declare loop closure
 LOOP_CLOSURE_MIN_DISTANCE_MM = 500  # don't check loop closure if too close
 LANDMARK_SAMPLE_INTERVAL = 5  # store landmark every N frames
+TRACK_WIDTH_MM = 47.0  # distance between Vector's treads
 
 
 class CellState(IntEnum):
@@ -463,9 +464,8 @@ class VisualSLAM:
                 self._pose.x += dist * math.cos(self._pose.theta)
                 self._pose.y += dist * math.sin(self._pose.theta)
             else:
-                # Arc motion (track width ~47mm for Vector)
-                track_width = 47.0  # mm between treads
-                omega = (right - left) / track_width
+                # Arc motion
+                omega = (right - left) / TRACK_WIDTH_MM
                 radius = (left + right) / (2.0 * omega)
                 d_theta = omega * dt
 
@@ -521,7 +521,8 @@ class VisualSLAM:
         if current_des is None or len(current_des) == 0:
             return
 
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        if not hasattr(self, "_lc_bf"):
+            self._lc_bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
         best_matches = 0
         best_landmark: VisualLandmark | None = None
@@ -533,7 +534,7 @@ class VisualSLAM:
                 continue
 
             try:
-                matches = bf.match(lm.descriptors, current_des)
+                matches = self._lc_bf.match(lm.descriptors, current_des)
                 if len(matches) > best_matches:
                     best_matches = len(matches)
                     best_landmark = lm
