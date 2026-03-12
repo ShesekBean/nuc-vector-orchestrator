@@ -74,6 +74,7 @@ nuc-vector-orchestrator/
 │       │   ├── lift_controller.py  ← forklift height control with named presets
 │       │   ├── motor_controller.py ← cliff-safe differential drive (turn-then-drive planner)
 │       │   ├── expression_engine.py ← coordinated face + LED + sound expressions (emotion states)
+│       │   ├── intercom.py        ← Signal messaging client (photo + text to Ophir via intercom-server)
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
 │       │   └── events/            ← hybrid event system (SDK events + NUC bus)
 │       │       ├── event_types.py ← event type definitions + priorities
@@ -133,6 +134,7 @@ nuc-vector-orchestrator/
 │   │   ├── test_phase8_agentloop.py ← agent loop health checks
 │   │   └── test_phase9_eventbus.py  ← event bus integration
 │   └── vector/                    ← Vector-specific tests
+│       └── test_intercom.py       ← intercom module tests (photo + text messaging)
 ├── .claude/                       ← Claude Code configuration
 │   ├── CLAUDE.md                  ← project config
 │   └── agents/                    ← agent role definitions
