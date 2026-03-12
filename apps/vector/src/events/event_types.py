@@ -32,6 +32,7 @@ EXPRESSION_CHANGED = "expression_changed"
 INTERCOM_TEXT_SENT = "intercom_text_sent"
 INTERCOM_PHOTO_SENT = "intercom_photo_sent"
 USER_INTENT = "user_intent"
+OBSTACLE_DETECTED = "obstacle_detected"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -234,3 +235,16 @@ class UserIntentEvent:
 
     intent: str  # e.g. "intent_imperative_forward", "intent_greeting_hello"
     params: dict = field(default_factory=dict)  # intent-specific parameters
+
+
+@dataclass(frozen=True)
+class ObstacleDetectedEvent:
+    """Emitted by ObstacleDetector when an obstacle is in the forward cone."""
+
+    zone: str  # "danger", "caution", "clear"
+    proximity: float  # 0.0 (far) to 1.0 (very close)
+    speed_scale: float  # 0.0 (full stop) to 1.0 (full speed)
+    bbox_area_ratio: float  # obstacle bbox area / frame area
+    label: str = ""  # COCO class label if available
+    frame_width: int = 640
+    frame_height: int = 360
