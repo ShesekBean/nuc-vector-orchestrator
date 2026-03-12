@@ -214,7 +214,7 @@ class TestBridgeEndpointCoverage:
 
     def test_covers_capture_endpoint(self):
         content = SCRIPT_PATH.read_text()
-        assert '"/capture"' in content
+        assert "/capture" in content
 
     def test_covers_display_endpoint(self):
         content = SCRIPT_PATH.read_text()
