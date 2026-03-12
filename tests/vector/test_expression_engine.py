@@ -117,11 +117,15 @@ class TestExpressAPI:
         display.set_expression.assert_called_with("startled")
         speech.speak.assert_called_with("oh!")
 
-    def test_express_idle_clears_override(self, engine, display, leds):
+    def test_express_idle_reverts_led(self, engine, display, leds):
         engine.express("happy")
+        leds.override.reset_mock()
         engine.express("idle")
         assert engine.current_emotion == "idle"
-        leds._clear_override.assert_called()
+        # Idle sets a very short override to let LedController's state take over
+        leds.override.assert_called_once()
+        _, kwargs = leds.override.call_args
+        assert kwargs["duration_s"] < 0.1  # near-instant revert
 
     def test_express_unknown_raises(self, engine):
         with pytest.raises(ValueError, match="Unknown emotion"):

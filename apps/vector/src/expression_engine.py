@@ -53,6 +53,9 @@ DEFAULT_DECAY_S = 4.0
 STARTLED_DECAY_S = 2.0
 SLEEPY_DECAY_S = 10.0
 
+# LED override duration used to quickly revert to LedController's state machine
+_IDLE_OVERRIDE_DURATION_S = 0.05
+
 # Priority order — higher value wins when multiple emotions compete
 EMOTION_PRIORITY: dict[str, int] = {
     "idle": 0,
@@ -181,7 +184,8 @@ class ExpressionEngine:
 
     # -- Public API ----------------------------------------------------------
 
-    def express(self, emotion: str, duration_s: float | None = None) -> None:
+    def express(self, emotion: str, duration_s: float | None = None,
+                _trigger: str = "api") -> None:
         """Trigger an emotion expression.
 
         Parameters
@@ -204,6 +208,7 @@ class ExpressionEngine:
             )
 
         defn = EMOTIONS[emotion]
+        decay = duration_s if duration_s is not None else defn.decay_s
 
         with self._lock:
             # Priority check: don't downgrade a higher-priority active emotion
@@ -218,22 +223,28 @@ class ExpressionEngine:
             previous = self._current
             if emotion == previous:
                 # Same emotion — just reset the decay timer
-                self._reset_decay_timer(emotion, duration_s)
+                self._reset_decay_timer_locked(decay)
                 return
 
             self._current = emotion
+            # Cancel old timer under lock to prevent race with _on_decay
+            old_timer = self._decay_timer
+            self._decay_timer = None
 
-        # Cancel previous decay timer
-        self._cancel_decay_timer()
+        if old_timer is not None:
+            old_timer.cancel()
 
         # Drive the three subsystems
         self._display.set_expression(defn.face)
 
         if emotion == "idle":
-            # Clear LED override — let LedController's state machine take over
-            self._leds._clear_override()
+            # Short-lived override that auto-reverts to LedController's state
+            self._leds.override(
+                hue=defn.led_hue,
+                saturation=defn.led_sat,
+                duration_s=_IDLE_OVERRIDE_DURATION_S,
+            )
         else:
-            decay = duration_s if duration_s is not None else defn.decay_s
             self._leds.override(
                 hue=defn.led_hue,
                 saturation=defn.led_sat,
@@ -252,16 +263,14 @@ class ExpressionEngine:
             ExpressionChangedEvent(
                 emotion=emotion,
                 previous_emotion=previous,
-                trigger="api",
+                trigger=_trigger,
             ),
         )
-        logger.info("Expression: %s → %s", previous, emotion)
+        logger.info("Expression: %s → %s (trigger=%s)", previous, emotion, _trigger)
 
         # Set up decay timer
-        if emotion != "idle":
-            decay = duration_s if duration_s is not None else defn.decay_s
-            if decay > 0:
-                self._set_decay_timer(decay)
+        if emotion != "idle" and decay > 0:
+            self._set_decay_timer(decay)
 
     @property
     def current_emotion(self) -> str:
@@ -272,68 +281,24 @@ class ExpressionEngine:
     # -- Event handlers ------------------------------------------------------
 
     def _on_person_detected(self, event: Any) -> None:
-        self._express_from_event("curious", "person_detected")
+        self.express("curious", _trigger="person_detected")
 
     def _on_face_recognized(self, event: Any) -> None:
-        self._express_from_event("happy", "face_recognized")
+        self.express("happy", _trigger="face_recognized")
 
     def _on_touch(self, event: Any) -> None:
         is_pressed = getattr(event, "is_pressed", True)
         if is_pressed:
-            self._express_from_event("happy", "touch")
+            self.express("happy", _trigger="touch")
 
     def _on_command(self, event: Any) -> None:
-        self._express_from_event("curious", "command")
+        self.express("curious", _trigger="command")
 
     def _on_cliff(self, event: Any) -> None:
-        self._express_from_event("startled", "cliff")
+        self.express("startled", _trigger="cliff")
 
     def _on_wake_word(self, event: Any) -> None:
-        self._express_from_event("curious", "wake_word")
-
-    def _express_from_event(self, emotion: str, trigger: str) -> None:
-        """Internal helper — express with a trigger tag for the change event."""
-        defn = EMOTIONS[emotion]
-
-        with self._lock:
-            current_defn = EMOTIONS.get(self._current, EMOTIONS["idle"])
-            if defn.priority < current_defn.priority:
-                return
-
-            previous = self._current
-            if emotion == previous:
-                self._reset_decay_timer(emotion, None)
-                return
-
-            self._current = emotion
-
-        self._cancel_decay_timer()
-
-        self._display.set_expression(defn.face)
-        self._leds.override(
-            hue=defn.led_hue,
-            saturation=defn.led_sat,
-            duration_s=defn.decay_s if defn.decay_s > 0 else None,
-        )
-
-        if defn.sound and self._speech is not None:
-            try:
-                self._speech.speak(defn.sound)
-            except Exception:
-                logger.exception("Expression sound failed for %s", emotion)
-
-        self._bus.emit(
-            EXPRESSION_CHANGED,
-            ExpressionChangedEvent(
-                emotion=emotion,
-                previous_emotion=previous,
-                trigger=trigger,
-            ),
-        )
-        logger.info("Expression: %s → %s (trigger=%s)", previous, emotion, trigger)
-
-        if defn.decay_s > 0:
-            self._set_decay_timer(defn.decay_s)
+        self.express("curious", _trigger="wake_word")
 
     # -- Decay timer ---------------------------------------------------------
 
@@ -344,18 +309,15 @@ class ExpressionEngine:
             self._decay_timer.daemon = True
             self._decay_timer.start()
 
-    def _reset_decay_timer(self, emotion: str, duration_s: float | None) -> None:
-        """Reset the decay timer for the current emotion (called under lock)."""
-        # Cancel outside lock to avoid deadlock
+    def _reset_decay_timer_locked(self, decay_s: float) -> None:
+        """Reset the decay timer (must be called while holding ``_lock``)."""
         timer = self._decay_timer
         self._decay_timer = None
         if timer is not None:
             timer.cancel()
 
-        defn = EMOTIONS[emotion]
-        decay = duration_s if duration_s is not None else defn.decay_s
-        if decay > 0:
-            self._decay_timer = threading.Timer(decay, self._on_decay)
+        if decay_s > 0:
+            self._decay_timer = threading.Timer(decay_s, self._on_decay)
             self._decay_timer.daemon = True
             self._decay_timer.start()
 
