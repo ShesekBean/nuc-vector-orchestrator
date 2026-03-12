@@ -389,6 +389,7 @@ def _handle_go(cfg: Config, msg: str, timestamps: set[int]) -> bool:
     _ALLOWED_SETUP_SCRIPTS = {
         "run-evolution-cycle": ["bash", "scripts/run-evolution-cycle.sh"],
         "run-physical-test": ["bash", "scripts/run-physical-test.sh"],
+        "vector-physical-test": ["bash", "scripts/vector-physical-test.sh"],
         "golden_test": ["python3", "apps/test_harness/golden_test.py"],
     }
 
