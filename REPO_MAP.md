@@ -66,7 +66,9 @@ nuc-vector-orchestrator/
 │       │   ├── planner/           ← Visual SLAM + PD controller → gRPC motor commands
 │       │   │   ├── __init__.py    ← PD follow controller (proportional-derivative tracking)
 │       │   │   └── visual_slam.py ← monocular ORB-SLAM for camera-only navigation
+│       │   ├── livekit_bridge.py   ← LiveKit WebRTC bridge (camera + mic → LiveKit Cloud, remote audio → speaker)
 │       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
+│       │   │   ├── audio_client.py ← Vector mic gRPC consumer (resamples 15625→16000 Hz, ring buffer)
 │       │   ├── camera/            ← gRPC camera feed consumer
 │       │   ├── display_controller.py ← OLED display image/text rendering
 │       │   ├── head_controller.py  ← head servo angle control with safety clamping
