@@ -1,0 +1,186 @@
+"""Vector SDK connection manager — singleton lifecycle for the bridge server.
+
+Lazily connects to Vector on first use, provides the robot instance and
+all controller objects.  Handles disconnect and reconnect.
+
+Usage::
+
+    mgr = ConnectionManager()
+    mgr.connect()              # call once at startup
+    robot = mgr.robot           # anki_vector.Robot
+    mgr.motor_controller        # MotorController (cliff-safe)
+    mgr.head_controller         # HeadController
+    ...
+    mgr.disconnect()
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+SERIAL = os.environ.get("VECTOR_SERIAL", "0dd1cdcf")
+
+
+class ConnectionManager:
+    """Manages the Vector SDK connection and controller instances."""
+
+    def __init__(self, serial: str = SERIAL) -> None:
+        self._serial = serial
+        self._robot: Any | None = None
+        self._connected = False
+
+        # Controllers — created on connect
+        self._motor_controller: Any | None = None
+        self._head_controller: Any | None = None
+        self._lift_controller: Any | None = None
+        self._led_controller: Any | None = None
+        self._display_controller: Any | None = None
+        self._camera_client: Any | None = None
+        self._nuc_bus: Any | None = None
+
+    @property
+    def is_connected(self) -> bool:
+        return self._connected
+
+    @property
+    def robot(self) -> Any:
+        if not self._connected or self._robot is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._robot
+
+    @property
+    def motor_controller(self) -> Any:
+        if self._motor_controller is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._motor_controller
+
+    @property
+    def head_controller(self) -> Any:
+        if self._head_controller is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._head_controller
+
+    @property
+    def lift_controller(self) -> Any:
+        if self._lift_controller is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._lift_controller
+
+    @property
+    def led_controller(self) -> Any:
+        if self._led_controller is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._led_controller
+
+    @property
+    def display_controller(self) -> Any:
+        if self._display_controller is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._display_controller
+
+    @property
+    def camera_client(self) -> Any:
+        if self._camera_client is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._camera_client
+
+    def connect(self) -> None:
+        """Connect to Vector and initialise all controllers."""
+        if self._connected:
+            logger.warning("Already connected to Vector")
+            return
+
+        import anki_vector
+
+        from apps.vector.src.camera.camera_client import CameraClient
+        from apps.vector.src.display_controller import DisplayController
+        from apps.vector.src.events.nuc_event_bus import NucEventBus
+        from apps.vector.src.head_controller import HeadController
+        from apps.vector.src.led_controller import LedController
+        from apps.vector.src.lift_controller import LiftController
+        from apps.vector.src.motor_controller import MotorController
+
+        logger.info("Connecting to Vector (serial=%s)...", self._serial)
+        self._robot = anki_vector.Robot(serial=self._serial, default_logging=False)
+        self._robot.connect()
+
+        self._nuc_bus = NucEventBus()
+        self._motor_controller = MotorController(self._robot, self._nuc_bus)
+        self._motor_controller.start()
+        self._head_controller = HeadController(self._robot)
+        self._lift_controller = LiftController(self._robot, self._nuc_bus)
+        self._lift_controller.start()
+        self._led_controller = LedController(self._robot, self._nuc_bus)
+        self._led_controller.start()
+        self._display_controller = DisplayController(self._robot, event_bus=self._nuc_bus)
+        self._display_controller.start()
+        self._camera_client = CameraClient(self._robot)
+        self._camera_client.start()
+
+        self._connected = True
+        logger.info("Connected to Vector successfully")
+
+    def disconnect(self) -> None:
+        """Disconnect from Vector and stop all controllers."""
+        if not self._connected:
+            return
+
+        logger.info("Disconnecting from Vector...")
+        try:
+            if self._motor_controller:
+                self._motor_controller.stop()
+            if self._lift_controller:
+                self._lift_controller.stop()
+            if self._led_controller:
+                self._led_controller.stop()
+            if self._display_controller:
+                self._display_controller.stop()
+            if self._camera_client:
+                self._camera_client.stop()
+        except Exception:
+            logger.exception("Error stopping controllers")
+
+        try:
+            if self._robot:
+                self._robot.disconnect()
+        except Exception:
+            logger.exception("Error disconnecting from Vector")
+
+        self._connected = False
+        self._robot = None
+        self._motor_controller = None
+        self._head_controller = None
+        self._lift_controller = None
+        self._led_controller = None
+        self._display_controller = None
+        self._camera_client = None
+        self._nuc_bus = None
+        logger.info("Disconnected from Vector")
+
+    def get_battery_state(self) -> dict:
+        """Read battery state and return as dict."""
+        batt = self.robot.get_battery_state()
+        return {
+            "voltage": round(batt.battery_volts, 2),
+            "level": batt.battery_level,
+            "is_charging": batt.is_charging,
+            "is_on_charger": batt.is_on_charger_platform,
+        }
+
+    def get_robot_state(self) -> dict:
+        """Read robot state (sensors, accel, gyro) and return as dict."""
+        robot = self.robot
+        accel = robot.accel
+        gyro = robot.gyro
+        touch = robot.touch.last_sensor_reading
+        return {
+            "accel": {"x": round(accel.x, 2), "y": round(accel.y, 2), "z": round(accel.z, 2)},
+            "gyro": {"x": round(gyro.x, 2), "y": round(gyro.y, 2), "z": round(gyro.z, 2)},
+            "touch": bool(touch) if touch is not None else None,
+            "head_angle_deg": round(robot.head_angle_rad * 57.2958, 1) if hasattr(robot, "head_angle_rad") else None,
+            "lift_height_mm": round(robot.lift_height_mm, 1) if hasattr(robot, "lift_height_mm") else None,
+        }
