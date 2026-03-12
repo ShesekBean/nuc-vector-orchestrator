@@ -339,6 +339,11 @@ async def test_capture_base64(aiohttp_client):
 
 async def test_display(aiohttp_client):
     conn = _make_mock_conn()
+    # Display route uses PlayAnimation via conn.robot.conn.run_coroutine
+    mock_future = MagicMock()
+    mock_future.result = MagicMock(return_value=None)
+    conn.robot.conn.run_coroutine = MagicMock(return_value=mock_future)
+    conn.robot.conn.grpc_interface.PlayAnimation = MagicMock()
     app = create_app(conn)
     client = await aiohttp_client(app)
     resp = await client.post("/display", json={"expression": "happy"})

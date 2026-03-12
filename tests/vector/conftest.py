@@ -173,6 +173,9 @@ def pytest_configure(config):
         messaging_mod = types.ModuleType("anki_vector.messaging")
         protocol_mod = types.ModuleType("anki_vector.messaging.protocol")
         protocol_mod.AudioFeedRequest = MagicMock
+        protocol_mod.PlayAnimationRequest = MagicMock
+        protocol_mod.PlayAnimationResponse = MagicMock
+        protocol_mod.Animation = MagicMock
         messaging_mod.protocol = protocol_mod
         anki_vector_mod.messaging = messaging_mod
         sys.modules["anki_vector"] = anki_vector_mod
