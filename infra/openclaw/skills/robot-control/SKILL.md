@@ -1,6 +1,6 @@
 ---
 name: robot-control
-description: "ACTIVATE when message contains the word 'robot'. Controls a physical robot via HTTP curl commands. Examples: 'robot led blue', 'robot go forward', 'robot stop', 'robot battery', 'robot follow me', 'robot what do you see', 'robot patrol', 'robot call me', 'robot map the room', 'robot go to the kitchen'."
+description: "ACTIVATE when message contains the word 'robot'. Controls a physical robot via HTTP curl commands. Examples: 'robot led blue', 'robot go forward', 'robot stop', 'robot battery', 'robot follow me', 'robot what do you see', 'robot look up', 'robot lift up', 'robot smile'."
 metadata: {"openclaw": {"emoji": "🤖"}}
 ---
 
@@ -9,128 +9,134 @@ metadata: {"openclaw": {"emoji": "🤖"}}
 ## Overview
 You have DIRECT CONTROL of a physical robot (Anki/DDL Vector 2.0) via HTTP bridge → gRPC. When the user says "robot <command>", you MUST immediately execute the corresponding curl command — do not ask for clarification, do not explain, just DO IT and report the result.
 
-The robot has differential drive (tank treads, no strafing), a 640x360 camera (120° FOV), backpack RGB LEDs, a 184x96 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
+The robot has differential drive (tank treads, no strafing), a 640x360 camera (120° FOV), eye LEDs (hue/saturation, no RGB strips), a 184x96 OLED face display, a motorized lift, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
 
 ## Bridge API Endpoints
 
-All endpoints are at `http://192.168.1.71:8081` unless noted otherwise.
+All endpoints are at `http://192.168.1.71:8080` (Vector HTTP-to-gRPC bridge running on NUC).
 
-### Read Sensors
+### Health Check
 ```
 GET /health
-→ {"status": "ok", "battery_v": 12.1}
-
-GET /sensors
-→ {"accelerometer": [x,y,z], "gyroscope": [x,y,z], "attitude": [roll,pitch,yaw], "battery_v": 12.1}
+→ {"status": "healthy", "battery": {"voltage": 3.95, "level": 2, "is_charging": false, "is_on_charger": false}, "latency_ms": 45.2}
 ```
 
-### Full Status Dashboard
+### Full Status (Battery + Sensors)
 ```
 GET /status
-→ Battery, ROS2 nodes, audio pipeline, detection, planner, temps, memory, uptime
+→ {"status": "ok", "battery": {"voltage": 3.95, "level": 2, ...}, "sensors": {"accel": {"x": 0.0, "y": 0.0, "z": -9.8}, "gyro": {"x": 0.0, "y": 0.0, "z": 0.0}, "touch": false, "head_angle_deg": 10.0, "lift_height_mm": 32.0}}
 ```
-Returns a comprehensive JSON with all subsystems. Use this for "how are you" or "status" or "diagnostics".
+Use this for "how are you" or "status" or "diagnostics" or "sensors".
 
 ### Move the Robot
 ```
 POST /move
 Content-Type: application/json
-{"vx": 0.2, "vy": 0.0, "vz": 0.0, "duration": 1.0}
 
-vx = forward/backward (-0.5 to 0.5 m/s)
-vy = left/right strafe (-0.5 to 0.5 m/s)
-vz = rotation (-0.5 to 0.5 rad/s)
-duration = seconds (max 5.0)
+Drive wheels directly:
+{"type": "wheels", "left_speed": 100, "right_speed": 100, "left_accel": 200, "right_accel": 200}
+  left_speed/right_speed = mm/s
+  left_accel/right_accel = mm/s² (default 200)
+
+Drive straight:
+{"type": "straight", "distance_mm": 200, "speed_mmps": 100}
+  distance_mm = positive forward, negative backward
+  speed_mmps = speed in mm/s (default 200)
+
+Turn in place:
+{"type": "turn", "angle_deg": 90, "speed_dps": 100}
+  angle_deg = degrees (positive = counterclockwise)
+  speed_dps = degrees per second (default 100)
+
+Turn then drive:
+{"type": "turn_then_drive", "angle_deg": 45, "distance_mm": 200}
+  Turns to angle, then drives straight
 ```
 
-Safety: speed is clamped to ±0.5. Acceleration is limited. Collision guard stops if obstacle < 0.2m. Watchdog stops motors if no command in 1 second.
+NOTE: Vector uses differential drive (tank treads). No strafing — use "turn" then "straight" for lateral movement.
 
-### Stop
+### Emergency Stop
 ```
 POST /stop
-→ {"status": "stopped"}
+→ {"status": "ok"}
 ```
 
-### Move Camera Servo
+### Head Angle
 ```
-POST /servo
+POST /head
 Content-Type: application/json
-{"channel": 3, "angle": 90}
+{"angle_deg": 20, "speed_dps": 120}
 
-channel: 3 = yaw/pan (neutral 102), 4 = pitch/tilt (neutral 68)
-angle: 0-180
+angle_deg = degrees (-22 to 45, 0 = level)
+speed_dps = optional, degrees per second
+```
+Use this for "look up" (positive angle) and "look down" (negative angle).
+
+### Lift Control
+```
+POST /lift
+Content-Type: application/json
+
+By height (0.0 to 1.0):
+{"height": 0.5}
+
+By preset:
+{"preset": "carry"}
 ```
 
-### Set LED Color
+### Set LED (Eye Color)
 ```
 POST /led
 Content-Type: application/json
-{"r": 255, "g": 0, "b": 0}
 
-Sets all LED strips to the given color (0-255 each).
-Named colors: red, green, blue, yellow, orange, purple, white, cyan, pink, off
-```
+By named state:
+{"state": "person_detected"}
 
-### Set LED Effect
+By hue/saturation (manual override):
+{"hue": 0.0, "saturation": 1.0, "duration_s": 5.0}
+  hue = 0.0-1.0 (0.0=red, 0.33=green, 0.67=blue)
+  saturation = 0.0-1.0 (default 1.0)
+  duration_s = optional override duration in seconds
 ```
-POST /led/effect
-Content-Type: application/json
-{"effect": 0, "speed": 50, "parm": 0}
-
-Effects: 0=blink, 1=fade/breathe, 2=running/chase, 3=steady
-Speed: 0-100
-```
-
-### Beep
-```
-POST /beep
-Content-Type: application/json
-{"duration": 200}
-
-Duration in milliseconds (max 2000).
-```
+Vector uses eye color LEDs (hue-based), not RGB LED strips.
 
 ### Capture Camera Frame
 ```
 GET /capture
 → JPEG image (Content-Type: image/jpeg)
-Returns 503 if detector is not running.
+
+GET /capture?format=base64
+→ {"status": "ok", "image": "<base64>", "content_type": "image/jpeg", "size_bytes": 12345}
+
+Returns 503 if Vector is offline.
+```
+
+### Set Face Expression
+```
+POST /display
+Content-Type: application/json
+{"expression": "happy"}
 ```
 
 ### Speak Text (TTS)
 ```
-POST /say
+POST /audio/play
 Content-Type: application/json
 {"text": "hello there"}
 
-Speaks the given text aloud through the robot's speakers via say_text() (Vector's built-in TTS).
-Text is capped at 400 characters.
+Speaks the given text aloud through the robot's speaker via say_text() (Vector's built-in TTS).
 ```
 
-### Set Individual Motors
+### Person Following (not yet implemented — returns 501)
 ```
-POST /motor
-Content-Type: application/json
-{"speeds": [50, 50, 50, 50]}
-
-Individual motor speeds (-50 to 50). Use /move instead for coordinated motion.
+POST /follow/start → 501 (stub — follow planner not yet wired to bridge)
+POST /follow/stop  → 501 (stub)
 ```
 
-### Person Following
+### Video/Audio Call (not yet implemented — returns 501)
 ```
-POST /follow/start
-→ Start following the closest person
-
-POST /follow/start
-Content-Type: application/json
-{"target": "Ophir"}
-→ Follow a specific named person (requires face enrollment first)
-
-POST /follow/stop
-→ Stop following
-
-GET /follow/status
-→ Current follow state
+POST /call/start → 501 (stub — LiveKit call not yet implemented)
+POST /call/stop  → 501 (stub)
 ```
 
 ### Scene Description (port 8091)
@@ -170,7 +176,7 @@ Content-Type: application/json
 → Save the robot's current location as a named waypoint
 
 GET http://192.168.1.71:8092/status
-→ SLAM state, nav2 status, saved maps, waypoints
+→ SLAM state, saved maps, waypoints
 ```
 
 ### Waypoint Navigation (port 8093)
@@ -179,39 +185,10 @@ POST http://192.168.1.71:8093/navigate
 Content-Type: application/json
 {"waypoint": "kitchen"}
 
-Navigates to a named waypoint using nav2 + SLAM map.
+Navigates to a named waypoint using SLAM map.
 
 POST http://192.168.1.71:8093/cancel
 → Cancel current navigation
-```
-
-### Patrol
-```
-POST /patrol/start   → Start autonomous patrol loop
-POST /patrol/stop    → Stop patrol
-POST /patrol/pause   → Pause patrol (can resume)
-POST /patrol/resume  → Resume paused patrol
-GET  /patrol/status  → Current patrol state, waypoint, loop count, detections
-```
-
-### Video/Audio Call
-```
-POST /call/start → Start a LiveKit video/audio call (returns join URL)
-POST /call/stop  → End the call
-```
-
-### Camera Feed
-```
-GET /camera → Returns LiveKit camera feed URL for live viewing
-```
-
-### Manual Mode
-```
-POST /manual/on  Content-Type: application/json {"duration": 60}
-→ Pauses autonomous planner + servo tracking for N seconds
-
-POST /manual/off
-→ Restores autonomous mode
 ```
 
 ## Trigger Word: "robot"
@@ -219,43 +196,48 @@ POST /manual/off
 When the user's message starts with or contains the word **"robot"**, activate this skill and execute the command via curl. Examples:
 
 ### Movement
-- "robot go forward" → POST /move {"vx": 0.3, "duration": 1.5}
-- "robot go back" → POST /move {"vx": -0.3, "duration": 1.5}
-- "robot slide left" → POST /move {"vy": 0.3, "duration": 1.5}
-- "robot turn right" → POST /move {"vz": -0.3, "duration": 1.5}
+- "robot go forward" → POST /move {"type": "straight", "distance_mm": 300, "speed_mmps": 100}
+- "robot go back" → POST /move {"type": "straight", "distance_mm": -300, "speed_mmps": 100}
+- "robot turn right" → POST /move {"type": "turn", "angle_deg": -90, "speed_dps": 100}
+- "robot turn left" → POST /move {"type": "turn", "angle_deg": 90, "speed_dps": 100}
 - "robot stop" → POST /stop
-- "robot spin" or "robot dance" → POST /move {"vz": 0.4, "duration": 2.0}
+- "robot spin" or "robot dance" → POST /move {"type": "turn", "angle_deg": 360, "speed_dps": 200}
 
-### Camera
-- "robot look left" → POST /servo {"channel": 3, "angle": 140}
-- "robot look right" → POST /servo {"channel": 3, "angle": 50}
-- "robot look up" → POST /servo {"channel": 4, "angle": 50}
-- "robot look down" → POST /servo {"channel": 4, "angle": 110}
-- "robot center camera" → POST /servo {"channel": 3, "angle": 102} then {"channel": 4, "angle": 68}
+### Head
+- "robot look up" → POST /head {"angle_deg": 30}
+- "robot look down" → POST /head {"angle_deg": -15}
+- "robot look straight" → POST /head {"angle_deg": 0}
+
+### Lift
+- "robot lift up" → POST /lift {"height": 1.0}
+- "robot lift down" → POST /lift {"height": 0.0}
+- "robot carry" → POST /lift {"preset": "carry"}
 
 ### Photos & Vision
-- "robot take a photo" → POST /intercom/photo {"caption": "Photo from robot"} → sends photo to Ophir's Signal DM
+- "robot take a photo" → GET /capture → send JPEG
 - "robot what do you see" → GET http://192.168.1.71:8091/scene → return description
 - "robot describe the room" → GET http://192.168.1.71:8091/scene
 
-### LEDs
-- "robot led red" → POST /led {"r": 255, "g": 0, "b": 0}
-- "robot led off" → POST /led {"r": 0, "g": 0, "b": 0}
-- "robot led blink" → POST /led/effect {"effect": 0, "speed": 50, "parm": 0}
-- "robot led fade" → POST /led/effect {"effect": 1, "speed": 50, "parm": 0}
-- "robot led running" → POST /led/effect {"effect": 2, "speed": 50, "parm": 0}
-- "robot led charging" → POST /led green + POST /led/effect running
+### LEDs (Eye Color)
+- "robot led red" → POST /led {"hue": 0.0, "saturation": 1.0}
+- "robot led green" → POST /led {"hue": 0.33, "saturation": 1.0}
+- "robot led blue" → POST /led {"hue": 0.67, "saturation": 1.0}
+- "robot led yellow" → POST /led {"hue": 0.17, "saturation": 1.0}
+- "robot led purple" → POST /led {"hue": 0.83, "saturation": 1.0}
+- "robot led off" → POST /led {"hue": 0.0, "saturation": 0.0}
+- "robot led teal" → POST /led {"hue": 0.5, "saturation": 1.0}
 
-### Speech (Intercom)
-- "robot say hello" → POST /say {"text": "hello"}
-- "robot say good morning Ophir" → POST /say {"text": "good morning Ophir"}
-- "robot tell ophir hello" → POST /intercom/send {"text": "hello"} → sends text to Ophir's Signal DM
-- "robot tell ophir I'm at the door" → POST /intercom/send {"text": "I'm at the door"}
+### Face Display
+- "robot smile" → POST /display {"expression": "happy"}
+- "robot look sad" → POST /display {"expression": "sad"}
+
+### Speech
+- "robot say hello" → POST /audio/play {"text": "hello"}
+- "robot say good morning Ophir" → POST /audio/play {"text": "good morning Ophir"}
 
 ### Person Following
-- "robot follow me" → POST /follow/start
-- "robot follow Ophir" → POST /follow/start {"target": "Ophir"}
-- "robot stop following" → POST /follow/stop
+- "robot follow me" → POST /follow/start (currently returns 501 — not yet wired)
+- "robot stop following" → POST /follow/stop (currently returns 501)
 
 ### Face Enrollment
 - "robot remember this face as Ophir" → POST http://192.168.1.71:8085/enroll {"name": "Ophir"}
@@ -271,26 +253,11 @@ When the user's message starts with or contains the word **"robot"**, activate t
 - "robot navigate to bedroom" → POST http://192.168.1.71:8093/navigate {"waypoint": "bedroom"}
 - "robot cancel navigation" → POST http://192.168.1.71:8093/cancel
 
-### Patrol
-- "robot patrol" → POST /patrol/start
-- "robot stop patrol" → POST /patrol/stop
-- "robot pause patrol" → POST /patrol/pause
-- "robot resume patrol" → POST /patrol/resume
-- "robot patrol status" → GET /patrol/status
-
-### Video Call
-- "robot call me" → POST /call/start → returns join URL, send to user
-- "robot hang up" → POST /call/stop
-- "robot camera" → GET /camera → returns live feed URL
-
 ### Status & Diagnostics
-- "robot battery" → GET /health → report voltage and percentage
+- "robot battery" → GET /health → report voltage and level
 - "robot status" or "robot how are you" → GET /status → full dashboard
 - "robot health" → GET /health
-- "robot sensors" → GET /sensors
-
-### Sound
-- "robot beep" → POST /beep {"duration": 200}
+- "robot sensors" → GET /status → report accel, gyro, touch, head angle, lift height
 
 Without the "robot" trigger word, do NOT execute robot commands — just chat normally.
 
@@ -298,17 +265,37 @@ Without the "robot" trigger word, do NOT execute robot commands — just chat no
 
 When you see "robot <command>", run the curl command immediately using bash. Example for "robot led blue":
 ```bash
-curl -sf -X POST http://192.168.1.71:8081/led -H 'Content-Type: application/json' -d '{"r":0,"g":0,"b":255}'
+curl -sf -X POST http://192.168.1.71:8080/led -H 'Content-Type: application/json' -d '{"hue":0.67,"saturation":1.0}'
 ```
 
 Example for "robot say hello there":
 ```bash
-curl -sf -X POST http://192.168.1.71:8081/say -H 'Content-Type: application/json' -d '{"text":"hello there"}'
+curl -sf -X POST http://192.168.1.71:8080/audio/play -H 'Content-Type: application/json' -d '{"text":"hello there"}'
+```
+
+Example for "robot go forward":
+```bash
+curl -sf -X POST http://192.168.1.71:8080/move -H 'Content-Type: application/json' -d '{"type":"straight","distance_mm":300,"speed_mmps":100}'
+```
+
+Example for "robot look up":
+```bash
+curl -sf -X POST http://192.168.1.71:8080/head -H 'Content-Type: application/json' -d '{"angle_deg":30}'
+```
+
+Example for "robot lift up":
+```bash
+curl -sf -X POST http://192.168.1.71:8080/lift -H 'Content-Type: application/json' -d '{"height":1.0}'
+```
+
+Example for "robot smile":
+```bash
+curl -sf -X POST http://192.168.1.71:8080/display -H 'Content-Type: application/json' -d '{"expression":"happy"}'
 ```
 
 Example for "robot follow me":
 ```bash
-curl -sf -X POST http://192.168.1.71:8081/follow/start
+curl -sf -X POST http://192.168.1.71:8080/follow/start
 ```
 
 Example for "robot what do you see":
@@ -338,30 +325,26 @@ curl -sf -X POST http://192.168.1.71:8093/navigate -H 'Content-Type: application
 
 Do NOT ask the user what they mean. Do NOT explain the API. Just run curl and tell them the result.
 
-Movement commands automatically pause the autonomous planner for 10 seconds. No extra steps needed.
-
-**SECURITY: You do NOT have SSH access to the Jetson. All robot interaction is via HTTP bridge only. Never attempt to SSH, SCP, rsync, or run scripts on the Jetson.**
+**SECURITY: You do NOT have SSH access to the Vector robot. All robot interaction is via HTTP bridge only. Never attempt to SSH, SCP, rsync, or run scripts on the Vector robot.**
 
 ## Command Reference
-- Movement: "go forward/back", "turn left/right", "slide left/right", "spin", "dance"
-- Camera: "look up/down/left/right", "center camera", "take a photo", "snapshot", "what do you see", "describe the room", "camera"
-- LEDs: "led red/green/blue/off", "led blink/fade/running/charging", "led rgb 255 0 0"
+- Movement: "go forward/back", "turn left/right", "spin", "dance"
+- Head: "look up/down/straight"
+- Lift: "lift up/down", "carry"
+- LEDs: "led red/green/blue/yellow/purple/teal/off"
+- Face: "smile", "look sad"
 - Speech: "say hello", "say good morning"
-- Sound: "beep", "honk"
 - Status: "battery", "health", "sensors", "status", "how are you", "diagnostics"
-- Control: "stop", "freeze", "follow me", "follow Ophir", "stop following"
-- Vision: "what do you see", "describe the scene", "what's around"
+- Control: "stop", "freeze", "follow me", "stop following"
+- Vision: "what do you see", "describe the scene", "take a photo"
 - Face: "remember this face as Ophir", "enroll face as John"
 - Mapping: "map the room", "stop mapping", "save map", "save map as house", "remember this spot as kitchen"
 - Navigation: "go to the kitchen", "navigate to bedroom", "cancel navigation"
-- Patrol: "patrol", "stop patrol", "pause patrol", "resume patrol", "patrol status"
-- Calls: "call me", "hang up", "end call"
 
 ## Safety Rules
 - ALWAYS check /health first if you haven't recently
-- If battery < 10V, refuse motor commands and warn user
-- Keep speeds conservative (0.3 m/s) unless user explicitly asks for faster
-- Duration max 2 seconds unless user specifies longer
+- If battery level is 0 (empty), refuse motor commands and warn user
+- Keep distances conservative (300mm) unless user explicitly asks for more
 - After any movement, report what happened
 - If any command fails, stop immediately with /stop
 
@@ -372,14 +355,15 @@ When executing robot commands:
 3. Report the result
 4. If it involved movement, describe what happened physically
 
-Example: "Moving forward 0.3 m/s for 1.5 seconds... done! The robot scooted forward about 45cm. Battery at 11.8V."
+Example: "Moving forward 300mm... done! The robot scooted forward about 30cm. Battery level 2, voltage 3.95V."
 
 ## Important Notes
-- Robot must have battery connected for motors/sensors to work
-- If battery reads 0V, the robot is not powered — tell the user
+- Robot must have battery for motors/sensors to work
+- If battery voltage reads 0V, the robot is not powered — tell the user
 - Camera frame via GET /capture — returns JPEG snapshot from robot's current view
+- GET /capture?format=base64 — returns base64-encoded JPEG in JSON
 - Scene description on port 8091 — uses YOLO + face recognition for detailed descriptions
-- Following service on bridge (port 8081) — supports generic and named person following
+- Following is not yet wired to the bridge (returns 501) — planner exists separately
 - Navigation on port 8093 — requires SLAM map, named waypoints
-- LiDAR data isn't exposed via the bridge API — collision guard works internally
-- Charging mode locks out movement — bridge returns 409 if robot is charging
+- Vector has cliff sensors for edge safety but no LiDAR obstacle avoidance
+- All inference runs on NUC — Vector is a thin gRPC client
