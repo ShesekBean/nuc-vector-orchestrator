@@ -299,7 +299,6 @@ class TestVoiceBridgeInit:
         assert bridge._max_listen_sec == 5.0
         assert bridge._silence_threshold == 500
         assert bridge._silence_duration_sec == 2.0
-        assert bridge._max_response_chars == 200
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from apps.vector.src.events.event_types import TTS_PLAYING, TtsPlayingEvent
 from apps.vector.src.events.nuc_event_bus import NucEventBus

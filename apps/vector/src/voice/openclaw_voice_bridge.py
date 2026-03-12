@@ -236,7 +236,6 @@ class OpenClawVoiceBridge:
         self._max_listen_sec = max_listen_sec
         self._silence_threshold = silence_threshold
         self._silence_duration_sec = silence_duration_sec
-        self._max_response_chars = max_response_chars
 
         # Speech output (delegates say_text + chunking + events)
         self._speech = SpeechOutput(
