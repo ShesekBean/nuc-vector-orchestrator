@@ -1,0 +1,26 @@
+[Unit]
+Description=Vector Process Supervisor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=%i
+WorkingDirectory=%h/Documents/claude/nuc-vector-orchestrator
+ExecStart=/usr/bin/python3 -m apps.vector.supervisor
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONPATH=%h/Documents/claude/nuc-vector-orchestrator
+Environment=VECTOR_SERIAL=0dd1cdcf
+
+# Systemd watchdog (sd_notify READY=1)
+NotifyAccess=main
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=%h/Documents/claude/nuc-vector-orchestrator
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
