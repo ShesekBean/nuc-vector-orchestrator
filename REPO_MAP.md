@@ -67,8 +67,9 @@ nuc-vector-orchestrator/
 │       │   │   ├── __init__.py    ← PD follow controller (proportional-derivative tracking)
 │       │   │   └── visual_slam.py ← monocular ORB-SLAM for camera-only navigation
 │       │   ├── livekit_bridge.py   ← LiveKit WebRTC bridge (camera + mic → LiveKit Cloud, remote audio → speaker)
-│       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
+│       │   ├── voice/             ← dual-path voice routing (wire-pod intents → bridge, custom → OpenClaw)
 │       │   │   ├── audio_client.py ← Vector mic gRPC consumer (resamples 15625→16000 Hz, ring buffer)
+│       │   │   ├── voice_command_router.py ← wire-pod intent → HTTP bridge router (forward, turn, stop, volume, greeting)
 │       │   ├── camera/            ← gRPC camera feed consumer
 │       │   ├── display_controller.py ← OLED display image/text rendering
 │       │   ├── head_controller.py  ← head servo angle control with safety clamping
@@ -136,7 +137,9 @@ nuc-vector-orchestrator/
 │   │   ├── test_phase8_agentloop.py ← agent loop health checks
 │   │   └── test_phase9_eventbus.py  ← event bus integration
 │   └── vector/                    ← Vector-specific tests
-│       └── test_intercom.py       ← intercom module tests (photo + text messaging)
+│       ├── test_intercom.py       ← intercom module tests (photo + text messaging)
+│       ├── test_voice_command_router.py ← voice command router unit tests (intent mapping, volume, bridge HTTP)
+│       └── test_voice_integration.py   ← dual-path voice integration tests (wire-pod + OpenClaw pipelines)
 ├── .claude/                       ← Claude Code configuration
 │   ├── CLAUDE.md                  ← project config
 │   └── agents/                    ← agent role definitions
