@@ -29,11 +29,9 @@ from urllib.request import Request, urlopen
 from apps.vector.src.events.event_types import (
     COMMAND_RECEIVED,
     STT_RESULT,
-    TTS_PLAYING,
     WAKE_WORD_DETECTED,
     CommandReceivedEvent,
     SttResultEvent,
-    TtsPlayingEvent,
 )
 from apps.vector.src.voice.speech_output import SpeechOutput
 
