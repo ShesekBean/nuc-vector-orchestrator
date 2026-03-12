@@ -34,6 +34,7 @@ from apps.vector.src.events.event_types import (
     MotorCommandEvent,
     TrackedPersonEvent,
 )
+from apps.vector.src.planner.head_tracker import HeadTracker, HeadTrackerConfig
 
 if TYPE_CHECKING:
     from apps.vector.src.events.nuc_event_bus import NucEventBus
@@ -219,6 +220,12 @@ class FollowPlanner:
         self._pd = PDController(self._cfg)
         self._obstacle = obstacle_detector
 
+        # Head tracker — delegates vertical pitch control
+        head_cfg = HeadTrackerConfig(
+            kp=self._cfg.kp_head,
+        )
+        self._head_tracker = HeadTracker(head_controller, nuc_bus, head_cfg)
+
         # State
         self._state = State.IDLE
         self._state_lock = threading.Lock()
@@ -247,6 +254,11 @@ class FollowPlanner:
     @property
     def config(self) -> FollowConfig:
         return self._cfg
+
+    @property
+    def head_tracker(self) -> HeadTracker:
+        """Access the underlying head tracker for direct configuration."""
+        return self._head_tracker
 
     # -- Lifecycle -----------------------------------------------------------
 
@@ -454,21 +466,12 @@ class FollowPlanner:
         self._apply_motor_commands(track)
 
     def _apply_head_tracking(self, track: TrackedPersonEvent) -> None:
-        """Adjust head pitch to keep person vertically centered."""
-        # Error: positive = person is below center → look down
-        error_y = track.cy - (FRAME_H / 2)
-        # Negative kp because: person below center → need to decrease angle
-        angle_adjust = -self._cfg.kp_head * error_y
+        """Adjust head pitch to keep person vertically centered.
 
-        current_angle = self._head.last_angle
-        if current_angle is None:
-            current_angle = 10.0  # neutral
-
-        new_angle = current_angle + angle_adjust
-        try:
-            self._head.set_angle(new_angle)
-        except Exception:
-            logger.exception("Head tracking failed")
+        Delegates to the HeadTracker module for P-controller logic,
+        slew-rate limiting, and neutral return.
+        """
+        self._head_tracker.update(track)
 
     def _apply_motor_commands(self, track: TrackedPersonEvent) -> None:
         """Compute and send motor commands for following."""

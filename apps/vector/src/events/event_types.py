@@ -33,6 +33,7 @@ INTERCOM_TEXT_SENT = "intercom_text_sent"
 INTERCOM_PHOTO_SENT = "intercom_photo_sent"
 USER_INTENT = "user_intent"
 OBSTACLE_DETECTED = "obstacle_detected"
+HEAD_ANGLE_COMMAND = "head_angle_command"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -248,3 +249,11 @@ class ObstacleDetectedEvent:
     label: str = ""  # COCO class label if available
     frame_width: int = 640
     frame_height: int = 360
+
+
+@dataclass(frozen=True)
+class HeadAngleCommandEvent:
+    """Emitted by HeadTracker when a head angle command is issued."""
+
+    angle_deg: float
+    source: str = "head_tracker"  # "head_tracker", "search", "manual"
