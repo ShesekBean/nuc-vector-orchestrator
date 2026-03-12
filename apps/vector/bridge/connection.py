@@ -137,7 +137,10 @@ class ConnectionManager:
         self._camera_client = CameraClient(self._robot)
         self._camera_client.start()
         self._audio_client = AudioClient(self._robot)
-        self._audio_client.start()
+        # NOTE: AudioFeed NOT started — SDK only provides signal_power
+        # (980Hz calibration tone), not real mic PCM.  The stall-reconnect
+        # loop starves the camera feed of SDK event-loop time.
+        # self._audio_client.start()
         self._livekit_bridge = LiveKitBridge(
             camera_client=self._camera_client,
             audio_client=self._audio_client,

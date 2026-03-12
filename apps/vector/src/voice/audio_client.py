@@ -100,6 +100,8 @@ class AudioClient:
         self._should_reconnect = False
         self._max_reconnect_delay = 30.0
         self._connection_lost_callback: Callable[[], None] | None = None
+        self._consecutive_stalls = 0
+        self._max_consecutive_stalls = 3  # give up after 3 stalls with ≤2 responses
 
         # Stream control
         self._stream_task: asyncio.Task | None = None
@@ -341,8 +343,22 @@ class AudioClient:
 
                 self._process_response(resp)
 
-            # Stream ended or stalled — schedule reconnect
+            # Stream ended or stalled — decide whether to reconnect
             self._streaming = False
+            if resp_count <= 5:
+                self._consecutive_stalls += 1
+                if self._consecutive_stalls >= self._max_consecutive_stalls:
+                    logger.warning(
+                        "AudioFeed stalled %d times consecutively (firmware bug) — "
+                        "giving up reconnection to avoid starving camera. "
+                        "Reboot Vector to fix.",
+                        self._consecutive_stalls,
+                    )
+                    self._should_reconnect = False
+                    return
+            else:
+                self._consecutive_stalls = 0  # reset on successful stream
+
             if self._should_reconnect:
                 self._schedule_reconnect()
 

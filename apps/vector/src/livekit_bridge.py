@@ -163,7 +163,8 @@ class LiveKitBridge:
             api_key=self._api_key,
             api_secret=self._api_secret,
         )
-        token.with_identity("vector-robot")
+        import time as _time
+        token.with_identity(f"vector-robot-{int(_time.time())}")
         token.with_grants(
             lk_api.VideoGrants(
                 room_join=True,
@@ -343,12 +344,19 @@ class LiveKitBridge:
     async def _remote_audio_loop(
         self, track: rtc.RemoteTrack, participant_id: str
     ) -> None:
-        """Receive remote audio frames and play on Vector speaker."""
+        """Receive remote audio frames and play on Vector speaker.
+
+        Skips silent chunks to avoid blocking the SDK event loop (which
+        starves the camera feed of behavior-control time).
+        """
         logger.info("Remote audio loop started for %s", participant_id)
         audio_stream = rtc.AudioStream(track)
         pcm_buffer = bytearray()
         remote_sample_rate = 0
         frame_count = 0
+
+        # Silence detection threshold — ignore chunks below this amplitude
+        SILENCE_THRESHOLD = 10  # only skip true digital silence (all zeros)
 
         try:
             async for event in audio_stream:
@@ -368,15 +376,24 @@ class LiveKitBridge:
                     remote_sample_rate = frame.sample_rate
                 pcm_buffer.extend(bytes(frame.data))
 
-                # Accumulate ~1 second of audio before playing
-                flush_bytes = remote_sample_rate * 2  # 1 sec of 16-bit mono
+                # Accumulate ~2 seconds of audio before playing
+                flush_bytes = remote_sample_rate * 2 * 2  # 2 sec of 16-bit mono
                 if len(pcm_buffer) >= flush_bytes:
-                    await self._play_pcm_on_vector(bytes(pcm_buffer), sample_rate=remote_sample_rate)
+                    # Check if buffer contains actual audio (not silence)
+                    if self._pcm_has_signal(pcm_buffer, SILENCE_THRESHOLD):
+                        # Fire-and-forget: don't await so we don't block
+                        # the audio receive loop. Playback runs in background.
+                        asyncio.ensure_future(
+                            self._play_pcm_on_vector(bytes(pcm_buffer), sample_rate=remote_sample_rate)
+                        )
                     pcm_buffer.clear()
 
             # Flush remaining audio
             if pcm_buffer and remote_sample_rate:
-                await self._play_pcm_on_vector(bytes(pcm_buffer), sample_rate=remote_sample_rate)
+                if self._pcm_has_signal(pcm_buffer, SILENCE_THRESHOLD):
+                    asyncio.ensure_future(
+                        self._play_pcm_on_vector(bytes(pcm_buffer), sample_rate=remote_sample_rate)
+                    )
         except asyncio.CancelledError:
             logger.debug("Remote audio loop cancelled")
         except Exception:
@@ -501,18 +518,20 @@ class LiveKitBridge:
             return None
 
     @staticmethod
-    def _pcm_to_audio_frame(pcm_bytes: bytes) -> rtc.AudioFrame | None:
-        """Wrap raw 16-bit mono PCM bytes into a LiveKit ``AudioFrame``."""
-        if not pcm_bytes or len(pcm_bytes) < 2:
-            return None
+    def _pcm_has_signal(pcm_data: bytes | bytearray, threshold: int = 200) -> bool:
+        """Return True if PCM buffer contains audio above *threshold*."""
+        import struct as _struct
 
-        n_samples = len(pcm_bytes) // 2
-        return rtc.AudioFrame(
-            data=pcm_bytes,
-            sample_rate=AUDIO_SAMPLE_RATE,
-            num_channels=AUDIO_CHANNELS,
-            samples_per_channel=n_samples,
-        )
+        n = len(pcm_data) // 2
+        if n == 0:
+            return False
+        # Sample every 50th sample for speed
+        step = max(1, n // 200)
+        for i in range(0, n, step):
+            sample = _struct.unpack_from("<h", pcm_data, i * 2)[0]
+            if abs(sample) > threshold:
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # Event bus
