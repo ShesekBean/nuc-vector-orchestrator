@@ -31,6 +31,7 @@ SLAM_POSE_UPDATED = "slam_pose_updated"
 EXPRESSION_CHANGED = "expression_changed"
 INTERCOM_TEXT_SENT = "intercom_text_sent"
 INTERCOM_PHOTO_SENT = "intercom_photo_sent"
+USER_INTENT = "user_intent"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -225,3 +226,11 @@ class IntercomPhotoSentEvent:
 
     caption: str
     success: bool
+
+
+@dataclass(frozen=True)
+class UserIntentEvent:
+    """Emitted when wire-pod processes a voice command into a structured intent."""
+
+    intent: str  # e.g. "intent_imperative_forward", "intent_greeting_hello"
+    params: dict = field(default_factory=dict)  # intent-specific parameters
