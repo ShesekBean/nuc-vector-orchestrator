@@ -150,7 +150,14 @@ def pytest_configure(config):
             pass
 
     # --- Stub anki_vector if not installed (CI environment) ---
-    if "anki_vector" not in sys.modules:
+    # Only stub if the real SDK can't be imported — on the NUC, use the real SDK
+    _real_sdk = False
+    try:
+        importlib.import_module("anki_vector")
+        _real_sdk = True
+    except ImportError:
+        pass
+    if not _real_sdk and "anki_vector" not in sys.modules:
         anki_vector_mod = types.ModuleType("anki_vector")
         events_mod = types.ModuleType("anki_vector.events")
         events_mod.Events = MagicMock()

@@ -137,9 +137,11 @@ class TestFaceRecognitionSamePerson:
 
         recognizer = FaceRecognizer()
         try:
-            recognizer.load_model()
+            recognizer._load_model()
         except (FileNotFoundError, Exception):
             pytest.skip("SFace model not available")
+        if not recognizer.is_loaded:
+            pytest.skip("SFace model not loaded")
 
         # Use synthetic embeddings to test similarity logic
         emb_a = np.random.randn(128).astype(np.float32)

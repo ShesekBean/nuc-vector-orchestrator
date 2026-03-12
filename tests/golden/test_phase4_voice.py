@@ -19,10 +19,8 @@ class TestAudioStreamConnects:
     def test_audio_feed(self, robot_connected):
         """4.1 — AudioFeed gRPC from Vector → raw audio bytes received."""
         from apps.vector.src.voice.audio_client import AudioClient
-        from apps.vector.src.events.nuc_event_bus import NucEventBus
 
-        bus = NucEventBus()
-        client = AudioClient(robot_connected, bus)
+        client = AudioClient(robot_connected)
         client.start()
         import time
         time.sleep(1)

@@ -4,6 +4,8 @@ Comprehensive end-to-end test covering all project subsystems in ~3.5 minutes.
 
 **Goal:** Maximum coverage in minimum time. Tests are ordered so that failures in early phases abort before wasting time on dependent phases.
 
+**Visual verification:** Every test involving camera, LEDs, display, or movement MUST capture a camera frame, brighten it (2x), and send to the Signal group for Ophir to verify. This is the only way to confirm hardware actions actually happened.
+
 ---
 
 ## Phase 0 — NUC Unit Tests (~20s)
@@ -47,7 +49,7 @@ Robot stays still. Tests all non-movement hardware via gRPC.
 
 | # | Test | Command | Assert |
 |---|------|---------|--------|
-| 2.1 | Camera single frame | `robot.camera.capture_single_image()` | Returns image, shape = (360, 640) or similar |
+| 2.1 | Camera single frame | `robot.camera.capture_single_image()` | Returns image, 800x600 RGB + send to Signal |
 | 2.2 | Camera feed stream | `CameraFeed` gRPC, capture 5 frames | 5 frames received, no duplicates (timestamp check) |
 | 2.3 | Head angle min | `robot.behavior.set_head_angle(degrees(-22))` | Head moves to min position |
 | 2.4 | Head angle max | `robot.behavior.set_head_angle(degrees(45))` | Head moves to max position |

@@ -99,7 +99,12 @@ def pytest_configure(config: pytest.Config) -> None:
         except ImportError:
             pass
 
-    _stub_anki_vector()
+    # Only stub anki_vector if the real SDK is not installed.
+    # On the NUC, the real SDK is available and we want real robot tests.
+    try:
+        importlib.import_module("anki_vector")
+    except ImportError:
+        _stub_anki_vector()
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +116,7 @@ def robot_available() -> bool:
     """Attempt to connect to Vector; return True if reachable."""
     try:
         import anki_vector
-        robot = anki_vector.Robot()
+        robot = anki_vector.Robot(serial="0dd1cdcf", default_logging=False)
         robot.connect()
         robot.get_battery_state()
         robot.disconnect()
@@ -120,20 +125,34 @@ def robot_available() -> bool:
         return False
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def robot_connected(robot_available: bool):
-    """Provide a connected robot for the session, or skip."""
+    """Provide a fresh connected robot for each test.
+
+    Per-test connections prevent gRPC socket drops from cascading
+    across tests and causing Vector error 915 (cloud disconnect).
+    """
+    import time
+
     if not robot_available:
         pytest.skip("Robot not available — skipping robot-dependent test")
 
     import anki_vector
-    robot = anki_vector.Robot()
+    # OVERRIDE_BEHAVIORS_PRIORITY suppresses Vector's autonomous movement
+    # so he stays still between test commands
+    robot = anki_vector.Robot(
+        serial="0dd1cdcf",
+        default_logging=False,
+        behavior_control_level=anki_vector.connection.ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+    )
     robot.connect()
     yield robot
     try:
         robot.disconnect()
     except Exception:
         pass
+    # Small delay between tests to let Vector's gRPC server stabilize
+    time.sleep(0.5)
 
 
 @pytest.fixture(scope="session")
