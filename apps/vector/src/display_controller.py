@@ -101,6 +101,26 @@ EXPRESSIONS: dict[str, FaceDef] = {
         right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 14, 16),
         mouth=MouthShape(72, 66, 112, 86, 0, 180),  # open wide
     ),
+    "curious": FaceDef(
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY - 2, 14, 20),  # raised
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 2, 12, 14),  # normal
+        mouth=MouthShape(80, 74, 104, 82, 0, 180),  # small smile
+    ),
+    "excited": FaceDef(
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 18, 22),  # extra wide
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 18, 22),
+        mouth=MouthShape(58, 62, 126, 90, 0, 180),  # big open smile
+    ),
+    "sleepy": FaceDef(
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY + 4, 14, 6),  # half closed
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 4, 14, 6),
+        mouth=MouthShape(80, 76, 104, 82, 0, 0),  # flat line
+    ),
+    "startled": FaceDef(
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY - 4, 18, 24),  # very wide
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY - 4, 18, 24),
+        mouth=MouthShape(82, 70, 102, 84, 0, 180),  # small O
+    ),
 }
 
 
@@ -144,7 +164,7 @@ def render_face(expression: str, frame_num: int = 0) -> Any:
     left_eye = face.left_eye
     right_eye = face.right_eye
 
-    if blink and expression in ("idle", "happy", "listening"):
+    if blink and expression in ("idle", "happy", "listening", "curious", "excited"):
         left_eye = EyeShape(left_eye.cx, left_eye.cy, left_eye.rx, 3)
         right_eye = EyeShape(right_eye.cx, right_eye.cy, right_eye.rx, 3)
 
