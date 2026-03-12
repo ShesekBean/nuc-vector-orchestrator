@@ -44,7 +44,7 @@ def main():
 
     try:
         robot.connect()
-        print(f"Connected to {robot.name}\n")
+        print("Connected to Vector\n")
 
         # Sub-test 1: Move to neutral
         def test_neutral():

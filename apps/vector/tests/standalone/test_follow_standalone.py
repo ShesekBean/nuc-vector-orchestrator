@@ -171,7 +171,7 @@ def main():
 
     try:
         robot.connect()
-        print(f"\n  Connected to {robot.name}")
+        print("\n  Connected to Vector")
 
         # Set head to good detection angle
         robot.behavior.set_head_angle(degrees(0))

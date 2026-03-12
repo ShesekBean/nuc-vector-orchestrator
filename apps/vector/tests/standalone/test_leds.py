@@ -54,7 +54,7 @@ def main():
 
     try:
         robot.connect()
-        print(f"Connected to {robot.name}\n")
+        print("Connected to Vector\n")
 
         # Sub-test 1: Cycle through named colors
         for color_name, (hue, sat) in COLORS.items():
