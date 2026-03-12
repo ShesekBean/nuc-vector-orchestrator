@@ -40,6 +40,8 @@ class ConnectionManager:
         self._led_controller: Any | None = None
         self._display_controller: Any | None = None
         self._camera_client: Any | None = None
+        self._audio_client: Any | None = None
+        self._livekit_bridge: Any | None = None
         self._nuc_bus: Any | None = None
 
     @property
@@ -88,6 +90,17 @@ class ConnectionManager:
             raise ConnectionError("Not connected to Vector")
         return self._camera_client
 
+    @property
+    def audio_client(self) -> Any:
+        if self._audio_client is None:
+            raise ConnectionError("Not connected to Vector")
+        return self._audio_client
+
+    @property
+    def livekit_bridge(self) -> Any:
+        """LiveKitBridge instance, or None if not initialised."""
+        return self._livekit_bridge
+
     def connect(self) -> None:
         """Connect to Vector and initialise all controllers."""
         if self._connected:
@@ -101,8 +114,10 @@ class ConnectionManager:
         from apps.vector.src.events.nuc_event_bus import NucEventBus
         from apps.vector.src.head_controller import HeadController
         from apps.vector.src.led_controller import LedController
+        from apps.vector.src.livekit_bridge import LiveKitBridge
         from apps.vector.src.lift_controller import LiftController
         from apps.vector.src.motor_controller import MotorController
+        from apps.vector.src.voice.audio_client import AudioClient
 
         logger.info("Connecting to Vector (serial=%s)...", self._serial)
         self._robot = anki_vector.Robot(serial=self._serial, default_logging=False)
@@ -120,6 +135,14 @@ class ConnectionManager:
         self._display_controller.start()
         self._camera_client = CameraClient(self._robot)
         self._camera_client.start()
+        self._audio_client = AudioClient(self._robot)
+        self._audio_client.start()
+        self._livekit_bridge = LiveKitBridge(
+            camera_client=self._camera_client,
+            audio_client=self._audio_client,
+            robot=self._robot,
+            event_bus=self._nuc_bus,
+        )
 
         self._connected = True
         logger.info("Connected to Vector successfully")
@@ -141,6 +164,8 @@ class ConnectionManager:
                 self._display_controller.stop()
             if self._camera_client:
                 self._camera_client.stop()
+            if self._audio_client:
+                self._audio_client.stop()
         except Exception:
             logger.exception("Error stopping controllers")
 
@@ -158,6 +183,8 @@ class ConnectionManager:
         self._led_controller = None
         self._display_controller = None
         self._camera_client = None
+        self._audio_client = None
+        self._livekit_bridge = None
         self._nuc_bus = None
         logger.info("Disconnected from Vector")
 

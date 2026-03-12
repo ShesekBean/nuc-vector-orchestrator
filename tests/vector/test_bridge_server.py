@@ -395,20 +395,89 @@ async def test_follow_stop_stub(aiohttp_client):
     assert resp.status == 501
 
 
-async def test_call_start_stub(aiohttp_client):
+async def test_call_start_already_active(aiohttp_client):
     conn = _make_mock_conn()
+    # Mock the livekit_bridge as already active
+    mock_bridge = MagicMock()
+    mock_bridge.is_active = True
+    mock_bridge.room_name = "robot-cam"
+    conn.livekit_bridge = mock_bridge
     app = create_app(conn)
     client = await aiohttp_client(app)
     resp = await client.post("/call/start")
-    assert resp.status == 501
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["active"] is True
+    assert data["room"] == "robot-cam"
+    assert "already" in data.get("message", "").lower()
 
 
-async def test_call_stop_stub(aiohttp_client):
+async def test_call_start_success(aiohttp_client):
+    from unittest.mock import AsyncMock
+
     conn = _make_mock_conn()
+    mock_bridge = MagicMock()
+    mock_bridge.is_active = False
+    mock_bridge.start = AsyncMock()
+    conn.livekit_bridge = mock_bridge
+    app = create_app(conn)
+    client = await aiohttp_client(app)
+    resp = await client.post("/call/start", json={"room": "test-room"})
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["active"] is True
+    assert data["room"] == "test-room"
+    mock_bridge.start.assert_called_once_with(room="test-room")
+
+
+async def test_call_start_no_bridge(aiohttp_client):
+    conn = _make_mock_conn()
+    conn.livekit_bridge = None
+    app = create_app(conn)
+    client = await aiohttp_client(app)
+    resp = await client.post("/call/start")
+    assert resp.status == 503
+    data = await resp.json()
+    assert data["code"] == "BRIDGE_UNAVAILABLE"
+
+
+async def test_call_stop_not_active(aiohttp_client):
+    conn = _make_mock_conn()
+    mock_bridge = MagicMock()
+    mock_bridge.is_active = False
+    conn.livekit_bridge = mock_bridge
     app = create_app(conn)
     client = await aiohttp_client(app)
     resp = await client.post("/call/stop")
-    assert resp.status == 501
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["active"] is False
+
+
+async def test_call_stop_success(aiohttp_client):
+    from unittest.mock import AsyncMock
+
+    conn = _make_mock_conn()
+    mock_bridge = MagicMock()
+    mock_bridge.is_active = True
+    mock_bridge.stop = AsyncMock()
+    conn.livekit_bridge = mock_bridge
+    app = create_app(conn)
+    client = await aiohttp_client(app)
+    resp = await client.post("/call/stop")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["active"] is False
+    mock_bridge.stop.assert_called_once()
+
+
+async def test_call_stop_no_bridge(aiohttp_client):
+    conn = _make_mock_conn()
+    conn.livekit_bridge = None
+    app = create_app(conn)
+    client = await aiohttp_client(app)
+    resp = await client.post("/call/stop")
+    assert resp.status == 503
 
 
 # ---------------------------------------------------------------------------

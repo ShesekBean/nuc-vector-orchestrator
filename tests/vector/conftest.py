@@ -36,6 +36,17 @@ def pytest_configure(config):
         except ImportError:
             pass
 
+    # --- Restore real livekit (undo test_evaluator mocking) ---
+    livekit_mocks = [k for k in sys.modules if k.startswith("livekit") and type(sys.modules[k]).__name__ == "MagicMock"]
+    for name in livekit_mocks:
+        del sys.modules[name]
+
+    for name in ("livekit", "livekit.api", "livekit.rtc"):
+        try:
+            importlib.import_module(name)
+        except ImportError:
+            pass
+
     # --- Stub anki_vector if not installed (CI environment) ---
     if "anki_vector" not in sys.modules:
         anki_vector_mod = types.ModuleType("anki_vector")

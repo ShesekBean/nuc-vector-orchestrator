@@ -356,13 +356,73 @@ async def audio_play(request: web.Request) -> web.Response:
 
 
 async def call_start(request: web.Request) -> web.Response:
-    """POST /call/start — start LiveKit video call (stub)."""
-    return _json_error(501, "LiveKit call not yet implemented", "NOT_IMPLEMENTED")
+    """POST /call/start — start LiveKit video call.
+
+    Body (optional): {"room": "robot-cam"}
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    bridge = conn.livekit_bridge
+    if bridge is None:
+        return _json_error(503, "LiveKit bridge not initialised", "BRIDGE_UNAVAILABLE")
+
+    if bridge.is_active:
+        return web.json_response({
+            "status": "ok",
+            "active": True,
+            "room": bridge.room_name,
+            "message": "Session already active",
+        })
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    room = body.get("room", "robot-cam")
+
+    try:
+        await bridge.start(room=room)
+        return web.json_response({
+            "status": "ok",
+            "active": True,
+            "room": room,
+        })
+    except Exception as exc:
+        logger.exception("Failed to start LiveKit call")
+        return _json_error(500, str(exc), "CALL_START_FAILED")
 
 
 async def call_stop(request: web.Request) -> web.Response:
-    """POST /call/stop — stop LiveKit video call (stub)."""
-    return _json_error(501, "LiveKit call not yet implemented", "NOT_IMPLEMENTED")
+    """POST /call/stop — stop LiveKit video call."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    bridge = conn.livekit_bridge
+    if bridge is None:
+        return _json_error(503, "LiveKit bridge not initialised", "BRIDGE_UNAVAILABLE")
+
+    if not bridge.is_active:
+        return web.json_response({
+            "status": "ok",
+            "active": False,
+            "message": "No active session",
+        })
+
+    try:
+        await bridge.stop()
+        return web.json_response({
+            "status": "ok",
+            "active": False,
+        })
+    except Exception as exc:
+        logger.exception("Failed to stop LiveKit call")
+        return _json_error(500, str(exc), "CALL_STOP_FAILED")
 
 
 def setup_routes(app: web.Application) -> None:
