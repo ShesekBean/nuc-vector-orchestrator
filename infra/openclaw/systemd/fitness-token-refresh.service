@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh Strava/Withings OAuth tokens for OpenClaw fitness skill
+After=openclaw-gateway.service
+
+[Service]
+Type=oneshot
+# sg docker is required because systemd user services do not inherit groups
+# added after the login session started. Without it, Docker socket access fails.
+ExecStart=/usr/bin/sg docker -c /home/ophirsw/Documents/claude/nuc-vector-orchestrator/scripts/refresh-fitness-tokens.sh
+TimeoutSec=60
