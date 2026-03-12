@@ -134,6 +134,7 @@ nuc-vector-orchestrator/
 │   │   ├── test_phase8_agentloop.py ← agent loop health checks
 │   │   └── test_phase9_eventbus.py  ← event bus integration
 │   └── vector/                    ← Vector-specific tests
+│       └── test_intercom.py       ← intercom module tests (photo + text messaging)
 ├── .claude/                       ← Claude Code configuration
 │   ├── CLAUDE.md                  ← project config
 │   └── agents/                    ← agent role definitions
