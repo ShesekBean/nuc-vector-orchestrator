@@ -38,6 +38,7 @@ from apps.vector.src.voice.speech_output import SpeechOutput
 if TYPE_CHECKING:
     from apps.vector.src.events.nuc_event_bus import NucEventBus
     from apps.vector.src.voice.audio_client import AudioClient
+    from apps.vector.src.voice.message_relay import MessageRelay
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +219,7 @@ class OpenClawVoiceBridge:
         silence_threshold: float = DEFAULT_SILENCE_THRESHOLD,
         silence_duration_sec: float = DEFAULT_SILENCE_DURATION_SEC,
         max_response_chars: int = DEFAULT_MAX_RESPONSE_CHARS,
+        message_relay: MessageRelay | None = None,
     ) -> None:
         self._bus = nuc_bus
         self._audio_client = audio_client
@@ -239,6 +241,9 @@ class OpenClawVoiceBridge:
         self._speech = SpeechOutput(
             nuc_bus, robot, max_chunk_chars=max_response_chars
         )
+
+        # Message relay for "tell Ophir" voice commands
+        self._message_relay = message_relay
 
         # State machine
         self._state = BridgeState.IDLE
@@ -348,7 +353,21 @@ class OpenClawVoiceBridge:
                 SttResultEvent(text=text, confidence=1.0, language="en"),
             )
 
-            # Step 3: Send to OpenClaw agent
+            # Step 3a: Check message relay ("tell Ophir ..." commands)
+            if self._message_relay is not None:
+                relay_result = self._message_relay.try_relay(text)
+                if relay_result is not None:
+                    # Relay handled — confirmation already spoken by relay
+                    elapsed_ms = (time.monotonic() - start_time) * 1000
+                    self._last_latency_ms = elapsed_ms
+                    logger.info(
+                        "Voice relay complete (%.0fms): '%s'",
+                        elapsed_ms,
+                        text[:50],
+                    )
+                    return
+
+            # Step 3b: Send to OpenClaw agent
             with self._state_lock:
                 self._state = BridgeState.PROCESSING
 
