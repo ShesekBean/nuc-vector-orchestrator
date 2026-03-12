@@ -31,7 +31,7 @@ nuc-vector-orchestrator/
 │   │       ├── signal_client.py   ← Signal message sending
 │   │       └── state.py           ← TSV state file management
 │   ├── test_harness/              ← vision oracle + automated testing
-│   │   ├── golden_test.py         ← comprehensive test
+│   │   ├── golden_test_r3_archived.py ← R3 golden test (archived, replaced by tests/golden/)
 │   │   └── voice_commands/        ← test WAV files
 │   ├── openclaw/                  ← OpenClaw config backup + extensions (additive)
 │   │   ├── docker/                ← Container run scripts (sanitized, tokens via env vars)
@@ -117,6 +117,18 @@ nuc-vector-orchestrator/
 │   ├── architecture/              ← architecture docs
 │   └── runbooks/                  ← operational runbooks
 ├── tests/                         ← unit + integration tests
+│   ├── golden/                    ← phase-gated golden test suite (pytest)
+│   │   ├── conftest.py            ← shared fixtures (Vector connection, phase gating)
+│   │   ├── test_phase0_unit.py    ← unit tests (no hardware)
+│   │   ├── test_phase1_preflight.py ← preflight checks (connectivity, wire-pod)
+│   │   ├── test_phase2_hardware.py  ← hardware validation (camera, sensors, battery)
+│   │   ├── test_phase3_inference.py ← inference pipeline (YOLO, face recognition)
+│   │   ├── test_phase4_voice.py     ← voice pipeline (wake word, STT, TTS)
+│   │   ├── test_phase5_movement.py  ← movement tests (motors, head, lift)
+│   │   ├── test_phase6_following.py ← person-following pipeline
+│   │   ├── test_phase7_signal.py    ← Signal → OpenClaw → robot E2E
+│   │   ├── test_phase8_agentloop.py ← agent loop health checks
+│   │   └── test_phase9_eventbus.py  ← event bus integration
 │   └── vector/                    ← Vector-specific tests
 ├── .claude/                       ← Claude Code configuration
 │   ├── CLAUDE.md                  ← project config
