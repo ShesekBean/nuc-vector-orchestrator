@@ -141,10 +141,24 @@ Note: Follow planner may return 501 if not yet wired to the bridge.
 
 ### Video/Audio Call (LiveKit)
 ```
-POST /call/start → Start a LiveKit video/audio call
-POST /call/stop  → End the call
+POST /call/start
+Content-Type: application/json
+{"room": "robot-cam"}
+
+Room name is optional (defaults to "robot-cam").
+→ {"status": "ok", "active": true, "room": "robot-cam"}
+
+If already active:
+→ {"status": "ok", "active": true, "room": "robot-cam", "message": "Session already active"}
+
+POST /call/stop
+→ {"status": "ok", "active": false}
+
+If no active session:
+→ {"status": "ok", "active": false, "message": "No active session"}
 ```
-Note: Call endpoints may return 501 if not yet wired.
+Publishes Vector camera (640x360 ~15fps) and mic audio as LiveKit tracks.
+Remote audio is played on Vector's speaker. Returns 503 if LiveKit bridge not initialised.
 
 ## Trigger Word: "robot"
 
@@ -285,4 +299,5 @@ Example: "Driving forward 300mm... done! Vector scooted forward about 30cm. Batt
 - say_text() TTS via POST /audio/play — Vector's built-in speaker
 - Lift has three presets: low, carry, high
 - If bridge returns 503, Vector is offline — tell the user
-- Follow and call endpoints may return 501 (not yet wired) — tell the user they're coming soon
+- Follow planner may return 501 if not yet wired to the bridge
+- Call endpoints return 503 if LiveKit bridge not initialised — tell the user to check LiveKit config
