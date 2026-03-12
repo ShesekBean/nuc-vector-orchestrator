@@ -57,6 +57,8 @@ nuc-vector-orchestrator/
 │   │   ├── robot-commands.js      ← Robot command dispatcher
 │   │   └── voice_chat_relay.py    ← Voice chat relay
 │   └── vector/                    ← Vector runtime bridge (runs on NUC)
+│       ├── __main__.py            ← entry point: python3 -m apps.vector
+│       ├── supervisor.py          ← component lifecycle manager (ordered startup, health, reconnect)
 │       ├── bridge/                ← gRPC client → HTTP bridge (compatibility layer)
 │       ├── src/                   ← inference + control nodes
 │       │   ├── detector/          ← YOLO person detection (NUC GPU/CPU)
@@ -154,8 +156,9 @@ nuc-vector-orchestrator/
 
 1. **Agent Loop**: `python3 -m apps.control_plane.agent_loop` (systemd: `nuc-agent-loop.service`)
 2. **wire-pod**: Docker container or native service on NUC
-3. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility)
-4. **Process Management**: `bash scripts/start-all.sh` / `bash scripts/kill-all.sh`
+3. **Vector Supervisor**: `python3 -m apps.vector` (component lifecycle: startup, health, reconnect)
+4. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility)
+5. **Process Management**: `bash scripts/start-all.sh` / `bash scripts/kill-all.sh`
 
 ## Testing
 
