@@ -81,15 +81,23 @@ def _install_livekit_stubs():
             header = base64.urlsafe_b64encode(
                 json.dumps({"alg": "HS256", "typ": "JWT"}).encode()
             ).decode().rstrip("=")
+            grants_str = str(self._grants) if self._grants else ""
             payload = base64.urlsafe_b64encode(
-                json.dumps({"sub": self._identity, "key": self._key}).encode()
+                json.dumps({"sub": self._identity, "key": self._key, "grants": grants_str}).encode()
             ).decode().rstrip("=")
             sig = base64.urlsafe_b64encode(b"stub-signature").decode().rstrip("=")
             return f"{header}.{payload}.{sig}"
 
     api_mod = types.ModuleType("livekit.api")
     api_mod.AccessToken = _AccessToken
-    api_mod.VideoGrants = MagicMock
+    class _VideoGrants:
+        """Stub that stores kwargs so str() varies by room name."""
+        def __init__(self, **kwargs):
+            self._kwargs = kwargs
+        def __str__(self):
+            return str(sorted(self._kwargs.items()))
+
+    api_mod.VideoGrants = _VideoGrants
 
     # --- Top-level livekit module ---
     livekit_mod = types.ModuleType("livekit")
