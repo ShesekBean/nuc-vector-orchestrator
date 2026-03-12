@@ -13,6 +13,94 @@ import types
 from unittest.mock import MagicMock
 
 
+def _install_livekit_stubs():
+    """Install lightweight livekit stub modules for CI (no real livekit)."""
+
+    # --- livekit.rtc stubs ---
+    class _VideoFrame:
+        """Stub for rtc.VideoFrame that stores keyword args as attrs."""
+
+        def __init__(self, *, width=0, height=0, type=None, data=b""):
+            self.width = width
+            self.height = height
+            self.type = type
+            self.data = data
+
+    class _AudioFrame:
+        """Stub for rtc.AudioFrame that stores keyword args as attrs."""
+
+        def __init__(self, *, data=b"", sample_rate=0, num_channels=1,
+                     samples_per_channel=0):
+            self.data = data
+            self.sample_rate = sample_rate
+            self.num_channels = num_channels
+            self.samples_per_channel = samples_per_channel
+
+    rtc_mod = types.ModuleType("livekit.rtc")
+    rtc_mod.VideoFrame = _VideoFrame
+    rtc_mod.AudioFrame = _AudioFrame
+    rtc_mod.VideoSource = MagicMock
+    rtc_mod.AudioSource = MagicMock
+    rtc_mod.LocalVideoTrack = MagicMock()
+    rtc_mod.LocalAudioTrack = MagicMock()
+    rtc_mod.Room = MagicMock
+    rtc_mod.TrackPublishOptions = MagicMock
+    rtc_mod.TrackSource = MagicMock()
+    rtc_mod.TrackSource.SOURCE_CAMERA = "camera"
+    rtc_mod.TrackSource.SOURCE_MICROPHONE = "microphone"
+    rtc_mod.VideoBufferType = MagicMock()
+    rtc_mod.VideoBufferType.RGBA = "rgba"
+    rtc_mod.TrackKind = MagicMock()
+    rtc_mod.TrackKind.KIND_AUDIO = "audio"
+    rtc_mod.RemoteTrack = MagicMock
+    rtc_mod.RemoteTrackPublication = MagicMock
+    rtc_mod.RemoteParticipant = MagicMock
+    rtc_mod.AudioStream = MagicMock
+
+    # --- livekit.api stubs ---
+    class _AccessToken:
+        """Stub for api.AccessToken — generates a fake JWT."""
+
+        def __init__(self, api_key=None, api_secret=None):
+            self._key = api_key or "stub"
+            self._secret = api_secret or "stub"
+            self._identity = ""
+            self._grants = None
+
+        def with_identity(self, identity):
+            self._identity = identity
+            return self
+
+        def with_grants(self, grants):
+            self._grants = grants
+            return self
+
+        def to_jwt(self):
+            import base64
+            import json
+            header = base64.urlsafe_b64encode(
+                json.dumps({"alg": "HS256", "typ": "JWT"}).encode()
+            ).decode().rstrip("=")
+            payload = base64.urlsafe_b64encode(
+                json.dumps({"sub": self._identity, "key": self._key}).encode()
+            ).decode().rstrip("=")
+            sig = base64.urlsafe_b64encode(b"stub-signature").decode().rstrip("=")
+            return f"{header}.{payload}.{sig}"
+
+    api_mod = types.ModuleType("livekit.api")
+    api_mod.AccessToken = _AccessToken
+    api_mod.VideoGrants = MagicMock
+
+    # --- Top-level livekit module ---
+    livekit_mod = types.ModuleType("livekit")
+    livekit_mod.api = api_mod
+    livekit_mod.rtc = rtc_mod
+
+    sys.modules["livekit"] = livekit_mod
+    sys.modules["livekit.api"] = api_mod
+    sys.modules["livekit.rtc"] = rtc_mod
+
+
 def pytest_configure(config):
     """Set up module stubs and restore real imports."""
     # --- Restore real numpy/PIL/cv2 (undo test_evaluator mocking) ---
@@ -36,10 +124,16 @@ def pytest_configure(config):
         except ImportError:
             pass
 
-    # --- Restore real livekit (undo test_evaluator mocking) ---
+    # --- Restore real livekit or create stubs (CI has no livekit) ---
     livekit_mocks = [k for k in sys.modules if k.startswith("livekit") and type(sys.modules[k]).__name__ == "MagicMock"]
     for name in livekit_mocks:
         del sys.modules[name]
+
+    # Try to import real livekit; if unavailable, inject stubs
+    try:
+        importlib.import_module("livekit")
+    except ImportError:
+        _install_livekit_stubs()
 
     for name in ("livekit", "livekit.api", "livekit.rtc"):
         try:
