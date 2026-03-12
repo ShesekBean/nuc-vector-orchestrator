@@ -27,6 +27,7 @@ SCENE_DESCRIPTION = "scene_description"
 WAKE_WORD_DETECTED = "wake_word_detected"
 LIFT_HEIGHT_CHANGED = "lift_height_changed"
 LED_STATE_CHANGED = "led_state_changed"
+SLAM_POSE_UPDATED = "slam_pose_updated"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -182,3 +183,17 @@ class LedStateChangedEvent:
 
     state: str  # "idle", "searching", "person_detected", "following", etc.
     previous_state: str | None = None
+
+
+@dataclass(frozen=True)
+class SlamPoseUpdatedEvent:
+    """Emitted by VisualSLAM when pose is updated from a camera frame."""
+
+    x: float  # world position mm
+    y: float  # world position mm
+    theta: float  # heading radians (CCW positive)
+    feature_matches: int  # ORB feature matches this frame
+    process_time_ms: float  # ORB processing time
+    landmark_count: int  # total stored landmarks
+    loop_closures: int  # total loop closures detected
+    free_cells: int  # free cells in occupancy grid
