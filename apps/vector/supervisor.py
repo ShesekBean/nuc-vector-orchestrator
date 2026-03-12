@@ -317,7 +317,7 @@ class VectorSupervisor:
             return WakeWordDetector(bus)
 
         def _make_speech_output() -> SpeechOutput:
-            return SpeechOutput(robot, bus)
+            return SpeechOutput(bus, robot)
 
         def _make_echo_suppressor() -> EchoSuppressor:
             audio = self._get_component("audio_client")

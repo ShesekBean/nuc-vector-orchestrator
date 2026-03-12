@@ -322,3 +322,39 @@ class TestVoiceBridgeIntegration:
         assert len(events) == 2
         assert events[0].playing is True
         assert events[1].playing is False
+
+
+# ---------------------------------------------------------------------------
+# Regression: supervisor arg order (issue #130)
+# ---------------------------------------------------------------------------
+
+
+class TestSupervisorArgOrder:
+    """Ensure SpeechOutput(bus, robot) is the correct construction order.
+
+    The supervisor previously passed (robot, bus) which silently broke TTS
+    because self._robot ended up being the event bus (no behavior attribute).
+    """
+
+    def test_swapped_args_fails_to_speak(self):
+        """Constructing SpeechOutput(robot, bus) fails to call say_text."""
+        bus = NucEventBus()
+        robot = _mock_robot()
+
+        # Wrong order: robot first, bus second (the old bug)
+        bad_speech = SpeechOutput(robot, bus)
+        bad_speech.speak("Should not work")
+
+        # say_text is never called because self._robot is actually the bus
+        robot.behavior.say_text.assert_not_called()
+
+    def test_correct_args_speaks(self):
+        """Constructing SpeechOutput(bus, robot) correctly calls say_text."""
+        bus = NucEventBus()
+        robot = _mock_robot()
+
+        # Correct order: bus first, robot second
+        good_speech = SpeechOutput(bus, robot)
+        good_speech.speak("Hello")
+
+        robot.behavior.say_text.assert_called_once_with("Hello")

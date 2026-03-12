@@ -110,7 +110,6 @@ class ConnectionManager:
         import anki_vector
 
         from apps.vector.src.camera.camera_client import CameraClient
-        from apps.vector.src.display_controller import DisplayController
         from apps.vector.src.events.nuc_event_bus import NucEventBus
         from apps.vector.src.head_controller import HeadController
         from apps.vector.src.led_controller import LedController
