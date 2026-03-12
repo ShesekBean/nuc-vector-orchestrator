@@ -171,7 +171,7 @@ Located at `~/.openclaw/workspace/` (bind-mounted into container).
 ### Skills
 | Skill | Trigger | Description |
 |-------|---------|-------------|
-| `robot-control` | "robot \<cmd\>" | Controls physical robot via HTTP bridge at 192.168.1.71:8080 |
+| `robot-control` | "robot \<cmd\>" | Controls physical robot via HTTP bridge at localhost:8080 |
 | `fitness` | fitness-related messages | Strava/Withings/Oura integration |
 | `monarch-money` | money/finance/spending/budget/balance keywords | Read-only Monarch Money GraphQL queries (balances, spending, transactions, budgets, net worth, recurring bills) |
 
@@ -213,7 +213,7 @@ OpenClaw gateway (processes message, invokes skill)
     │
     ▼ (robot-control skill triggers curl)
     │
-HTTP-to-gRPC bridge (192.168.1.71:8080)
+HTTP-to-gRPC bridge (localhost:8080)
     │
     ▼
 Vector robot hardware (motors, head, lift, camera, LEDs, display via gRPC)
