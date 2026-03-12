@@ -164,6 +164,31 @@ mypy apps/test_harness/ tests/
 pytest tests/ -v --cov=apps --cov-report=term-missing
 ```
 
+### Hardware Validation — MANDATORY for `component:vector` issues
+
+**Every `component:vector` issue MUST run the relevant standalone test script against the real robot before finalizing.** Unit tests with mocks are NOT sufficient — they only prove the code compiles, not that it works on hardware.
+
+1. **Identify the relevant standalone test** in `apps/vector/tests/standalone/`:
+   - Camera → `test_camera.py`
+   - Motors/driving → `test_motors.py`
+   - Head servo → `test_head.py`
+   - Lift → `test_lift.py`
+   - LEDs → `test_leds.py`
+   - Display → `test_display.py`
+   - Audio/mic → `test_audio.py`, `test_mic.py`
+   - Sensors (cliff/touch) → `test_sensors.py`
+   - Detection (YOLO) → `test_detection.py`
+   - Person following → `test_follow_standalone.py`
+
+2. **Run the test:** `python3 apps/vector/tests/standalone/<test>.py`
+   - If the test passes → include output in Test Report
+   - If the test fails → fix the code (loop to Phase 2)
+   - If the robot is unreachable (connection refused, timeout) → add `blocker:needs-human` and STOP
+
+3. **If no standalone test exists for your subsystem**, write one as part of your PR and run it.
+
+4. **Multiple subsystems?** Run ALL relevant standalone tests. For example, person following should run both `test_motors.py` and `test_detection.py`.
+
 ### Autonomous vs Physical — Decision Rule
 
 **Before requesting a physical test, ask: "Does Ophir need to physically BE THERE watching the robot?"**
@@ -175,6 +200,7 @@ Run AUTONOMOUSLY (no blocker, no Physical Test Request):
 - Camera capture (LiveKit frame grab)
 - Vision evaluator (LLM API call)
 - Any test where you can observe the result via CLI/API
+- **Standalone hardware tests** (camera, LEDs, sensors, head, lift, audio — robot stays still)
 
 Request PHYSICAL TEST (blocker:needs-human) ONLY when:
 - Robot physically moves and someone must watch for safety/correctness
@@ -211,9 +237,14 @@ If the issue involves physical robot movement (motors, servos, driving):
 ### Type Check
 - mypy: PASS/FAIL (N errors)
 
-### Tests
+### Unit Tests
 - pytest: PASS/FAIL (N passed, M failed)
 - Coverage: X%
+
+### Hardware Validation (component:vector only)
+- Standalone test(s) run: <test_name.py>
+- Result: PASS/FAIL/SKIPPED (robot unreachable)
+- Output: <key output lines>
 
 ### Physical Verification
 - <result if applicable>
