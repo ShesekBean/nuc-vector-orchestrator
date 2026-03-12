@@ -29,6 +29,8 @@ LIFT_HEIGHT_CHANGED = "lift_height_changed"
 LED_STATE_CHANGED = "led_state_changed"
 SLAM_POSE_UPDATED = "slam_pose_updated"
 EXPRESSION_CHANGED = "expression_changed"
+INTERCOM_TEXT_SENT = "intercom_text_sent"
+INTERCOM_PHOTO_SENT = "intercom_photo_sent"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -207,3 +209,19 @@ class ExpressionChangedEvent:
     emotion: str  # "happy", "curious", "sad", "excited", "sleepy", "startled", "idle"
     previous_emotion: str | None = None
     trigger: str = ""  # event or API call that caused the change
+
+
+@dataclass(frozen=True)
+class IntercomTextSentEvent:
+    """Emitted when a text message is sent to Ophir via Signal."""
+
+    text: str
+    success: bool
+
+
+@dataclass(frozen=True)
+class IntercomPhotoSentEvent:
+    """Emitted when a photo is sent to Ophir via Signal."""
+
+    caption: str
+    success: bool
