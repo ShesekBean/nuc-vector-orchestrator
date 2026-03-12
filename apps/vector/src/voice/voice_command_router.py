@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BRIDGE_URL = "http://localhost:8080"
+DEFAULT_BRIDGE_URL = "http://localhost:8081"
 DEFAULT_BRIDGE_TIMEOUT_SEC = 10
 
 # Default movement parameters for wire-pod intent commands.

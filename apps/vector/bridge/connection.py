@@ -131,8 +131,10 @@ class ConnectionManager:
         self._lift_controller.start()
         self._led_controller = LedController(self._robot, self._nuc_bus)
         self._led_controller.start()
-        self._display_controller = DisplayController(self._robot, event_bus=self._nuc_bus)
-        self._display_controller.start()
+        # NOTE: DisplayController disabled — it uses DisplayFaceImageRGB which
+        # crashes vic-anim due to race condition (issue #129).
+        # self._display_controller = DisplayController(self._robot, event_bus=self._nuc_bus)
+        # self._display_controller.start()
         self._camera_client = CameraClient(self._robot)
         self._camera_client.start()
         self._audio_client = AudioClient(self._robot)

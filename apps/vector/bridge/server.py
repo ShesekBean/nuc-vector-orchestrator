@@ -2,16 +2,16 @@
 """Vector HTTP-to-gRPC bridge server.
 
 Translates REST API calls to Vector SDK/gRPC commands.  Runs on NUC at
-``localhost:<port>`` (default 8080).  Used by OpenClaw robot-control skill
+``localhost:<port>`` (default 8081).  Used by OpenClaw robot-control skill
 and the voice command router.
 
 Run::
 
-    python3 -m apps.vector.bridge.server [--port 8080] [--host 127.0.0.1]
+    python3 -m apps.vector.bridge.server [--port 8081] [--host 127.0.0.1]
 
 Environment variables::
 
-    VECTOR_BRIDGE_PORT  — port (default 8080)
+    VECTOR_BRIDGE_PORT  — port (default 8081)
     VECTOR_BRIDGE_HOST  — bind address (default 127.0.0.1)
     VECTOR_SERIAL       — Vector serial number (default 0dd1cdcf)
 """
@@ -30,7 +30,7 @@ from apps.vector.bridge.routes import setup_routes
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PORT = int(os.environ.get("VECTOR_BRIDGE_PORT", "8080"))
+DEFAULT_PORT = int(os.environ.get("VECTOR_BRIDGE_PORT", "8081"))
 DEFAULT_HOST = os.environ.get("VECTOR_BRIDGE_HOST", "127.0.0.1")
 
 
