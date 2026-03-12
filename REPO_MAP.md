@@ -61,7 +61,9 @@ nuc-vector-orchestrator/
 │       ├── src/                   ← inference + control nodes
 │       │   ├── detector/          ← YOLO person detection (NUC GPU/CPU)
 │       │   ├── face_recognition/  ← YuNet + SFace (NUC)
-│       │   ├── planner/           ← PD controller → gRPC motor commands
+│       │   ├── planner/           ← Visual SLAM + PD controller → gRPC motor commands
+│       │   │   ├── __init__.py    ← PD follow controller (proportional-derivative tracking)
+│       │   │   └── visual_slam.py ← monocular ORB-SLAM for camera-only navigation
 │       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
 │       │   ├── camera/            ← gRPC camera feed consumer
 │       │   ├── display_controller.py ← OLED display image/text rendering
