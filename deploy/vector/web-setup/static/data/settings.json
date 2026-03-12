@@ -1,0 +1,8 @@
+{
+  "stacks": {
+    "prod": {
+      "accountEndpoints": "https://accounts.escapepod.xyz",
+      "apiKeys": "admin"
+    }
+  }
+}
