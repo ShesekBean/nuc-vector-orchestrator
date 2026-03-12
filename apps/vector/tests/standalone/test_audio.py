@@ -43,7 +43,7 @@ def main():
 
     try:
         robot.connect()
-        print(f"Connected to {robot.name}\n")
+        print("Connected to Vector\n")
 
         # Sub-test 1: Say simple text
         def test_say_hello():

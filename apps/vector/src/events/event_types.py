@@ -32,6 +32,7 @@ EXPRESSION_CHANGED = "expression_changed"
 INTERCOM_TEXT_SENT = "intercom_text_sent"
 INTERCOM_PHOTO_SENT = "intercom_photo_sent"
 USER_INTENT = "user_intent"
+MESSAGE_RELAYED = "message_relayed"
 OBSTACLE_DETECTED = "obstacle_detected"
 HEAD_ANGLE_COMMAND = "head_angle_command"
 
@@ -257,3 +258,12 @@ class HeadAngleCommandEvent:
 
     angle_deg: float
     source: str = "head_tracker"  # "head_tracker", "search", "manual"
+
+
+@dataclass(frozen=True)
+class MessageRelayedEvent:
+    """Emitted when a voice message is relayed to Ophir via Signal."""
+
+    original_text: str  # full STT transcription
+    extracted_message: str  # message body sent to Ophir
+    success: bool  # whether Intercom delivery succeeded

@@ -55,7 +55,7 @@ def main():
 
     try:
         robot.connect()
-        print(f"Connected to {robot.name}\n")
+        print("Connected to Vector\n")
 
         # Sub-test 1: Solid white
         def test_solid_white():
