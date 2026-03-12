@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from apps.vector.src.events.nuc_event_bus import NucEventBus
     from apps.vector.src.head_controller import HeadController
     from apps.vector.src.motor_controller import MotorController
+    from apps.vector.src.planner.obstacle_detector import ObstacleDetector
 
 logger = logging.getLogger(__name__)
 
@@ -209,12 +210,14 @@ class FollowPlanner:
         head_controller: HeadController,
         nuc_bus: NucEventBus,
         config: FollowConfig | None = None,
+        obstacle_detector: ObstacleDetector | None = None,
     ) -> None:
         self._motor = motor_controller
         self._head = head_controller
         self._bus = nuc_bus
         self._cfg = config or FollowConfig()
         self._pd = PDController(self._cfg)
+        self._obstacle = obstacle_detector
 
         # State
         self._state = State.IDLE
@@ -226,6 +229,10 @@ class FollowPlanner:
         self._latest_track: TrackedPersonEvent | None = None
         self._track_lock = threading.Lock()
         self._frames_without_track: int = 0
+
+        # Track movement for stuck detection
+        self._prev_track_cx: float | None = None
+        self._prev_track_cy: float | None = None
 
         # Search state
         self._search_found = False
@@ -470,6 +477,18 @@ class FollowPlanner:
 
         left, right = self._pd.compute(track.cx, track.height)
 
+        # Scale by obstacle proximity (camera-based soft slowdown)
+        if self._obstacle is not None:
+            scale = self._obstacle.speed_scale
+            left *= scale
+            right *= scale
+
+            # Reset stuck timer when track position changes significantly
+            self._check_track_movement(track)
+
+            # Check for stuck condition and trigger escape if needed
+            self._obstacle.check_stuck()
+
         # Emit event
         self._bus.emit(
             MOTOR_COMMAND,
@@ -483,6 +502,21 @@ class FollowPlanner:
             logger.exception("Motor command failed during following")
 
     # -- Helpers -------------------------------------------------------------
+
+    def _check_track_movement(self, track: TrackedPersonEvent) -> None:
+        """Reset obstacle stuck timer when track position changes."""
+        if self._obstacle is None:
+            return
+        moved = False
+        if self._prev_track_cx is not None:
+            dx = abs(track.cx - self._prev_track_cx)
+            dy = abs(track.cy - self._prev_track_cy)
+            if dx > 10.0 or dy > 10.0:
+                moved = True
+        self._prev_track_cx = track.cx
+        self._prev_track_cy = track.cy
+        if moved:
+            self._obstacle.reset_stuck()
 
     def _consume_track(self) -> TrackedPersonEvent | None:
         """Get and clear the latest tracked person event."""
