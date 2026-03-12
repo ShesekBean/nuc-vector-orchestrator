@@ -13,7 +13,7 @@ The robot has differential drive (tank treads, NO strafing), a 640x360 camera (1
 
 ## Bridge API Endpoints
 
-All endpoints are at `http://localhost:8080`.
+All endpoints are at `http://172.17.0.1:8081`.
 
 ### Health Check
 ```
@@ -141,6 +141,12 @@ Note: Follow planner may return 501 if not yet wired to the bridge.
 
 ### Video/Audio Call (LiveKit)
 ```
+GET /call/join-url
+→ {"status": "ok", "room": "robot-cam", "join_url": "https://meet.livekit.io/custom?..."}
+
+Auto-starts the call if not already active. Returns a meet.livekit.io URL
+with a fresh viewer token. Send this URL to the user so they can open it in a browser.
+
 POST /call/start
 Content-Type: application/json
 {"room": "robot-cam"}
@@ -148,17 +154,13 @@ Content-Type: application/json
 Room name is optional (defaults to "robot-cam").
 → {"status": "ok", "active": true, "room": "robot-cam"}
 
-If already active:
-→ {"status": "ok", "active": true, "room": "robot-cam", "message": "Session already active"}
-
 POST /call/stop
 → {"status": "ok", "active": false}
-
-If no active session:
-→ {"status": "ok", "active": false, "message": "No active session"}
 ```
-Publishes Vector camera (640x360 ~15fps) and mic audio (16kHz mono) as LiveKit tracks via AudioClient subscriber queue.
-Remote audio is played on Vector's speaker. Returns 503 if LiveKit bridge not initialised.
+Publishes Vector camera (640x360 ~15fps) as a LiveKit video track.
+Audio is ONE-WAY: user speaks → LiveKit → Vector speaker (20x amplified, downsampled 48kHz→16kHz).
+Vector mic audio is NOT published (SDK AudioFeed only provides signal_power calibration tone, not real PCM).
+Returns 503 if LiveKit bridge not initialised.
 
 ## Trigger Word: "robot"
 
@@ -211,7 +213,7 @@ When the user's message starts with or contains the word **"robot"**, activate t
 - "robot stop following" → POST /follow/stop
 
 ### Video Call
-- "robot call" or "robot call me" → POST /call/start → returns join URL, send to user
+- "robot call" or "robot call me" or "robot video call" → GET /call/join-url → extract join_url from JSON, send it to the user
 - "robot hangup" or "robot hang up" → POST /call/stop
 
 ### Status & Diagnostics
@@ -225,38 +227,44 @@ Without the "robot" trigger word, do NOT execute robot commands — just chat no
 
 When you see "robot <command>", run the curl command immediately using bash. Example for "robot led blue":
 ```bash
-curl -sf -X POST http://localhost:8080/led -H 'Content-Type: application/json' -d '{"hue":0.66,"saturation":1.0}'
+curl -sf -X POST http://172.17.0.1:8081/led -H 'Content-Type: application/json' -d '{"hue":0.66,"saturation":1.0}'
 ```
 
 Example for "robot say hello there":
 ```bash
-curl -sf -X POST http://localhost:8080/audio/play -H 'Content-Type: application/json' -d '{"text":"hello there"}'
+curl -sf -X POST http://172.17.0.1:8081/audio/play -H 'Content-Type: application/json' -d '{"text":"hello there"}'
 ```
 
 Example for "robot forward":
 ```bash
-curl -sf -X POST http://localhost:8080/move -H 'Content-Type: application/json' -d '{"type":"straight","distance_mm":300,"speed_mmps":100}'
+curl -sf -X POST http://172.17.0.1:8081/move -H 'Content-Type: application/json' -d '{"type":"straight","distance_mm":300,"speed_mmps":100}'
 ```
 
 Example for "robot follow me":
 ```bash
-curl -sf -X POST http://localhost:8080/follow/start
+curl -sf -X POST http://172.17.0.1:8081/follow/start
 ```
 
 Example for "robot look up":
 ```bash
-curl -sf -X POST http://localhost:8080/head -H 'Content-Type: application/json' -d '{"angle_deg":40}'
+curl -sf -X POST http://172.17.0.1:8081/head -H 'Content-Type: application/json' -d '{"angle_deg":40}'
 ```
 
 Example for "robot lift up":
 ```bash
-curl -sf -X POST http://localhost:8080/lift -H 'Content-Type: application/json' -d '{"preset":"high"}'
+curl -sf -X POST http://172.17.0.1:8081/lift -H 'Content-Type: application/json' -d '{"preset":"high"}'
 ```
 
 Example for "robot photo":
 ```bash
-curl -sf http://localhost:8080/capture --output /tmp/robot-photo.jpg
+curl -sf http://172.17.0.1:8081/capture --output /tmp/robot-photo.jpg
 ```
+
+Example for "robot call me":
+```bash
+curl -sf http://172.17.0.1:8081/call/join-url
+```
+→ Extract the `join_url` field from the JSON response and send it to the user. The URL opens a LiveKit video call with Vector's camera + speaker.
 
 Do NOT ask the user what they mean. Do NOT explain the API. Just run curl and tell them the result.
 

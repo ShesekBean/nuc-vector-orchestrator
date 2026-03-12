@@ -155,7 +155,7 @@ Connect Vector to Ophir via Signal messenger through OpenClaw.
 | 23 | [Port robot-control skill](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/23) | #32 | stuck | Update OpenClaw skill: HTTP curl → NUC bridge (localhost, not Jetson 192.168.1.71). |
 | 24 | [Intercom: photo + text](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/24) | #32, #13 | stuck | Capture photo, send to Ophir via Signal DM with scene description. |
 | 25 | [Intercom: voice to Signal](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/25) | #20, #22, #24 | stuck | "Tell Ophir I'm heading out" → Vector agent sends Signal DM. |
-| 31 | [LiveKit WebRTC session](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/31) | #10, #18, #32 | stuck | Live video + audio from Vector to Ophir's phone. Bidirectional — speak through Vector. |
+| 31 | [LiveKit WebRTC session](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/31) | #10, #18, #32 | done | Live video + one-way audio (user → Vector speaker). Triggered via "robot call me" or /call/join-url endpoint. |
 | 34 | [Physical test framework](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/34) | #32, #23 | stuck | Signal-based test checkpoints for physical robot verification. |
 
 **Phase 5 unlocks:** Full remote operation — control Vector via Signal or voice, see what it sees.

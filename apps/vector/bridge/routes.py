@@ -467,6 +467,63 @@ async def call_stop(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "CALL_STOP_FAILED")
 
 
+async def call_join_url(request: web.Request) -> web.Response:
+    """GET /call/join-url — get a LiveKit viewer join URL.
+
+    Auto-starts the call if not already active.  Returns a meet.livekit.io
+    URL with a fresh viewer token that the caller can open in a browser.
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    bridge = conn.livekit_bridge
+    if bridge is None:
+        return _json_error(503, "LiveKit bridge not initialised", "BRIDGE_UNAVAILABLE")
+
+    # Auto-start if not active
+    if not bridge.is_active:
+        try:
+            await bridge.start(room="robot-cam")
+        except Exception as exc:
+            logger.exception("Failed to auto-start LiveKit call")
+            return _json_error(500, str(exc), "CALL_START_FAILED")
+
+    # Generate a viewer token
+    try:
+        from livekit import api as lk_api
+        import os
+        import time as _time
+
+        api_key = os.environ.get("LIVEKIT_API_KEY")
+        api_secret = os.environ.get("LIVEKIT_API_SECRET")
+        livekit_url = os.environ.get("LIVEKIT_URL", "wss://robot-a1hmnzgn.livekit.cloud")
+
+        if not api_key or not api_secret:
+            return _json_error(500, "LIVEKIT_API_KEY/SECRET not set", "CONFIG_ERROR")
+
+        token = lk_api.AccessToken(api_key=api_key, api_secret=api_secret)
+        token.with_identity(f"viewer-{int(_time.time())}")
+        token.with_grants(lk_api.VideoGrants(
+            room_join=True,
+            room=bridge.room_name,
+            can_publish=True,
+            can_subscribe=True,
+        ))
+        jwt = token.to_jwt()
+        join_url = f"https://meet.livekit.io/custom?liveKitUrl={livekit_url}&token={jwt}"
+
+        return web.json_response({
+            "status": "ok",
+            "room": bridge.room_name,
+            "join_url": join_url,
+        })
+    except Exception as exc:
+        logger.exception("Failed to generate join URL")
+        return _json_error(500, str(exc), "TOKEN_ERROR")
+
+
 def setup_routes(app: web.Application) -> None:
     """Register all bridge routes on the application."""
     app.router.add_get("/health", health)
@@ -484,3 +541,4 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/audio/status", audio_status)
     app.router.add_post("/call/start", call_start)
     app.router.add_post("/call/stop", call_stop)
+    app.router.add_get("/call/join-url", call_join_url)
