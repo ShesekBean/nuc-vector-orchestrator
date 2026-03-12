@@ -14,6 +14,8 @@ import pytest
 from apps.vector.src.events.event_types import LIVEKIT_SESSION
 from apps.vector.src.events.nuc_event_bus import NucEventBus
 from apps.vector.src.livekit_bridge import (
+    AUDIO_CHANNELS,
+    AUDIO_SAMPLE_RATE,
     DEFAULT_LIVEKIT_URL,
     FRAME_HEIGHT,
     FRAME_WIDTH,
@@ -140,10 +142,22 @@ class TestFrameConversion:
         frame = LiveKitBridge._jpeg_to_video_frame(b"")
         assert frame is None
 
-    # NOTE: _pcm_to_audio_frame tests removed — method was deleted when
-    # mic audio publishing was removed (SDK AudioFeed provides signal_power
-    # calibration tone, not raw PCM).  Audio is now receive-only via
-    # _remote_audio_loop → _play_pcm_on_vector.
+    def test_pcm_to_audio_frame_valid(self):
+        """Valid int16 PCM bytes should produce an AudioFrame."""
+        pcm = b"\x00\x01\x02\x03"  # 2 samples of 16-bit PCM
+        frame = LiveKitBridge._pcm_to_audio_frame(pcm)
+        assert frame is not None
+        assert frame.sample_rate == AUDIO_SAMPLE_RATE
+        assert frame.num_channels == AUDIO_CHANNELS
+        assert frame.samples_per_channel == 2
+
+    def test_pcm_to_audio_frame_empty(self):
+        """Empty bytes should return None."""
+        assert LiveKitBridge._pcm_to_audio_frame(b"") is None
+
+    def test_pcm_to_audio_frame_single_byte(self):
+        """Single byte (less than one int16 sample) should return None."""
+        assert LiveKitBridge._pcm_to_audio_frame(b"\x00") is None
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +231,8 @@ class TestLifecycle:
             assert bridge.is_active
             assert bridge.room_name == "test-room"
             mock_room.connect.assert_called_once()
+            # Should publish both video and audio tracks
+            assert mock_room.local_participant.publish_track.call_count == 2
 
             # Cleanup
             await bridge.stop()
@@ -256,11 +272,13 @@ class TestLifecycle:
             await asyncio.sleep(3600)
 
         bridge._video_task = asyncio.create_task(_forever())
+        bridge._audio_pub_task = asyncio.create_task(_forever())
         bridge._audio_sub_task = asyncio.create_task(_forever())
         bridge._active = True
 
         await bridge._cleanup()
 
         assert bridge._video_task is None
+        assert bridge._audio_pub_task is None
         assert bridge._audio_sub_task is None
         assert not bridge.is_active
