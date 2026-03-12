@@ -1,4 +1,4 @@
-"""Entry point for ``python3 -m apps.vector.supervisor``.
+"""Entry point for ``python3 -m apps.vector``.
 
 Parses CLI arguments and launches the VectorSupervisor.
 """

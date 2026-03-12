@@ -423,8 +423,21 @@ class VectorSupervisor:
 
     def _resume_connected_components(self) -> None:
         """Re-create and start connection-dependent components with new robot."""
+        # Preserve non-connection component state
+        preserved: dict[str, tuple[Any, bool]] = {}
+        for comp in self._components:
+            if not comp.requires_connection:
+                preserved[comp.name] = (comp.instance, comp._started)
+
         # Re-register to get fresh factories with new robot reference
         self._register_components()
+
+        # Restore non-connection components
+        for comp in self._components:
+            if comp.name in preserved:
+                comp.instance, comp._started = preserved[comp.name]
+
+        # Start connection-dependent components
         for comp in self._components:
             if comp.requires_connection and not comp._started:
                 self._start_component(comp)
