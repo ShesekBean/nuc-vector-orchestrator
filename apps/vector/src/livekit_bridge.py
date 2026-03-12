@@ -253,6 +253,7 @@ class LiveKitBridge:
         """Continuously capture camera frames and publish as video."""
         logger.info("Video publish loop started")
         last_frame_count = self._camera.frame_count
+        published_count = 0
         try:
             while self._active:
                 current_count = self._camera.frame_count
@@ -264,8 +265,11 @@ class LiveKitBridge:
                             frame = self._jpeg_to_video_frame(jpeg)
                             if frame and self._video_source:
                                 self._video_source.capture_frame(frame)
+                                published_count += 1
+                                if published_count <= 3 or published_count % 100 == 0:
+                                    logger.info("Published video frame #%d (%dx%d, %d bytes jpeg)", published_count, frame.width, frame.height, len(jpeg))
                         except Exception:
-                            logger.debug("Failed to convert/publish video frame", exc_info=True)
+                            logger.warning("Failed to convert/publish video frame", exc_info=True)
 
                 await asyncio.sleep(VIDEO_PUBLISH_INTERVAL)
         except asyncio.CancelledError:
@@ -428,6 +432,9 @@ class LiveKitBridge:
             from PIL import Image
 
             img = Image.open(io.BytesIO(jpeg_bytes))
+            # Resize to match VideoSource dimensions
+            if img.size != (FRAME_WIDTH, FRAME_HEIGHT):
+                img = img.resize((FRAME_WIDTH, FRAME_HEIGHT))
             rgba = img.convert("RGBA")
             width, height = rgba.size
             return rtc.VideoFrame(
