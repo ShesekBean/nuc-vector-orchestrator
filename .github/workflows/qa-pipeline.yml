@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install pytest pytest-cov pyyaml numpy Pillow opencv-python-headless
+        run: pip install pytest pytest-cov pyyaml numpy Pillow opencv-python-headless aiohttp pytest-aiohttp
       - name: Run tests
         run: pytest tests/ -v --tb=short || [ $? -eq 5 ]
 
