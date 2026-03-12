@@ -267,10 +267,23 @@ async def capture(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "CAPTURE_FAILED")
 
 
+_EXPRESSION_ANIMS = {
+    "happy": "anim_greeting_happy_03",
+    "sad": "anim_feedback_meanwords_01",
+    "thinking": "anim_explorer_scan_short_04",
+    "listening": "anim_voice_new_wake_word_01",
+    "greeting": "anim_greeting_hello_02",
+    "excited": "anim_reacttoblock_happydetermined_01",
+    "surprised": "anim_meetvictor_lookface_timeout_01",
+    "idle": "anim_observing_look_up_01",
+}
+
+
 async def display(request: web.Request) -> web.Response:
-    """POST /display — set face expression.
+    """POST /display — play face expression animation.
 
     Body: {"expression": "happy"}
+    Uses play_animation instead of DisplayFaceImageRGB (which crashes vic-anim).
     """
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
@@ -286,13 +299,21 @@ async def display(request: web.Request) -> web.Response:
     if not expression:
         return _json_error(400, "Missing 'expression' field", "MISSING_PARAMS")
 
-    try:
-        def _set_expression():
-            dc = conn.display_controller
-            dc.set_expression(expression)
+    anim_name = _EXPRESSION_ANIMS.get(expression)
+    if not anim_name:
+        return _json_error(400, f"Unknown expression '{expression}'. Valid: {list(_EXPRESSION_ANIMS.keys())}", "UNKNOWN_EXPRESSION")
 
-        await _run_sync(_set_expression)
-        return web.json_response({"status": "ok", "expression": expression})
+    try:
+        def _play():
+            from anki_vector.messaging import protocol as msg
+            req = msg.PlayAnimationRequest(animation=msg.Animation(name=anim_name), loops=1)
+            # Use the sync wrapper that bridges to the SDK's event loop
+            conn.robot.conn.run_coroutine(
+                conn.robot.conn.grpc_interface.PlayAnimation(req)
+            ).result(timeout=10)
+
+        await _run_sync(_play)
+        return web.json_response({"status": "ok", "expression": expression, "animation": anim_name})
     except Exception as exc:
         logger.exception("Display command failed")
         return _json_error(500, str(exc), "DISPLAY_FAILED")
