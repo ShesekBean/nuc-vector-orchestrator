@@ -89,13 +89,14 @@ class Intercom:
 
         Returns True if the intercom server accepted the request.
         """
-        payload = {"caption": caption.strip() or "Photo from robot"}
+        effective_caption = caption.strip() or "Photo from robot"
+        payload = {"caption": effective_caption}
         success = self._post("/intercom/photo", payload)
 
         if self._bus is not None:
             self._bus.emit(
                 INTERCOM_PHOTO_SENT,
-                IntercomPhotoSentEvent(caption=caption.strip(), success=success),
+                IntercomPhotoSentEvent(caption=effective_caption, success=success),
             )
         return success
 
