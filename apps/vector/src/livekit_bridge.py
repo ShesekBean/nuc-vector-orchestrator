@@ -252,16 +252,20 @@ class LiveKitBridge:
     async def _video_publish_loop(self) -> None:
         """Continuously capture camera frames and publish as video."""
         logger.info("Video publish loop started")
+        last_frame_count = self._camera.frame_count
         try:
             while self._active:
-                jpeg = self._camera.get_latest_jpeg()
-                if jpeg:
-                    try:
-                        frame = self._jpeg_to_video_frame(jpeg)
-                        if frame and self._video_source:
-                            self._video_source.capture_frame(frame)
-                    except Exception:
-                        logger.debug("Failed to convert/publish video frame", exc_info=True)
+                current_count = self._camera.frame_count
+                if current_count > last_frame_count:
+                    last_frame_count = current_count
+                    jpeg = self._camera.get_latest_jpeg()
+                    if jpeg:
+                        try:
+                            frame = self._jpeg_to_video_frame(jpeg)
+                            if frame and self._video_source:
+                                self._video_source.capture_frame(frame)
+                        except Exception:
+                            logger.debug("Failed to convert/publish video frame", exc_info=True)
 
                 await asyncio.sleep(VIDEO_PUBLISH_INTERVAL)
         except asyncio.CancelledError:
@@ -272,16 +276,20 @@ class LiveKitBridge:
     async def _audio_publish_loop(self) -> None:
         """Continuously read mic audio and publish as audio frames."""
         logger.info("Audio publish loop started")
+        last_chunk_count = self._audio.chunk_count
         try:
             while self._active:
-                chunk = self._audio.get_latest_chunk()
-                if chunk and len(chunk) >= 2:
-                    try:
-                        frame = self._pcm_to_audio_frame(chunk)
-                        if frame and self._audio_source:
-                            await self._audio_source.capture_frame(frame)
-                    except Exception:
-                        logger.debug("Failed to convert/publish audio frame", exc_info=True)
+                current_count = self._audio.chunk_count
+                if current_count > last_chunk_count:
+                    last_chunk_count = current_count
+                    chunk = self._audio.get_latest_chunk()
+                    if chunk and len(chunk) >= 2:
+                        try:
+                            frame = self._pcm_to_audio_frame(chunk)
+                            if frame and self._audio_source:
+                                await self._audio_source.capture_frame(frame)
+                        except Exception:
+                            logger.debug("Failed to convert/publish audio frame", exc_info=True)
 
                 await asyncio.sleep(AUDIO_PUBLISH_INTERVAL)
         except asyncio.CancelledError:
