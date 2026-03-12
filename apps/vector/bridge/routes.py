@@ -305,12 +305,7 @@ async def display(request: web.Request) -> web.Response:
 
     try:
         def _play():
-            from anki_vector.messaging import protocol as msg
-            req = msg.PlayAnimationRequest(animation=msg.Animation(name=anim_name), loops=1)
-            # Use the sync wrapper that bridges to the SDK's event loop
-            conn.robot.conn.run_coroutine(
-                conn.robot.conn.grpc_interface.PlayAnimation(req)
-            ).result(timeout=10)
+            conn.robot.anim.play_animation(anim_name, loop_count=1)
 
         await _run_sync(_play)
         return web.json_response({"status": "ok", "expression": expression, "animation": anim_name})
