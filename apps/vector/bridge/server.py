@@ -92,6 +92,8 @@ async def on_shutdown(app: web.Application) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     """Entry point — parse args and run the server."""
+    import signal
+
     parser = argparse.ArgumentParser(description="Vector HTTP-to-gRPC bridge")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to listen on")
     parser.add_argument("--host", type=str, default=DEFAULT_HOST, help="Host to bind to")
@@ -107,6 +109,16 @@ def main(argv: list[str] | None = None) -> int:
     app = create_app(conn)
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
+
+    # Ensure clean SDK disconnect on SIGTERM/SIGINT so Vector's gRPC streams
+    # are properly closed (prevents AudioFeed stall on next connection).
+    def _graceful_shutdown(signum, frame):
+        signame = signal.Signals(signum).name
+        logger.info("Received %s — shutting down gracefully", signame)
+        conn.disconnect()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _graceful_shutdown)
 
     logger.info("Starting Vector bridge on %s:%d", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None)

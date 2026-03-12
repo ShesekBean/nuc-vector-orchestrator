@@ -376,6 +376,32 @@ async def audio_play(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "AUDIO_FAILED")
 
 
+async def audio_status(request: web.Request) -> web.Response:
+    """GET /audio/status — debug audio client + LiveKit audio state."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    ac = conn.audio_client
+    bridge = conn.livekit_bridge
+    result = {
+        "audio_client": {
+            "streaming": ac.is_streaming,
+            "chunk_count": ac.chunk_count,
+            "chunks_per_second": round(ac.chunks_per_second, 1),
+            "buffer_len": len(ac.get_audio_buffer()),
+            "latest_chunk_bytes": len(ac.get_latest_chunk()) if ac.get_latest_chunk() else 0,
+        },
+    }
+    if bridge:
+        result["livekit"] = {
+            "active": bridge.is_active,
+            "room": bridge.room_name,
+        }
+    return web.json_response(result)
+
+
 async def call_start(request: web.Request) -> web.Response:
     """POST /call/start — start LiveKit video call.
 
@@ -460,5 +486,6 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/follow/start", follow_start)
     app.router.add_post("/follow/stop", follow_stop)
     app.router.add_post("/audio/play", audio_play)
+    app.router.add_get("/audio/status", audio_status)
     app.router.add_post("/call/start", call_start)
     app.router.add_post("/call/stop", call_stop)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import queue
 import struct
 import threading
 import time
@@ -103,6 +104,11 @@ class AudioClient:
         # Stream control
         self._stream_task: asyncio.Task | None = None
         self._stop_event: asyncio.Event | None = None
+
+        # Optional subscriber queue for lossless chunk delivery (e.g. LiveKit).
+        # Uses threading.Queue (not asyncio.Queue) because producer (SDK loop)
+        # and consumer (bridge loop) run on different threads.
+        self._subscriber_queue: queue.Queue | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -199,6 +205,14 @@ class AudioClient:
             self._timestamps.clear()
         logger.debug("Audio buffer cleared (%d chunks discarded)", n)
 
+    def subscribe_queue(self, q: queue.Queue) -> None:
+        """Register a thread-safe Queue that receives every PCM chunk (lossless)."""
+        self._subscriber_queue = q
+
+    def unsubscribe_queue(self) -> None:
+        """Remove the subscriber queue."""
+        self._subscriber_queue = None
+
     def set_connection_lost_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback invoked when the robot connection drops."""
         self._connection_lost_callback = callback
@@ -283,19 +297,54 @@ class AudioClient:
         logger.info("Audio feed stopped (total chunks: %d)", self._chunk_count)
 
     async def _consume_stream(self) -> None:
-        """Async generator consumer — runs on the SDK event loop."""
+        """Async generator consumer — runs on the SDK event loop.
+
+        Includes a stall watchdog: if no audio response arrives within
+        ``_STALL_TIMEOUT`` seconds, the stream is torn down and restarted.
+        This works around a Vector firmware quirk where AudioFeed stops
+        yielding after an unclean SDK disconnect.
+        """
         from anki_vector.messaging import protocol
+
+        _STALL_TIMEOUT = 3.0  # seconds without a response → restart stream
 
         grpc_if = self._robot.conn.grpc_interface
         try:
             req = protocol.AudioFeedRequest()
             stream = grpc_if.AudioFeed(req)
+            aiter = stream.__aiter__()
+            resp_count = 0
 
-            async for resp in stream:
+            while True:
                 if self._stop_event and self._stop_event.is_set():
                     break
 
+                try:
+                    resp = await asyncio.wait_for(aiter.__anext__(), timeout=_STALL_TIMEOUT)
+                except StopAsyncIteration:
+                    logger.warning("AudioFeed stream ended after %d responses", resp_count)
+                    break
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "AudioFeed stalled after %d responses (no data for %.1fs) — restarting stream",
+                        resp_count, _STALL_TIMEOUT,
+                    )
+                    break
+
+                resp_count += 1
+                if resp_count <= 3 or resp_count % 500 == 0:
+                    raw = resp.signal_power
+                    logger.info(
+                        "AudioFeed resp #%d: signal_power=%d bytes, chunk_count=%d",
+                        resp_count, len(raw) if raw else 0, self._chunk_count,
+                    )
+
                 self._process_response(resp)
+
+            # Stream ended or stalled — schedule reconnect
+            self._streaming = False
+            if self._should_reconnect:
+                self._schedule_reconnect()
 
         except asyncio.CancelledError:
             logger.debug("Audio stream task cancelled")
@@ -320,6 +369,14 @@ class AudioClient:
             self._chunks.append(resampled)
             self._timestamps.append(now)
             self._chunk_count += 1
+
+        # Push to subscriber queue (non-blocking, drop if full)
+        q = self._subscriber_queue
+        if q is not None:
+            try:
+                q.put_nowait(resampled)
+            except queue.Full:
+                pass  # drop to avoid backpressure
 
         # Update beamforming metadata (no lock needed — single writer)
         self._source_direction = resp.source_direction  # type: ignore[attr-defined]

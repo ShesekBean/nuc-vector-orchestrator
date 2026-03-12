@@ -100,10 +100,8 @@ class LiveKitBridge:
 
         self._room: rtc.Room | None = None
         self._video_source: rtc.VideoSource | None = None
-        self._audio_source: rtc.AudioSource | None = None
 
         self._video_task: asyncio.Task | None = None
-        self._audio_pub_task: asyncio.Task | None = None
         self._audio_sub_task: asyncio.Task | None = None
 
         self._active = False
@@ -199,18 +197,15 @@ class LiveKitBridge:
         await self._room.local_participant.publish_track(video_track, video_opts)
         logger.info("Published video track (vector-camera)")
 
-        # Create and publish audio track
-        self._audio_source = rtc.AudioSource(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
-        audio_track = rtc.LocalAudioTrack.create_audio_track(
-            "vector-mic", self._audio_source
-        )
-        audio_opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
-        await self._room.local_participant.publish_track(audio_track, audio_opts)
-        logger.info("Published audio track (vector-mic)")
+        # NOTE: Vector mic audio is NOT published to LiveKit.
+        # The SDK's AudioFeed only provides signal_power (a 980Hz calibration
+        # tone), not actual microphone PCM.  Raw mic capture requires
+        # Qualcomm ADSP routing which is not accessible via the SDK.
+        # Audio flows ONE-WAY: user speaks → LiveKit → Vector speaker.
+        logger.info("Mic audio NOT published (SDK AudioFeed provides signal_power, not raw PCM)")
 
-        # Start publishing loops
+        # Start publishing loops (video only — mic audio not available via SDK)
         self._video_task = asyncio.create_task(self._video_publish_loop())
-        self._audio_pub_task = asyncio.create_task(self._audio_publish_loop())
 
         self._active = True
         self._emit_session_event(active=True, room=room)
@@ -221,7 +216,7 @@ class LiveKitBridge:
         self._active = False
 
         # Cancel publishing tasks
-        for task in (self._video_task, self._audio_pub_task, self._audio_sub_task):
+        for task in (self._video_task, self._audio_sub_task):
             if task and not task.done():
                 task.cancel()
                 try:
@@ -230,7 +225,6 @@ class LiveKitBridge:
                     pass
 
         self._video_task = None
-        self._audio_pub_task = None
         self._audio_sub_task = None
 
         # Disconnect from room
@@ -239,7 +233,6 @@ class LiveKitBridge:
             self._room = None
 
         self._video_source = None
-        self._audio_source = None
 
         if was_active:
             self._emit_session_event(active=False, room=self._room_name)
@@ -276,30 +269,6 @@ class LiveKitBridge:
             logger.debug("Video publish loop cancelled")
         except Exception:
             logger.exception("Video publish loop error")
-
-    async def _audio_publish_loop(self) -> None:
-        """Continuously read mic audio and publish as audio frames."""
-        logger.info("Audio publish loop started")
-        last_chunk_count = self._audio.chunk_count
-        try:
-            while self._active:
-                current_count = self._audio.chunk_count
-                if current_count > last_chunk_count:
-                    last_chunk_count = current_count
-                    chunk = self._audio.get_latest_chunk()
-                    if chunk and len(chunk) >= 2:
-                        try:
-                            frame = self._pcm_to_audio_frame(chunk)
-                            if frame and self._audio_source:
-                                await self._audio_source.capture_frame(frame)
-                        except Exception:
-                            logger.debug("Failed to convert/publish audio frame", exc_info=True)
-
-                await asyncio.sleep(AUDIO_PUBLISH_INTERVAL)
-        except asyncio.CancelledError:
-            logger.debug("Audio publish loop cancelled")
-        except Exception:
-            logger.exception("Audio publish loop error")
 
     # ------------------------------------------------------------------
     # Remote audio subscription
@@ -445,20 +414,6 @@ class LiveKitBridge:
             )
         except Exception:
             return None
-
-    @staticmethod
-    def _pcm_to_audio_frame(pcm_chunk: bytes) -> rtc.AudioFrame | None:
-        """Convert 16-bit LE mono PCM bytes to a LiveKit ``AudioFrame``."""
-        samples_per_channel = len(pcm_chunk) // 2
-        if samples_per_channel == 0:
-            return None
-
-        return rtc.AudioFrame(
-            data=pcm_chunk,
-            sample_rate=AUDIO_SAMPLE_RATE,
-            num_channels=AUDIO_CHANNELS,
-            samples_per_channel=samples_per_channel,
-        )
 
     # ------------------------------------------------------------------
     # Event bus
