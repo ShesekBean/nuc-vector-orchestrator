@@ -74,6 +74,7 @@ nuc-vector-orchestrator/
 │       │   ├── lift_controller.py  ← forklift height control with named presets
 │       │   ├── motor_controller.py ← cliff-safe differential drive (turn-then-drive planner)
 │       │   ├── expression_engine.py ← coordinated face + LED + sound expressions (emotion states)
+│       │   ├── intercom.py        ← Signal messaging client (photo + text to Ophir via intercom-server)
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
 │       │   └── events/            ← hybrid event system (SDK events + NUC bus)
 │       │       ├── event_types.py ← event type definitions + priorities
