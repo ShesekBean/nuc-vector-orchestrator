@@ -147,13 +147,13 @@ Tests OpenClaw → bridge → robot path. No physical robot motion needed.
 |---|------|--------|
 | 7.1 | OpenClaw gateway health | `curl localhost:18889/health` → 200 |
 | 7.2 | Signal send (Signal gate) | `pgm-signal-gate.sh test 0 "test"` → message sent |
-| 7.3 | Bridge health endpoint | `curl localhost:8081/health` → 200 + battery info |
-| 7.4 | Bridge → say_text | `POST /say {"text":"test"}` → robot speaks |
-| 7.5 | Bridge → LED | `POST /led {"r":0,"g":255,"b":0}` → green LED |
+| 7.3 | Bridge health endpoint | `curl localhost:8080/health` → 200 + battery info |
+| 7.4 | Bridge → say_text | `POST /audio/play {"text":"test"}` → robot speaks |
+| 7.5 | Bridge → LED | `POST /led {"hue":0.33,"saturation":1.0}` → green eye color |
 | 7.6 | PGM Signal prefixes | PGM messages start with `📊 PGM:` |
 | 7.7 | OpenClaw skill loaded | robot-control skill present in `~/.openclaw/workspace/skills/robot-control/SKILL.md` |
 | 7.8 | E2E Signal → robot LED | Send "robot led red" via Signal → OpenClaw agent activates skill → curl fires → robot eye color turns red |
-| 7.9 | E2E Signal → robot speak | Send "robot say hello" via Signal → OpenClaw agent → `say_text("hello")` → audio plays |
+| 7.9 | E2E Signal → robot speak | Send "robot say hello" via Signal → OpenClaw agent → `POST /audio/play` → `say_text("hello")` → audio plays |
 | 7.10 | E2E Signal → robot status | Send "robot status" via Signal → OpenClaw agent → `GET /health` → battery info returned in Signal reply |
 | 7.11 | Skill trigger guard | Send message WITHOUT "robot" keyword → skill does NOT activate, normal chat response |
 
