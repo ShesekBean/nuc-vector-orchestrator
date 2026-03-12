@@ -29,7 +29,6 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import struct as _struct
 import tempfile
 import wave
 from typing import TYPE_CHECKING, Any
@@ -61,23 +60,6 @@ AUDIO_CHANNELS = 1
 # Publishing intervals
 VIDEO_PUBLISH_INTERVAL = 1.0 / 15  # ~15 fps to match camera feed
 AUDIO_PUBLISH_INTERVAL = 0.02  # 20ms chunks (standard WebRTC)
-
-# SSH mic capture settings
-SSH_MIC_HOST = "vector"  # SSH alias for Vector robot
-SSH_MIC_DEVICE = "hw:0,0"  # MultiMedia1 (routed from TERT_MI2S_TX)
-SSH_MIC_RATE = 16_000
-SSH_MIC_CHANNELS = 2  # stereo endfire beamforming
-
-# tinymix commands to route DMIC → MultiMedia1 → TERT_MI2S_TX
-TINYMIX_MIC_SETUP = [
-    '"MultiMedia1 Mixer TERT_MI2S_TX" 1',
-    '"ADC1 Volume" 6',
-    '"DEC1 MUX" ADC1',
-    '"ADC3 Volume" 6',
-    '"DEC2 MUX" ADC2',
-    '"ADC2 MUX" INP3',
-    '"MI2S_TX Channels" Two',
-]
 
 # Reconnect settings
 MAX_RECONNECT_DELAY = 30.0
@@ -128,7 +110,6 @@ class LiveKitBridge:
         self._room_name = ""
         self._should_reconnect = False
         self._playing_audio = False  # guard against overlapping playback
-        self._ssh_mic_proc: asyncio.subprocess.Process | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -220,19 +201,15 @@ class LiveKitBridge:
         await self._room.local_participant.publish_track(video_track, video_opts)
         logger.info("Published video track (vector-camera)")
 
-        # Publish Vector mic via SSH arecord pipe (bypasses SDK AudioFeed
-        # which only provides signal_power calibration tone).
-        self._audio_source = rtc.AudioSource(SSH_MIC_RATE, AUDIO_CHANNELS)
-        audio_track = rtc.LocalAudioTrack.create_audio_track(
-            "vector-mic", self._audio_source
-        )
-        audio_opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
-        await self._room.local_participant.publish_track(audio_track, audio_opts)
-        logger.info("Published audio track (vector-mic via SSH)")
+        # NOTE: Vector mic audio is NOT published to LiveKit.
+        # The SDK's AudioFeed only provides signal_power (a 980Hz calibration
+        # tone), not actual microphone PCM.  Raw mic capture requires
+        # Qualcomm ADSP routing which is not accessible via the SDK.
+        # Audio flows ONE-WAY: user speaks → LiveKit → Vector speaker.
+        logger.info("Mic audio NOT published (SDK AudioFeed provides signal_power, not raw PCM)")
 
-        # Start publishing loops
+        # Start publishing loops (video only)
         self._video_task = asyncio.create_task(self._video_publish_loop())
-        self._audio_pub_task = asyncio.create_task(self._mic_publish_loop())
 
         self._active = True
         self._emit_session_event(active=True, room=room)
@@ -254,9 +231,6 @@ class LiveKitBridge:
         self._video_task = None
         self._audio_pub_task = None
         self._audio_sub_task = None
-
-        # Stop SSH mic subprocess
-        self._stop_ssh_mic()
 
         # Disconnect from room
         if self._room:
@@ -302,108 +276,44 @@ class LiveKitBridge:
         except Exception:
             logger.exception("Video publish loop error")
 
-    async def _mic_publish_loop(self) -> None:
-        """Stream Vector mic via SSH arecord and publish as LiveKit audio.
+    async def _audio_publish_loop(self) -> None:
+        """Read mic PCM from AudioClient subscriber queue and publish."""
+        import queue as _queue
 
-        Sets up ALSA mixer routing via tinymix, then spawns an async SSH
-        subprocess that pipes raw PCM from Vector's 4-mic beamforming
-        array.  Mixes stereo→mono and publishes 20ms frames.
-        """
-        logger.info("SSH mic publish loop starting")
-
-        # Step 1: configure ALSA mixer routing on Vector
-        try:
-            await self._setup_tinymix()
-        except Exception:
-            logger.exception("Failed to configure tinymix — mic won't work")
-            return
-
-        # Step 2: start async SSH arecord subprocess
-        arecord_cmd = (
-            f"arecord -D {SSH_MIC_DEVICE} -f S16_LE -r {SSH_MIC_RATE} "
-            f"-c {SSH_MIC_CHANNELS} -t raw -"
-        )
-        try:
-            self._ssh_mic_proc = await asyncio.create_subprocess_exec(
-                "ssh", SSH_MIC_HOST, arecord_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            logger.info("SSH mic capture started (PID %d)", self._ssh_mic_proc.pid)
-        except Exception:
-            logger.exception("Failed to start SSH mic capture")
-            return
-
-        # Step 3: read PCM from pipe, mix stereo→mono, publish to LiveKit
+        logger.info("Audio publish loop started")
+        q: _queue.Queue[bytes] = _queue.Queue(maxsize=200)
+        self._audio.subscribe_queue(q)
         published_count = 0
-        # 20ms of stereo 16-bit PCM at 16kHz = 16000*0.02*2ch*2bytes = 1280 bytes
-        chunk_bytes = int(SSH_MIC_RATE * AUDIO_PUBLISH_INTERVAL) * SSH_MIC_CHANNELS * 2
-
         try:
-            while self._active and self._ssh_mic_proc.returncode is None:
-                raw = await self._ssh_mic_proc.stdout.readexactly(chunk_bytes)
-                if not raw:
-                    break
-
-                # Mix stereo → mono (average both channels)
-                n_samples = len(raw) // 2
-                stereo = _struct.unpack(f"<{n_samples}h", raw)
-                mono = []
-                for i in range(0, n_samples - 1, SSH_MIC_CHANNELS):
-                    avg = (stereo[i] + stereo[i + 1]) // 2
-                    mono.append(avg)
-
-                if mono and self._audio_source:
-                    frame = rtc.AudioFrame(
-                        data=_struct.pack(f"<{len(mono)}h", *mono),
-                        sample_rate=SSH_MIC_RATE,
-                        num_channels=AUDIO_CHANNELS,
-                        samples_per_channel=len(mono),
-                    )
-                    await self._audio_source.capture_frame(frame)
-                    published_count += 1
-                    if published_count <= 5 or published_count % 500 == 0:
-                        max_amp = max(abs(s) for s in mono)
-                        avg_amp = sum(abs(s) for s in mono) // len(mono)
-                        logger.info(
-                            "Published mic frame #%d (%d mono samples, max=%d avg=%d)",
-                            published_count, len(mono), max_amp, avg_amp,
-                        )
-        except asyncio.IncompleteReadError:
-            logger.warning("SSH mic pipe closed unexpectedly")
-        except asyncio.CancelledError:
-            logger.debug("SSH mic publish loop cancelled")
-        except Exception:
-            logger.exception("SSH mic publish loop error")
-        finally:
-            self._stop_ssh_mic()
-            logger.info("SSH mic publish loop stopped (published %d frames)", published_count)
-
-    async def _setup_tinymix(self) -> None:
-        """Configure ALSA mixer routing on Vector via SSH tinymix."""
-        cmds = " && ".join(f"tinymix set {c}" for c in TINYMIX_MIC_SETUP)
-        proc = await asyncio.create_subprocess_exec(
-            "ssh", SSH_MIC_HOST, cmds,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
-        if proc.returncode != 0:
-            raise RuntimeError(f"tinymix setup failed: {stderr.decode()}")
-        logger.info("ALSA mixer routing configured on Vector")
-
-    def _stop_ssh_mic(self) -> None:
-        """Kill the SSH arecord subprocess."""
-        if self._ssh_mic_proc and self._ssh_mic_proc.returncode is None:
-            try:
-                self._ssh_mic_proc.terminate()
-            except Exception:
+            while self._active:
+                # Drain all available chunks without blocking the event loop
+                chunk: bytes | None = None
                 try:
-                    self._ssh_mic_proc.kill()
-                except Exception:
-                    pass
-            logger.info("SSH mic capture stopped")
-        self._ssh_mic_proc = None
+                    chunk = q.get_nowait()
+                except _queue.Empty:
+                    await asyncio.sleep(AUDIO_PUBLISH_INTERVAL)
+                    continue
+
+                if chunk and len(chunk) >= 2:
+                    try:
+                        frame = self._pcm_to_audio_frame(chunk)
+                        if frame and self._audio_source:
+                            await self._audio_source.capture_frame(frame)
+                            published_count += 1
+                            if published_count <= 3 or published_count % 500 == 0:
+                                logger.info(
+                                    "Published audio frame #%d (%d bytes PCM)",
+                                    published_count, len(chunk),
+                                )
+                    except Exception:
+                        logger.warning("Failed to publish audio frame", exc_info=True)
+        except asyncio.CancelledError:
+            logger.debug("Audio publish loop cancelled")
+        except Exception:
+            logger.exception("Audio publish loop error")
+        finally:
+            self._audio.unsubscribe_queue()
+            logger.info("Audio publish loop stopped (published %d frames)", published_count)
 
     # ------------------------------------------------------------------
     # Remote audio subscription
@@ -422,10 +332,10 @@ class LiveKitBridge:
             )
             return
 
-        # Ignore our own audio echoed back from a stale session
+        # Skip our own published tracks (identity starts with "vector-robot")
         if participant.identity.startswith("vector-robot"):
             logger.debug(
-                "Ignoring self audio track from %s", participant.identity
+                "Ignoring own audio track from %s", participant.identity
             )
             return
 
@@ -453,10 +363,8 @@ class LiveKitBridge:
         remote_sample_rate = 0
         frame_count = 0
 
-        # Silence detection threshold (pre-amplification).  Low enough to
-        # pass speech but above digital silence.  The playback guard
-        # (_playing_audio) prevents queue buildup even if noise passes.
-        SILENCE_THRESHOLD = 30
+        # Silence detection threshold — ignore chunks below this amplitude
+        SILENCE_THRESHOLD = 30  # skip near-silence to avoid blocking camera feed
 
         try:
             async for event in audio_stream:
@@ -480,7 +388,7 @@ class LiveKitBridge:
                 flush_bytes = remote_sample_rate * 2 * 2  # 2 sec of 16-bit mono
                 if len(pcm_buffer) >= flush_bytes:
                     # Check if buffer contains actual audio (not silence)
-                    if self._pcm_has_signal(pcm_buffer, SILENCE_THRESHOLD):
+                    if self._pcm_has_signal(pcm_buffer, SILENCE_THRESHOLD) and not self._playing_audio:
                         # Fire-and-forget: don't await so we don't block
                         # the audio receive loop. Playback runs in background.
                         asyncio.ensure_future(
@@ -490,7 +398,7 @@ class LiveKitBridge:
 
             # Flush remaining audio
             if pcm_buffer and remote_sample_rate:
-                if self._pcm_has_signal(pcm_buffer, SILENCE_THRESHOLD):
+                if self._pcm_has_signal(pcm_buffer, SILENCE_THRESHOLD) and not self._playing_audio:
                     asyncio.ensure_future(
                         self._play_pcm_on_vector(bytes(pcm_buffer), sample_rate=remote_sample_rate)
                     )
@@ -509,10 +417,9 @@ class LiveKitBridge:
         """
         if not pcm_data:
             return
-        # Skip if another chunk is already playing — prevents queue buildup
-        # that permanently blocks the camera (stream_wav_file takes behavior control).
+
         if self._playing_audio:
-            logger.debug("Skipping audio chunk — previous playback still in progress")
+            logger.debug("Skipping playback — already playing audio")
             return
 
         self._playing_audio = True

@@ -114,7 +114,7 @@ Voice interaction through OpenClaw Talk Mode — Vector agent handles everything
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 18 | [Mic audio streaming](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/18) | #3 | stuck | Raw `AudioFeed` gRPC from Vector's 4-mic beamforming array. 16kHz PCM. |
+| 18 | [Mic audio streaming](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/18) | #3 | stuck | Vector mic audio to NUC. SDK `AudioFeed` only returns metadata, not PCM. ALSA arecord doesn't work (mics go through ADSP, not kernel). Requires custom binary using `libaudio_engine.so` — see "Custom Vector Binaries" section. |
 | 19 | [Wake word detection](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/19) | #18 | stuck | OpenWakeWord "hey jarvis" on NUC. Gates audio send to OpenClaw. |
 | 20 | [OpenClaw Talk Mode integration](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/20) | #18, #19, #3 | stuck | **Core voice issue.** Pipes mic audio → OpenClaw Talk Mode (gpt-4o-transcribe STT → Vector agent → say_text()). All via OpenAI OAuth, zero API cost. Solves accent problem. |
 | 21 | [TTS via say_text()](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/21) | #3, #20 | stuck | Use Vector's built-in say_text() for speech output — no OpenAI TTS or PlayAudio needed. |
@@ -155,7 +155,7 @@ Connect Vector to Ophir via Signal messenger through OpenClaw.
 | 23 | [Port robot-control skill](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/23) | #32 | stuck | Update OpenClaw skill: HTTP curl → NUC bridge (localhost, not Jetson 192.168.1.71). |
 | 24 | [Intercom: photo + text](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/24) | #32, #13 | stuck | Capture photo, send to Ophir via Signal DM with scene description. |
 | 25 | [Intercom: voice to Signal](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/25) | #20, #22, #24 | stuck | "Tell Ophir I'm heading out" → Vector agent sends Signal DM. |
-| 31 | [LiveKit WebRTC session](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/31) | #10, #18, #32 | done | Live video + one-way audio (user → Vector speaker). Triggered via "robot call me" or /call/join-url endpoint. |
+| 31 | [LiveKit WebRTC session](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/31) | #10, #32 | done | Live video + one-way audio (user → Vector speaker, 20x amplified, 48→16kHz downsample). Triggered via "robot call me" or `/call/join-url` endpoint. Vector mic → LiveKit blocked on #18 (custom binary needed). Speaker playback disabled during calls (stream_wav_file blocks camera). |
 | 34 | [Physical test framework](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/34) | #32, #23 | stuck | Signal-based test checkpoints for physical robot verification. |
 
 **Phase 5 unlocks:** Full remote operation — control Vector via Signal or voice, see what it sees.
@@ -269,6 +269,33 @@ Both paths go through the same Vector agent with the same skills. Commands avail
 3. Agent loop picks up `assigned:worker` issues
 4. Worker handles full lifecycle: design → code → test → PR → merge
 5. PGM notifies Ophir on closures, blockers, milestones
+
+---
+
+### Custom Vector Binaries (cross-compiled for Snapdragon 212)
+
+Custom native binaries to run on Vector, enabling capabilities not available through the SDK or standard ALSA.
+
+| Feature | Why Custom Binary | Details |
+|---------|-------------------|---------|
+| **Mic audio streaming** | Vector's 4 DMIC mics are accessed through Qualcomm ADSP via `libaudio_engine.so` (FastRPC). The SDK's `AudioFeed` only returns metadata (signal_power), not raw PCM. Standard ALSA `arecord` cannot capture — TERT_MI2S (internal codec) gives white noise (no mics wired to ADC), QUAT_MI2S (external codec) gives I/O error (ADSP clocks not initialized through kernel ALSA). vic-anim owns the mic through ADSP, bypassing the kernel entirely. | Binary uses `libaudio_engine.so` to open mic via ADSP FastRPC, streams 16kHz PCM over TCP socket to NUC. Enables continuous mic audio for LiveKit calls and voice processing without wake word dependency. |
+| **Display arbitrary image** | SDK's `DisplayImage` gRPC accepts raw image data but the current API may have limitations for custom images. A native binary could write directly to the 184x96 OLED framebuffer for full control over what's displayed. | Binary accepts image data (e.g., via stdin or TCP) and writes to OLED display hardware. Enables custom faces, status screens, QR codes, etc. |
+
+**Build environment:**
+- Target: ARM (Qualcomm Snapdragon 212 / MSM8909, 32-bit ARMv7)
+- Cross-compiler: `arm-linux-gnueabihf-gcc` or Qualcomm/Yocto SDK toolchain
+- Vector OS: Yocto Linux (busybox userland)
+- Key libraries on Vector: `/anki/lib/libaudio_engine.so` (2.8MB, ADSP mic access), `/anki/lib/libAudioPlayer.so`, `/anki/lib/libutil_audio.so`
+- Deploy: SCP to Vector, run via SSH
+
+**Research done (2026-03-12):**
+- Confirmed mic path: Physical DMICs → QUAT_MI2S → External codec → ADSP → vic-anim (libaudio_engine.so via `/dev/adsprpc-smd`)
+- vic-anim does NOT use ALSA for mic capture (only `/dev/snd/pcmC0D0p` for speaker playback)
+- Audio already leaves Vector as beamformed Opus via vic-cloud → wire-pod gRPC (port 443), but only after wake word
+- See memory file `vector_mic_audio_research.md` for full ALSA debugging results
+- `/etc/audio_platform_info.xml` confirms QUAT_MI2S with external codec for built-in mic
+- `/etc/mixer_paths_msm8909_pm8916.xml` (active) routes audio-record to TERT_MI2S (wrong, no mics)
+- `/etc/mixer_paths_wcd9326_i2s.xml` (not loaded) has correct QUAT_MI2S routing
 
 ---
 
