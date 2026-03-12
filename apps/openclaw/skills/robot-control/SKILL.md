@@ -157,7 +157,7 @@ POST /call/stop
 If no active session:
 → {"status": "ok", "active": false, "message": "No active session"}
 ```
-Publishes Vector camera (640x360 ~15fps) as a LiveKit track (mic audio is not published — SDK lacks raw mic access).
+Publishes Vector camera (640x360 ~15fps) and mic audio (16kHz mono) as LiveKit tracks via AudioClient subscriber queue.
 Remote audio is played on Vector's speaker. Returns 503 if LiveKit bridge not initialised.
 
 ## Trigger Word: "robot"
