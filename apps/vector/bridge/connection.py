@@ -96,6 +96,8 @@ class ConnectionManager:
 
         import anki_vector
 
+        from apps.vector.src.camera.camera_client import CameraClient
+        from apps.vector.src.display_controller import DisplayController
         from apps.vector.src.events.nuc_event_bus import NucEventBus
         from apps.vector.src.head_controller import HeadController
         from apps.vector.src.led_controller import LedController
@@ -114,6 +116,10 @@ class ConnectionManager:
         self._lift_controller.start()
         self._led_controller = LedController(self._robot, self._nuc_bus)
         self._led_controller.start()
+        self._display_controller = DisplayController(self._robot, event_bus=self._nuc_bus)
+        self._display_controller.start()
+        self._camera_client = CameraClient(self._robot)
+        self._camera_client.start()
 
         self._connected = True
         logger.info("Connected to Vector successfully")
@@ -131,6 +137,8 @@ class ConnectionManager:
                 self._lift_controller.stop()
             if self._led_controller:
                 self._led_controller.stop()
+            if self._display_controller:
+                self._display_controller.stop()
             if self._camera_client:
                 self._camera_client.stop()
         except Exception:
