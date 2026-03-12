@@ -71,6 +71,7 @@ nuc-vector-orchestrator/
 │       │   ├── led_controller.py   ← eye color + animated LED patterns (priority-based state manager)
 │       │   ├── lift_controller.py  ← forklift height control with named presets
 │       │   ├── motor_controller.py ← cliff-safe differential drive (turn-then-drive planner)
+│       │   ├── expression_engine.py ← coordinated face + LED + sound expression orchestrator
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
 │       │   └── events/            ← hybrid event system (SDK events + NUC bus)
 │       │       ├── event_types.py ← event type definitions + priorities
@@ -130,6 +131,7 @@ nuc-vector-orchestrator/
 │   │   ├── test_phase8_agentloop.py ← agent loop health checks
 │   │   └── test_phase9_eventbus.py  ← event bus integration
 │   └── vector/                    ← Vector-specific tests
+│       └── test_expression_engine.py ← expression engine unit tests
 ├── .claude/                       ← Claude Code configuration
 │   ├── CLAUDE.md                  ← project config
 │   └── agents/                    ← agent role definitions
