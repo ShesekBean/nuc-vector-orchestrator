@@ -64,7 +64,11 @@ nuc-vector-orchestrator/
 │       │   ├── planner/           ← PD controller → gRPC motor commands
 │       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
 │       │   ├── camera/            ← gRPC camera feed consumer
+│       │   ├── display_controller.py ← OLED display image/text rendering
 │       │   ├── head_controller.py  ← head servo angle control with safety clamping
+│       │   ├── led_controller.py   ← eye color + animated LED patterns (priority-based state manager)
+│       │   ├── lift_controller.py  ← forklift height control with named presets
+│       │   ├── motor_controller.py ← cliff-safe differential drive (turn-then-drive planner)
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
 │       │   └── events/            ← hybrid event system (SDK events + NUC bus)
 │       │       ├── event_types.py ← event type definitions + priorities
