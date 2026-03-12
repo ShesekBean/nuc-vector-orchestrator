@@ -14,8 +14,6 @@ import pytest
 from apps.vector.src.events.event_types import LIVEKIT_SESSION
 from apps.vector.src.events.nuc_event_bus import NucEventBus
 from apps.vector.src.livekit_bridge import (
-    AUDIO_CHANNELS,
-    AUDIO_SAMPLE_RATE,
     DEFAULT_LIVEKIT_URL,
     FRAME_HEIGHT,
     FRAME_WIDTH,
@@ -142,28 +140,10 @@ class TestFrameConversion:
         frame = LiveKitBridge._jpeg_to_video_frame(b"")
         assert frame is None
 
-    def test_pcm_to_audio_frame_valid(self):
-        """Valid PCM should produce an AudioFrame."""
-        import struct
-        # 160 samples (10ms at 16kHz)
-        samples = [0] * 160
-        pcm = struct.pack(f"<{len(samples)}h", *samples)
-
-        frame = LiveKitBridge._pcm_to_audio_frame(pcm)
-        assert frame is not None
-        assert frame.sample_rate == AUDIO_SAMPLE_RATE
-        assert frame.num_channels == AUDIO_CHANNELS
-        assert frame.samples_per_channel == 160
-
-    def test_pcm_to_audio_frame_empty(self):
-        """Empty PCM should return None."""
-        frame = LiveKitBridge._pcm_to_audio_frame(b"")
-        assert frame is None
-
-    def test_pcm_to_audio_frame_single_byte(self):
-        """Single byte (not a complete sample) should return None."""
-        frame = LiveKitBridge._pcm_to_audio_frame(b"\x00")
-        assert frame is None
+    # NOTE: _pcm_to_audio_frame tests removed — method was deleted when
+    # mic audio publishing was removed (SDK AudioFeed provides signal_power
+    # calibration tone, not raw PCM).  Audio is now receive-only via
+    # _remote_audio_loop → _play_pcm_on_vector.
 
 
 # ---------------------------------------------------------------------------
@@ -276,11 +256,11 @@ class TestLifecycle:
             await asyncio.sleep(3600)
 
         bridge._video_task = asyncio.create_task(_forever())
-        bridge._audio_pub_task = asyncio.create_task(_forever())
+        bridge._audio_sub_task = asyncio.create_task(_forever())
         bridge._active = True
 
         await bridge._cleanup()
 
         assert bridge._video_task is None
-        assert bridge._audio_pub_task is None
+        assert bridge._audio_sub_task is None
         assert not bridge.is_active
