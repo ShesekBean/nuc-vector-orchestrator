@@ -247,3 +247,51 @@ class TestReconnect:
         client._streaming = False  # simulate already stopped
         client.stop()
         assert not client.is_streaming
+
+
+# ---------------------------------------------------------------------------
+# clear_buffer (echo suppression support)
+# ---------------------------------------------------------------------------
+
+class TestClearBuffer:
+    def test_clears_chunks_and_timestamps(self):
+        robot = _mock_robot()
+        client = AudioClient(robot, buffer_size=10)
+
+        # Fill with data
+        for _ in range(5):
+            resp = MagicMock()
+            resp.signal_power = _make_pcm_bytes(1600)
+            resp.source_direction = 0
+            resp.source_confidence = 0
+            client._process_response(resp)
+
+        assert client.chunk_count == 5
+        assert len(client.get_audio_buffer()) == 5
+
+        client.clear_buffer()
+
+        assert client.get_audio_buffer() == []
+        assert client.get_latest_chunk() is None
+        # chunk_count preserved for continuity
+        assert client.chunk_count == 5
+
+    def test_clear_empty_buffer_is_safe(self):
+        robot = _mock_robot()
+        client = AudioClient(robot, buffer_size=5)
+        client.clear_buffer()  # should not raise
+        assert client.get_audio_buffer() == []
+
+    def test_read_pcm_empty_after_clear(self):
+        robot = _mock_robot()
+        client = AudioClient(robot, buffer_size=10)
+
+        for _ in range(3):
+            resp = MagicMock()
+            resp.signal_power = _make_pcm_bytes(1600)
+            resp.source_direction = 0
+            resp.source_confidence = 0
+            client._process_response(resp)
+
+        client.clear_buffer()
+        assert client.read_pcm(1.0) == b""
