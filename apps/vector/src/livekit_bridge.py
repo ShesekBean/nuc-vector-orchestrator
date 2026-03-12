@@ -109,6 +109,7 @@ class LiveKitBridge:
         self._active = False
         self._room_name = ""
         self._should_reconnect = False
+        self._playing_audio = False  # guard against overlapping playback
 
     # ------------------------------------------------------------------
     # Public API
@@ -355,8 +356,10 @@ class LiveKitBridge:
         remote_sample_rate = 0
         frame_count = 0
 
-        # Silence detection threshold — ignore chunks below this amplitude
-        SILENCE_THRESHOLD = 10  # only skip true digital silence (all zeros)
+        # Silence detection threshold (pre-amplification).  Low enough to
+        # pass speech but above digital silence.  The playback guard
+        # (_playing_audio) prevents queue buildup even if noise passes.
+        SILENCE_THRESHOLD = 30
 
         try:
             async for event in audio_stream:
@@ -409,7 +412,13 @@ class LiveKitBridge:
         """
         if not pcm_data:
             return
+        # Skip if another chunk is already playing — prevents queue buildup
+        # that permanently blocks the camera (stream_wav_file takes behavior control).
+        if self._playing_audio:
+            logger.debug("Skipping audio chunk — previous playback still in progress")
+            return
 
+        self._playing_audio = True
         loop = asyncio.get_running_loop()
 
         def _write_and_play() -> None:
@@ -469,6 +478,8 @@ class LiveKitBridge:
             await loop.run_in_executor(None, _write_and_play)
         except Exception:
             logger.debug("Failed to play remote audio on Vector", exc_info=True)
+        finally:
+            self._playing_audio = False
 
     # ------------------------------------------------------------------
     # Room event handlers
