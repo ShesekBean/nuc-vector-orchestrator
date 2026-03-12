@@ -439,6 +439,15 @@ class LiveKitBridge:
                 frames = _struct.pack(f"<{len(dst)}h", *dst)
                 play_rate = AUDIO_SAMPLE_RATE
 
+            # Amplify quiet mic signal — LiveKit audio is typically very low
+            # amplitude (~100 out of 32767).  Apply gain to make it audible.
+            _GAIN = 20
+            n_samples = len(frames) // 2
+            if n_samples > 0:
+                samples = _struct.unpack(f"<{n_samples}h", frames)
+                amplified = [max(-32768, min(32767, s * _GAIN)) for s in samples]
+                frames = _struct.pack(f"<{n_samples}h", *amplified)
+
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_path = tmp.name
                 with wave.open(tmp, "wb") as wf:
@@ -448,7 +457,7 @@ class LiveKitBridge:
                     wf.writeframes(frames)
 
             try:
-                self._robot.audio.stream_wav_file(tmp_path)
+                self._robot.audio.stream_wav_file(tmp_path, volume=100)
             finally:
                 import os
                 try:
