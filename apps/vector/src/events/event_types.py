@@ -28,6 +28,7 @@ WAKE_WORD_DETECTED = "wake_word_detected"
 LIFT_HEIGHT_CHANGED = "lift_height_changed"
 LED_STATE_CHANGED = "led_state_changed"
 SLAM_POSE_UPDATED = "slam_pose_updated"
+EXPRESSION_CHANGED = "expression_changed"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -197,3 +198,12 @@ class SlamPoseUpdatedEvent:
     landmark_count: int  # total stored landmarks
     loop_closures: int  # total loop closures detected
     free_cells: int  # free cells in occupancy grid
+
+
+@dataclass(frozen=True)
+class ExpressionChangedEvent:
+    """Emitted when the expression engine transitions to a new emotion."""
+
+    emotion: str  # "happy", "curious", "sad", "excited", "sleepy", "startled", "idle"
+    previous_emotion: str | None = None
+    trigger: str = ""  # event or API call that caused the change
