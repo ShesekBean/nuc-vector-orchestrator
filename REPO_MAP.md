@@ -71,6 +71,7 @@ nuc-vector-orchestrator/
 │       │   ├── led_controller.py   ← eye color + animated LED patterns (priority-based state manager)
 │       │   ├── lift_controller.py  ← forklift height control with named presets
 │       │   ├── motor_controller.py ← cliff-safe differential drive (turn-then-drive planner)
+│       │   ├── expression_engine.py ← coordinated face + LED + sound expressions (emotion states)
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
 │       │   └── events/            ← hybrid event system (SDK events + NUC bus)
 │       │       ├── event_types.py ← event type definitions + priorities
