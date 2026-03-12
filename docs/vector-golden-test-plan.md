@@ -151,6 +151,11 @@ Tests OpenClaw → bridge → robot path. No physical robot motion needed.
 | 7.4 | Bridge → say_text | `POST /say {"text":"test"}` → robot speaks |
 | 7.5 | Bridge → LED | `POST /led {"r":0,"g":255,"b":0}` → green LED |
 | 7.6 | PGM Signal prefixes | PGM messages start with `📊 PGM:` |
+| 7.7 | OpenClaw skill loaded | robot-control skill present in `~/.openclaw/workspace/skills/robot-control/SKILL.md` |
+| 7.8 | E2E Signal → robot LED | Send "robot led red" via Signal → OpenClaw agent activates skill → curl fires → robot eye color turns red |
+| 7.9 | E2E Signal → robot speak | Send "robot say hello" via Signal → OpenClaw agent → `say_text("hello")` → audio plays |
+| 7.10 | E2E Signal → robot status | Send "robot status" via Signal → OpenClaw agent → `GET /health` → battery info returned in Signal reply |
+| 7.11 | Skill trigger guard | Send message WITHOUT "robot" keyword → skill does NOT activate, normal chat response |
 
 ---
 
@@ -218,7 +223,7 @@ python3 -m pytest tests/golden/ -v --timeout=180 -k "phase0 or phase1 or phase2 
 
 ---
 
-## Total: ~3.5 minutes, 80+ assertions
+## Total: ~4 minutes, 89 assertions
 
 | Phase | Tests | Time | Needs Robot | Needs Person |
 |-------|-------|------|-------------|--------------|
@@ -229,9 +234,9 @@ python3 -m pytest tests/golden/ -v --timeout=180 -k "phase0 or phase1 or phase2 
 | 4 — Voice | 7 | 30s | Yes (mic) | No |
 | 5 — Movement | 10 | 35s | Yes | No |
 | 6 — Following | 10 | 40s | Yes | Yes |
-| 7 — Signal | 6 | 18s | No* | No |
+| 7 — Signal + OpenClaw E2E | 11 | 30s | Yes | No |
 | 8 — Agent loop | 7 | 12s | No | No |
 | 9 — Event bus | 5 | 8s | No | No |
-| **Total** | **84** | **~235s** | | |
+| **Total** | **89** | **~247s** | | |
 
-*Phase 7 tests bridge endpoints which may need robot for full validation.
+*Phase 7 E2E tests send actual Signal messages and verify robot response — needs robot powered on.
