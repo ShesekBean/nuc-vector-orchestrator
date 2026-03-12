@@ -113,6 +113,7 @@ nuc-vector-orchestrator/
 │   └── ...                        ← other utility scripts
 ├── infra/                         ← runtime environment configuration
 │   ├── vector/                    ← Vector infra (wire-pod config, OSKR setup)
+│   │   └── web-setup/            ← Local mirror of vector-web-setup.anki.bot (BLE pairing)
 │   ├── docker/                    ← Signal gateway Docker setup
 │   ├── systemd/                   ← Service units
 │   ├── dns/                       ← NUC dnsmasq

@@ -12,13 +12,13 @@ How to set up Vector 2.0 (OSKR) with wire-pod on the NUC from scratch. Written f
 ## Step 1: Connect Vector to WiFi via BLE
 
 1. Put Vector in pairing mode: hold his back button for ~15 seconds until he shows a pairing screen
-2. Open **https://vector-web-setup.anki.bot** in Chrome (requires Bluetooth)
+2. Open **https://vector-web-setup.anki.bot** in Chrome (requires Bluetooth). If the site is down, use the local mirror: `bash infra/vector/web-setup/serve.sh` then open `http://localhost:8000`
 3. Click "Pair with Vector" and select your Vector from the Bluetooth dialog
 4. Enter the 6-digit PIN shown on Vector's screen
 5. Select your WiFi network and enter the password
 6. Wait for Vector to confirm connection
 
-**Note:** wire-pod's built-in BLE setup (`http://localhost:8080/setup.html`) can also work, but the official Anki site was more reliable in our experience. wire-pod's `rts-patched.js` needs a `case 7:` mapping to `RtsV5Handler` for RTS v7 Vectors.
+**Note:** wire-pod's built-in BLE setup (`http://localhost:8080/setup.html`) can also work, but the official Anki site was more reliable in our experience. wire-pod's `rts-patched.js` needs a `case 7:` mapping to `RtsV5Handler` for RTS v7 Vectors. A local mirror of the Anki site is at `infra/vector/web-setup/` in case the upstream goes down.
 
 ## Step 2: Recover the OSKR SSH Key (if not saved)
 
