@@ -65,10 +65,13 @@ def create_app(conn: ConnectionManager | None = None) -> web.Application:
 
 
 async def on_startup(app: web.Application) -> None:
-    """Connect to Vector on server startup."""
+    """Connect to Vector on server startup (runs in executor to avoid blocking)."""
+    import asyncio
+
     conn: ConnectionManager = app["conn"]
+    loop = asyncio.get_running_loop()
     try:
-        conn.connect()
+        await loop.run_in_executor(None, conn.connect)
         logger.info("Vector bridge connected and ready")
     except Exception:
         logger.exception(
@@ -79,8 +82,11 @@ async def on_startup(app: web.Application) -> None:
 
 async def on_shutdown(app: web.Application) -> None:
     """Disconnect from Vector on server shutdown."""
+    import asyncio
+
     conn: ConnectionManager = app["conn"]
-    conn.disconnect()
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, conn.disconnect)
     logger.info("Vector bridge disconnected")
 
 

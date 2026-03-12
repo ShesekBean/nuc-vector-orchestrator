@@ -6,12 +6,12 @@ all controller objects.  Handles disconnect and reconnect.
 Usage::
 
     mgr = ConnectionManager()
-    await mgr.connect()        # call once at startup
+    mgr.connect()              # call once at startup
     robot = mgr.robot           # anki_vector.Robot
     mgr.motor_controller        # MotorController (cliff-safe)
     mgr.head_controller         # HeadController
     ...
-    await mgr.disconnect()
+    mgr.disconnect()
 """
 
 from __future__ import annotations

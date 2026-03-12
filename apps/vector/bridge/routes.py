@@ -35,7 +35,7 @@ def _require_connected(conn: ConnectionManager) -> web.Response | None:
 
 async def _run_sync(func, *args):
     """Run a synchronous function in the default executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, func, *args)
 
 
