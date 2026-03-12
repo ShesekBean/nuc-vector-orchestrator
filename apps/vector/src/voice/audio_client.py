@@ -194,9 +194,10 @@ class AudioClient:
         track processed chunk IDs.
         """
         with self._lock:
+            n = len(self._chunks)
             self._chunks.clear()
             self._timestamps.clear()
-        logger.debug("Audio buffer cleared (%d chunks discarded)", self._buffer_size)
+        logger.debug("Audio buffer cleared (%d chunks discarded)", n)
 
     def set_connection_lost_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback invoked when the robot connection drops."""
