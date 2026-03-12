@@ -199,18 +199,15 @@ class LiveKitBridge:
         await self._room.local_participant.publish_track(video_track, video_opts)
         logger.info("Published video track (vector-camera)")
 
-        # Create and publish audio track (mic loopback — picks up Vector speaker)
-        self._audio_source = rtc.AudioSource(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
-        audio_track = rtc.LocalAudioTrack.create_audio_track(
-            "vector-mic", self._audio_source
-        )
-        audio_opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
-        await self._room.local_participant.publish_track(audio_track, audio_opts)
-        logger.info("Published audio track (vector-mic)")
+        # NOTE: Vector mic audio is NOT published to LiveKit.
+        # The SDK's AudioFeed only provides signal_power (a 980Hz calibration
+        # tone), not actual microphone PCM.  Raw mic capture requires
+        # Qualcomm ADSP routing which is not accessible via the SDK.
+        # Audio flows ONE-WAY: user speaks → LiveKit → Vector speaker.
+        logger.info("Mic audio NOT published (SDK AudioFeed provides signal_power, not raw PCM)")
 
-        # Start publishing loops
+        # Start publishing loops (video only)
         self._video_task = asyncio.create_task(self._video_publish_loop())
-        self._audio_pub_task = asyncio.create_task(self._audio_publish_loop())
 
         self._active = True
         self._emit_session_event(active=True, room=room)
@@ -350,8 +347,8 @@ class LiveKitBridge:
         logger.info("Remote audio loop started for %s", participant_id)
         audio_stream = rtc.AudioStream(track)
         pcm_buffer = bytearray()
-        # Accumulate ~1 second of audio before playing to reduce overhead
-        flush_bytes = AUDIO_SAMPLE_RATE * 2  # 1 sec of 16-bit mono at 16kHz
+        remote_sample_rate = 0
+        frame_count = 0
 
         try:
             async for event in audio_stream:
@@ -359,15 +356,27 @@ class LiveKitBridge:
                     break
 
                 frame: rtc.AudioFrame = event.frame
-                pcm_buffer.extend(frame.data)
+                frame_count += 1
+                if frame_count <= 3:
+                    logger.info(
+                        "Remote audio frame #%d: sample_rate=%d, channels=%d, "
+                        "samples_per_channel=%d, data_len=%d",
+                        frame_count, frame.sample_rate, frame.num_channels,
+                        frame.samples_per_channel, len(bytes(frame.data)),
+                    )
+                if remote_sample_rate == 0:
+                    remote_sample_rate = frame.sample_rate
+                pcm_buffer.extend(bytes(frame.data))
 
+                # Accumulate ~1 second of audio before playing
+                flush_bytes = remote_sample_rate * 2  # 1 sec of 16-bit mono
                 if len(pcm_buffer) >= flush_bytes:
-                    await self._play_pcm_on_vector(bytes(pcm_buffer))
+                    await self._play_pcm_on_vector(bytes(pcm_buffer), sample_rate=remote_sample_rate)
                     pcm_buffer.clear()
 
             # Flush remaining audio
-            if pcm_buffer:
-                await self._play_pcm_on_vector(bytes(pcm_buffer))
+            if pcm_buffer and remote_sample_rate:
+                await self._play_pcm_on_vector(bytes(pcm_buffer), sample_rate=remote_sample_rate)
         except asyncio.CancelledError:
             logger.debug("Remote audio loop cancelled")
         except Exception:
@@ -375,21 +384,51 @@ class LiveKitBridge:
         finally:
             await audio_stream.aclose()
 
-    async def _play_pcm_on_vector(self, pcm_data: bytes) -> None:
-        """Write PCM to a temp WAV file and stream to Vector speaker."""
+    async def _play_pcm_on_vector(self, pcm_data: bytes, sample_rate: int = AUDIO_SAMPLE_RATE) -> None:
+        """Write PCM to a temp WAV file and stream to Vector speaker.
+
+        Vector only supports 8000-16025 Hz.  If *sample_rate* is higher,
+        downsample to 16 000 Hz via linear interpolation before playing.
+        """
         if not pcm_data:
             return
 
         loop = asyncio.get_running_loop()
 
         def _write_and_play() -> None:
+            import struct as _struct
+
+            play_rate = sample_rate
+            frames = pcm_data
+
+            # Downsample to 16 kHz if needed (Vector max is 16025 Hz)
+            if sample_rate > 16025:
+                n_src = len(pcm_data) // 2
+                if n_src == 0:
+                    return
+                src = _struct.unpack(f"<{n_src}h", pcm_data)
+                ratio = sample_rate / AUDIO_SAMPLE_RATE
+                n_dst = int(n_src / ratio)
+                dst = []
+                for i in range(n_dst):
+                    pos = i * ratio
+                    idx = int(pos)
+                    frac = pos - idx
+                    if idx + 1 < n_src:
+                        sample = src[idx] + frac * (src[idx + 1] - src[idx])
+                    else:
+                        sample = src[idx]
+                    dst.append(max(-32768, min(32767, int(round(sample)))))
+                frames = _struct.pack(f"<{len(dst)}h", *dst)
+                play_rate = AUDIO_SAMPLE_RATE
+
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_path = tmp.name
                 with wave.open(tmp, "wb") as wf:
                     wf.setnchannels(AUDIO_CHANNELS)
                     wf.setsampwidth(2)
-                    wf.setframerate(AUDIO_SAMPLE_RATE)
-                    wf.writeframes(pcm_data)
+                    wf.setframerate(play_rate)
+                    wf.writeframes(frames)
 
             try:
                 self._robot.audio.stream_wav_file(tmp_path)
