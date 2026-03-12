@@ -299,7 +299,6 @@ class TestVoiceBridgeInit:
         assert bridge._max_listen_sec == 5.0
         assert bridge._silence_threshold == 500
         assert bridge._silence_duration_sec == 2.0
-        assert bridge._max_response_chars == 200
 
 
 # ---------------------------------------------------------------------------
@@ -517,8 +516,9 @@ class TestInteractionPipeline:
 # ---------------------------------------------------------------------------
 
 
-class TestResponseTruncation:
-    def test_long_response_truncated(self):
+class TestResponseHandling:
+    def test_long_response_passed_through(self):
+        """Long responses are no longer truncated — SpeechOutput chunks them."""
         bus = NucEventBus()
         audio = _mock_audio_client()
         bridge = OpenClawVoiceBridge(
@@ -543,10 +543,10 @@ class TestResponseTruncation:
         ):
             result = bridge._query_openclaw("test")
 
-        assert len(result) == 20
-        assert result.endswith("...")
+        # Full response returned — chunking handled by SpeechOutput.speak()
+        assert len(result) == 50
 
-    def test_short_response_not_truncated(self):
+    def test_short_response_returned_as_is(self):
         bus = NucEventBus()
         audio = _mock_audio_client()
         bridge = OpenClawVoiceBridge(

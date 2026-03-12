@@ -29,12 +29,11 @@ from urllib.request import Request, urlopen
 from apps.vector.src.events.event_types import (
     COMMAND_RECEIVED,
     STT_RESULT,
-    TTS_PLAYING,
     WAKE_WORD_DETECTED,
     CommandReceivedEvent,
     SttResultEvent,
-    TtsPlayingEvent,
 )
+from apps.vector.src.voice.speech_output import SpeechOutput
 
 if TYPE_CHECKING:
     from apps.vector.src.events.nuc_event_bus import NucEventBus
@@ -235,7 +234,11 @@ class OpenClawVoiceBridge:
         self._max_listen_sec = max_listen_sec
         self._silence_threshold = silence_threshold
         self._silence_duration_sec = silence_duration_sec
-        self._max_response_chars = max_response_chars
+
+        # Speech output (delegates say_text + chunking + events)
+        self._speech = SpeechOutput(
+            nuc_bus, robot, max_chunk_chars=max_response_chars
+        )
 
         # State machine
         self._state = BridgeState.IDLE
@@ -463,38 +466,17 @@ class OpenClawVoiceBridge:
             logger.error("OpenClaw hooks token not configured")
             return ""
 
-        response = _send_to_openclaw(
+        return _send_to_openclaw(
             text, self._hooks_url, self._hooks_token
         )
 
-        if len(response) > self._max_response_chars:
-            response = response[: self._max_response_chars - 3] + "..."
-            logger.debug(
-                "Response truncated to %d chars", self._max_response_chars
-            )
-
-        return response
-
     # ------------------------------------------------------------------
-    # Internal: TTS via say_text()
+    # Internal: TTS via SpeechOutput
     # ------------------------------------------------------------------
 
     def _speak(self, text: str) -> None:
-        """Speak text through Vector's built-in TTS."""
-        if self._robot is None:
-            logger.warning("No robot connected — cannot speak")
-            return
-
-        self._bus.emit(TTS_PLAYING, TtsPlayingEvent(playing=True, text=text))
-
-        try:
-            self._robot.behavior.say_text(text)
-        except Exception:
-            logger.exception("say_text() failed")
-        finally:
-            self._bus.emit(
-                TTS_PLAYING, TtsPlayingEvent(playing=False, text=text)
-            )
+        """Speak text through Vector's built-in TTS via SpeechOutput."""
+        self._speech.speak(text)
 
     # ------------------------------------------------------------------
     # Internal: config helpers
