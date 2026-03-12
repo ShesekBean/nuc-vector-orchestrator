@@ -287,8 +287,10 @@ class LiveKitBridge:
         published_count = 0
         try:
             while self._active:
+                # Drain all available chunks without blocking the event loop
+                chunk: bytes | None = None
                 try:
-                    chunk = q.get(timeout=0.05)
+                    chunk = q.get_nowait()
                 except _queue.Empty:
                     await asyncio.sleep(AUDIO_PUBLISH_INTERVAL)
                     continue
