@@ -217,6 +217,8 @@ class TestLifecycle:
             assert bridge.is_active
             assert bridge.room_name == "test-room"
             mock_room.connect.assert_called_once()
+            # Should publish both video and audio tracks
+            assert mock_room.local_participant.publish_track.call_count == 2
 
             # Cleanup
             await bridge.stop()
