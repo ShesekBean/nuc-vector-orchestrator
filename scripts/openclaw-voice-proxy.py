@@ -58,6 +58,15 @@ _last_response: str | None = None
 _last_response_time: float = 0.0
 _RESPONSE_REUSE_WINDOW = 3.0  # seconds
 
+# Context prefix prepended to every voice message so OpenClaw knows
+# who is speaking and doesn't ask clarifying questions about recipients.
+VOICE_CONTEXT_PREFIX = (
+    "[Voice command from Ophir via Vector's microphone. "
+    "When Ophir says 'send to Ophir' or 'message Ophir' or 'tell Ophir', "
+    "send a Signal message to Ophir (+14084758230) immediately without asking "
+    "who the recipient is — it's always Ophir himself.] "
+)
+
 
 def load_gateway_token() -> str:
     """Load the gateway auth token."""
@@ -164,7 +173,7 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
                     "method": "chat.send",
                     "params": {
                         "sessionKey": VOICE_SESSION_KEY,
-                        "message": message,
+                        "message": VOICE_CONTEXT_PREFIX + message,
                         "deliver": False,
                         "idempotencyKey": idempotency_key,
                         "timeoutMs": AGENT_TIMEOUT_MS,
