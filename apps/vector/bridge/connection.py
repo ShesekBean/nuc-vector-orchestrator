@@ -252,11 +252,19 @@ class ConnectionManager:
 
         self._mode = mode
 
+    @staticmethod
+    def _voltage_to_percent(volts: float) -> int:
+        """Estimate battery percentage from LiPo voltage (3.4V–4.2V)."""
+        pct = (volts - 3.4) / (4.2 - 3.4) * 100
+        return max(0, min(100, int(round(pct))))
+
     def get_battery_state(self) -> dict:
         """Read battery state and return as dict."""
         batt = self.robot.get_battery_state()
+        volts = round(batt.battery_volts, 2)
         return {
-            "voltage": round(batt.battery_volts, 2),
+            "voltage": volts,
+            "percent": self._voltage_to_percent(volts),
             "level": batt.battery_level,
             "is_charging": batt.is_charging,
             "is_on_charger": batt.is_on_charger_platform,
