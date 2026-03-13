@@ -1,176 +1,92 @@
-# vic-anim Firmware Patch Research
+# DisplayFaceImageRGB Crash Research
 
 ## Problem
 
-`DisplayFaceImageRGB` gRPC call crashes vic-engine on Vector 2.0 OSKR firmware 2.0.1.6091 every time. Error 914 (NO_ENGINE_PROCESS) or 915 (NO_ENGINE_COMMS).
+`DisplayFaceImageRGB` gRPC call crashes **vic-engine** on Vector 2.0 OSKR firmware (both WireOS 3.0.1.32 and DDL 2.0.1.6091). After 2-3 images, vic-engine crashes with heap corruption. Error 914/915 (NO_ENGINE_PROCESS / NO_ENGINE_COMMS).
 
 **GitHub Issue:** #129
 
 ---
 
-## Root Cause
+## Root Cause — CONFIRMED
 
-Race condition / use-after-free bug in `AnimationStreamer` (vic-anim process).
+**Heap corruption in vic-engine** (C++ binary), NOT vic-anim.
 
-### Source Code (digital-dream-labs/vector)
+### Evidence
 
-Key files:
-- `animProcess/src/cozmoAnim/animation/animationStreamer.cpp` (2157 lines)
-- `animProcess/src/cozmoAnim/animation/animationStreamer.h`
-- `animProcess/src/cozmoAnim/faceDisplay/faceDisplay.cpp` (283 lines)
-- `cannedAnimLib/proceduralFace/proceduralFace.cpp` (787 lines)
+Three crash types observed, all pointing to heap corruption:
+1. `double free or corruption (out)` — glibc detects corrupted chunk metadata
+2. `malloc(): corrupted top size` — glibc detects corrupted heap top chunk
+3. Both occur in vic-engine (logwrapper PID), not vic-anim
 
-### The Bug
+### Reproduction
 
-1. `_proceduralAnimation` pointer has **NO mutex** protecting it
-2. `FaceDisplay::DrawFaceLoop()` runs in a separate thread with its own synchronization
-3. When `DisplayFaceImageRGB` arrives, it modifies `_proceduralAnimation` while the draw thread may be using it
-4. Source code admits the hack (line 764):
-   ```cpp
-   // Hack: if _streamingAnimation == _proceduralAnimation, the subsequent
-   // CopyIntoProceduralAnimation call will delete *_streamingAnimation
-   // without assigning it to nullptr. This assignment prevents associated
-   // undefined behavior
-   _streamingAnimation = _neutralFaceAnimation;
-   ```
+100% reproducible:
+1. Connect to Vector via SDK
+2. Send 2-3 `DisplayFaceImageRGB` calls (solid color images, 184x96 RGB565)
+3. vic-engine crashes with heap corruption
+4. vic-anim detects engine is gone → fault code 915
 
-### DisplayFaceImageRGB Processing Path
+Tested with:
+- Behavior control: Still crashes
+- Longer delays (5s between images): Still crashes
+- Reconnecting between images: Still crashes (even faster)
+- With patched vs unpatched vic-anim: Same crash (confirms issue is in vic-engine)
+
+### Data Flow
 
 ```
-Gateway receives DisplayFaceImageRGB gRPC
-  → Splits into 30 chunks (600 uint16 each = 17,664 pixels total)
-  → Sends via CLAD to vic-anim
+SDK sends DisplayFaceImageRGBRequest via gRPC (port 443)
+  → vic-cloud (Go gateway) receives it
+  → Go: SendFaceDataAsChunks() splits into 30 CLAD chunks (600 uint16 each)
+  → Each chunk sent via UNIX domain socket to vic-engine
+  → vic-engine: AnimationComponent::HandleMessage(DisplayFaceImageRGBChunk)
+    ├─ _oledImageBuilder->AddDataChunk() — assembles chunks
+    ├─ When all 30 received: creates ImageRGB565 (cv::Mat allocation)
+    ├─ DisplayFaceImage() → DisplayFaceImageHelper()
+    │   └─ Re-chunks into 30 RobotInterface::DisplayFaceImageRGBChunk
+    │   └─ Sends each via IPC to vic-anim
+    └─ _oledImageBuilder->Clear()
 
-AnimationStreamer::Process_displayFaceImageRGBChunk (line 724-754)
-  ├─ Accumulates chunks into _faceImageRGB565 buffer
-  ├─ When all 30 chunks received (bitmask == 0x3fffffff):
-  │   └─ Creates ImageRGBA from RGB565
-  │   └─ Wraps in SpriteWrapper shared_ptr
-  │   └─ Calls SetFaceImage(handle, false, duration_ms)
-  └─ SetFaceImage() (line 838-850):
-      └─ Sets face image override on _proceduralAnimation  ← NO LOCK
-      └─ If _streamingAnimation != _proceduralAnimation:
-         └─ Calls SetStreamingAnimation(_proceduralAnimation, ...)
-
-Meanwhile, in another thread:
-AnimationStreamer::Update()
-  └─ ExtractAnimationMessages()
-     └─ Uses _proceduralAnimation  ← RACE CONDITION
+vic-anim receives chunks from engine:
+  → AnimationStreamer::Process_displayFaceImageChunk()
+  → Reassembles into face image
+  → SetFaceImage() → FaceDisplay::DrawToFace() → LCD
 ```
 
-### Crash Scenarios
+### Likely Bug Location
 
-1. **Use-After-Free**: `CopyIntoProceduralAnimation()` calls `SafeDelete(_proceduralAnimation)` while Update() still uses it
-2. **Null Pointer**: `_proceduralAnimation` becomes nullptr after delete, assertion fails
-3. **Assertion Abort**: vic-engine detects the problem and calls `abort()` via `gsignal` (confirmed in tombstone backtrace)
+The crash is in vic-engine's `AnimationComponent` path. Suspects:
+1. **cv::Mat allocation/deallocation** — `ImageRGB565` uses OpenCV `cv::Mat` (via `Array2d<PixelRGB565>`) for heap memory. After 2-3 create/destroy cycles, the heap becomes corrupted. The `cv::Mat` reference-counting destructor may have an off-by-one write.
+2. **IPC message serialization** — `_robot->SendMessage(RobotInterface::EngineToRobot(MessageType(msg)))` creates a tagged union on each of 30 chunks. The union's copy/move semantics or serialization may write past allocated bounds.
+3. **The `_oledImageBuilder` vector** — `std::vector<uint16_t>` of 17664 elements. `AddDataChunk()` copies chunk data at `chunkIndex * 600` offset. Though bounds appear correct, subtle size mismatch could corrupt adjacent heap metadata.
+
+### NOT the Cause
+
+- **vic-anim race conditions**: Originally suspected, but wrong process. The mutex patch we applied to `_streamingAnimation` / `_proceduralAnimation` in vic-anim was unnecessary — the crash is in vic-engine.
+- **Go gateway chunking**: The `SendFaceDataAsChunks` code correctly splits 17664 pixels into 30 chunks of 600 (last chunk: 264). The formula `(totalPixels + faceImagePixelsPerChunk + 1) / faceImagePixelsPerChunk` has a minor math error (`+1` should be `-1`) but produces the correct result (30) for this input.
+- **Behavior control**: Crash occurs with or without behavior control.
+- **Timing**: Crash occurs with delays of 1s, 3s, or 5s between images.
 
 ---
 
-## Proposed Fix
+## Workarounds
 
-### In animationStreamer.cpp
+### 1. Use PlayAnimation Instead (Current Bridge Approach)
 
-Add mutex around `_proceduralAnimation` access:
+The `/display` endpoint in `apps/vector/bridge/routes.py` uses `play_animation` with predefined expressions. This avoids `DisplayFaceImageRGB` entirely and works reliably.
 
-```cpp
-// Add member:
-std::mutex _proceduralAnimMutex;
+### 2. Limit to 1-2 Images Per Engine Lifecycle
 
-// In SetFaceImage():
-{
-    std::lock_guard<std::mutex> lock(_proceduralAnimMutex);
-    _proceduralAnimation->SetFaceImageOverride(spriteWrapper, duration_ms);
-    if (_streamingAnimation != _proceduralAnimation) {
-        SetStreamingAnimation(_proceduralAnimation, ...);
-    }
-}
+If a single custom image is needed (e.g., status display), send it immediately after boot. After 2 images, consider the API unusable until vic-engine restarts.
 
-// In Update() / ExtractAnimationMessages():
-{
-    std::lock_guard<std::mutex> lock(_proceduralAnimMutex);
-    // existing code that accesses _proceduralAnimation
-}
-```
+### 3. Custom Animation Files (Future)
 
-### Alternative: Lock face track before processing
+Create FlatBuffers animation files with embedded face sprites. These go through `PlayAnimation` which is stable.
 
-```cpp
-// In Process_displayFaceImageRGBChunk, before SetFaceImage:
-LockTrack(AnimTrackFlag::FACE_TRACK);
-// ... process image ...
-// After display completes:
-UnlockTrack(AnimTrackFlag::FACE_TRACK);
-```
+### 4. Direct LCD Access via SPI (Complex)
 
----
-
-## Cross-Compilation Setup
-
-### Target
-- CPU: Qualcomm Snapdragon 212 (ARMv7, Cortex-A7)
-- OS: Android-based Linux (libc-2.22)
-- Binary: ELF 32-bit LSB shared object, ARM EABI5
-
-### Toolchain
-```bash
-sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
-```
-
-### Source
-```bash
-git clone https://github.com/digital-dream-labs/vector.git
-```
-
-### Build System
-- CMake-based
-- Dependencies: OpenCV, FlatBuffers, protobuf, audio libs
-- All dependencies need ARM cross-compilation or pre-built ARM libraries
-
-### Dependencies from Vector's /anki/lib/
-```
-libc-2.22.so, libpthread-2.22.so, libc++.so.1
-# Plus whatever vic-anim links against - check with:
-# readelf -d /tmp/vic-anim.original | grep NEEDED
-```
-
-### Deployment
-```bash
-# Backup original
-ssh root@192.168.1.73 "cp /anki/bin/vic-anim /anki/bin/vic-anim.original"
-
-# Deploy patched binary
-scp vic-anim-patched root@192.168.1.73:/anki/bin/vic-anim
-
-# Restart
-ssh root@192.168.1.73 "reboot"
-
-# Rollback if broken
-ssh root@192.168.1.73 "cp /anki/bin/vic-anim.original /anki/bin/vic-anim && reboot"
-```
-
----
-
-## Crash Evidence from Robot
-
-### Tombstones
-- Location: `/data/tombstones/`
-- All vic-anim tombstones show SIGSTOP (killed externally by systemd)
-- vic-engine tombstone shows `gsignal` (deliberate abort via assertion failure)
-- vic-engine d1/d2 registers contained RGB565 pixel data at crash time
-
-### Crash Dumps
-- Location: `/data/data/com.anki.victor/cache/`
-- Format: `vic-anim-V6091-YYYY-MM-DDTHH-MM-SS-mmm.dmp`
-- Many crash dumps from our testing session
-
-### Error Flow
-```
-vic-engine detects problem → calls abort()/gsignal
-  → systemd sees vic-engine exit with failure
-  → vic-on-exit writes "914" to /run/fault_code
-  → systemd sends SIGSTOP to vic-anim (PartOf=anki-robot.target)
-  → Vector displays error 914 on screen
-```
+Vector's LCD is connected via SPI (`/dev/spidev0.0`). The `lcd_draw_frame2()` function in `core/lcd.c` writes to SPI. This would bypass all engine/anim processes but requires reverse-engineering the SPI protocol and display controller commands.
 
 ---
 
@@ -178,18 +94,45 @@ vic-engine detects problem → calls abort()/gsignal
 
 | Method | Works? | Notes |
 |--------|--------|-------|
-| Mirror mode (EnableMirrorMode) | YES | Shows camera feed on face, no crash |
 | PlayAnimation | YES | Built-in animations work perfectly |
 | SetCustomEyeColor | YES | Changes eye color safely |
-| DisplayFaceImageRGB | NO | Crashes vic-engine every time |
+| EnableMirrorMode | YES | Shows camera feed on face |
+| DisplayFaceImageRGB (1-2 calls) | YES | First 2 images usually display correctly |
+| DisplayFaceImageRGB (3+ calls) | NO | Crashes vic-engine with heap corruption |
 | Custom FlatBuffers animations | Untested | Should work — goes through animation engine |
+
+---
+
+## Build Environment (on Jetson)
+
+### Source
+- Repo: `os-vector/wire-os-victor` at commit `852b6781226e057534c4dbef87c8b1134f8b64e0` (WireOS 3.0.1.32)
+- Location on Jetson: `/tmp/victor-build/victor/`
+- Toolchain: vicos-sdk 5.3.0 Clang (ARM32 cross-compile on aarch64 Jetson)
+
+### Key Source Files
+
+| File | Component | Role |
+|------|-----------|------|
+| `animProcess/src/cozmoAnim/animation/animationStreamer.cpp` | vic-anim | Processes face image chunks |
+| `animProcess/src/cozmoAnim/faceDisplay/faceDisplay.cpp` | vic-anim | LCD draw thread |
+| `animProcess/src/cozmoAnim/faceDisplay/faceDisplayImpl_vicos.cpp` | vic-anim | SPI LCD driver |
+| `engine/components/animationComponent.cpp` | vic-engine | Receives/re-chunks face images |
+| `coretech/vision/shared/rgb565Image/rgb565ImageBuilder.cpp` | vic-engine | Chunk assembly buffer |
+| `cloud/cloud/message_handler.go` | vic-cloud | gRPC→CLAD chunking (Go) |
+| `cloud/cloud/ipc_manager.go` | vic-cloud | UNIX domain socket IPC |
+
+### vic-anim Patch Files (No Longer Needed)
+- `/tmp/vic-anim-patch/vic-anim` — original binary (MD5: `e0bd56133b4b1f71c586cf05a80a6a10`)
+- `/tmp/vic-anim-patch/vic-anim-patched-v2` — recursive_mutex patch (MD5: `90b82e7839c0901669b55c044b4ec612`)
+- Original restored to Vector on 2026-03-13
 
 ---
 
 ## Vector SSH Access
 
 ```bash
-SSH="ssh -i ~/.ssh/id_rsa_Vector-D2C9 -o PubkeyAcceptedAlgorithms=+ssh-rsa root@192.168.1.73"
+ssh -i ~/.ssh/wireos_ssh_key -o PubkeyAcceptedAlgorithms=+ssh-rsa root@192.168.1.73
 ```
 
 ## Key Paths on Robot
@@ -198,19 +141,7 @@ SSH="ssh -i ~/.ssh/id_rsa_Vector-D2C9 -o PubkeyAcceptedAlgorithms=+ssh-rsa root@
 |------|----------|
 | `/anki/bin/vic-anim` | Animation process binary (3.9MB, ARM) |
 | `/anki/bin/vic-engine` | Engine binary (309KB, ARM) |
-| `/anki/bin/vic-cloud` | Cloud/gateway binary (5MB, Go, replaceable) |
-| `/anki/etc/vic-engine.env` | Engine config (fault code 914) |
-| `/anki/etc/vic-anim.env` | Anim config (fault code 800) |
-| `/anki/etc/config/platform_config.json` | Resource paths |
+| `/anki/bin/vic-cloud` | Cloud/gateway binary (5MB, Go) |
 | `/anki/data/assets/cozmo_resources/` | All assets (animations, sprites, sounds) |
-| `/anki/data/assets/cozmo_resources/assets/sprites/spriteSequences/` | Face sprite PNGs (184x96, palette mode) |
-| `/anki/data/assets/cozmo_resources/assets/animations/` | Animation .bin files (FlatBuffers) |
 | `/data/tombstones/` | Crash dumps |
-| `/data/data/com.anki.victor/cache/` | Minidump crash files |
-
-## Debug Webserver (NOT available in OSKR build)
-
-- Port 8888: Engine debug webserver (not running)
-- Port 8889: Anim debug webserver with ConsoleVars page (not running)
-- Config exists at `webServerConfig_anim.json` / `webServerConfig_engine.json`
-- Has `consolevarsui.html` — would expose face/animation toggle if running
+| `/dev/spidev0.0` | LCD SPI device |
