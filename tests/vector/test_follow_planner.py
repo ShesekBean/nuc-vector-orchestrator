@@ -132,7 +132,7 @@ class TestPDController:
     def test_person_close_drives_backward(self, config):
         """Person too close (large bbox) → drive backward (both negative)."""
         pd = PDController(config)
-        left, right = pd.compute(FRAME_W / 2, 300)  # large height = close
+        left, right = pd.compute(FRAME_W / 2, 500)  # large height = close
         assert left < 0
         assert right < 0
 
@@ -386,17 +386,19 @@ class TestFollowPlannerEvents:
                 pass
 
 
+def _search_timeout(config: FollowConfig) -> float:
+    """Compute a generous timeout for search to complete in tests."""
+    head_time = len(config.search_head_angles) * config.search_head_dwell_s
+    steps_per_cycle = max(1, int(360 / config.search_step_deg))
+    body_time = steps_per_cycle * config.search_max_cycles * config.search_body_dwell_s
+    return head_time + body_time + 1.0
+
+
 class TestFollowPlannerSearch:
     def test_search_uses_head_sweep(self, planner, head, config):
         """SEARCHING state sweeps head through configured angles."""
         planner.start()
-        # Let search complete (no tracks → eventually IDLE)
-        timeout = (
-            len(config.search_head_angles) * config.search_head_dwell_s
-            + int(360.0 / config.search_step_deg) * config.search_max_cycles * config.search_body_dwell_s
-            + 1.0
-        )
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + _search_timeout(config)
         while planner.state != State.IDLE and time.monotonic() < deadline:
             time.sleep(0.05)
         planner.stop()
@@ -409,12 +411,7 @@ class TestFollowPlannerSearch:
     def test_search_uses_body_rotation(self, planner, motor, config):
         """SEARCHING state rotates body after head sweep fails."""
         planner.start()
-        timeout = (
-            len(config.search_head_angles) * config.search_head_dwell_s
-            + int(360.0 / config.search_step_deg) * config.search_max_cycles * config.search_body_dwell_s
-            + 1.0
-        )
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + _search_timeout(config)
         while planner.state != State.IDLE and time.monotonic() < deadline:
             time.sleep(0.05)
         planner.stop()
@@ -439,12 +436,7 @@ class TestFollowPlannerSearch:
     def test_full_search_no_target_returns_idle(self, planner, config):
         """Full 360° search with no detection → IDLE."""
         planner.start()
-        timeout = (
-            len(config.search_head_angles) * config.search_head_dwell_s
-            + int(360.0 / config.search_step_deg) * config.search_max_cycles * config.search_body_dwell_s
-            + 1.0
-        )
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + _search_timeout(config)
         while planner.state != State.IDLE and time.monotonic() < deadline:
             time.sleep(0.05)
         planner.stop()
@@ -455,7 +447,7 @@ class TestFollowConfig:
     def test_default_config(self):
         cfg = FollowConfig()
         assert cfg.max_wheel_speed == 160.0
-        assert cfg.target_height == 180.0
+        assert cfg.target_height == 300.0
         assert cfg.loop_hz == 10.0
 
     def test_custom_config(self):

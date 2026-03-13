@@ -18,6 +18,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -38,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 # Detection loop rate — YOLO runs at ~5-15fps on NUC with OpenVINO
 DETECTION_HZ = 5.0
+
+# PID file written by scripts/vector-quiet-mode.py
+QUIET_MODE_PID_FILE = "/tmp/vector-quiet-mode.pid"
 
 
 class FollowPipeline:
@@ -92,11 +96,50 @@ class FollowPipeline:
     def state(self) -> str:
         return self._planner.state.value
 
+    @staticmethod
+    def _send_quiet_mode_signal(sig: int, label: str) -> None:
+        """Send a signal to quiet mode process via its PID file.
+
+        No-op if quiet mode is not running or PID file doesn't exist.
+        """
+        try:
+            with open(QUIET_MODE_PID_FILE) as f:
+                pid = int(f.read().strip())
+        except (FileNotFoundError, ValueError):
+            logger.debug("Quiet mode PID file not found — not running")
+            return
+
+        # Verify process is alive before sending signal
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            logger.debug("Quiet mode PID %d is stale — process not running", pid)
+            return
+
+        try:
+            os.kill(pid, sig)
+            logger.info("Sent %s to quiet mode (pid=%d)", label, pid)
+        except OSError as e:
+            logger.warning("Failed to send %s to quiet mode (pid=%d): %s", label, pid, e)
+
+    def _pause_quiet_mode(self) -> None:
+        """Pause quiet mode so follow pipeline can control motors."""
+        import signal as signal_mod
+        self._send_quiet_mode_signal(signal_mod.SIGUSR1, "SIGUSR1 (pause)")
+
+    def _resume_quiet_mode(self) -> None:
+        """Resume quiet mode after follow pipeline stops."""
+        import signal as signal_mod
+        self._send_quiet_mode_signal(signal_mod.SIGUSR2, "SIGUSR2 (resume)")
+
     def start(self) -> None:
         """Start the full follow pipeline (YOLO + Kalman + planner)."""
         if self._running:
             logger.warning("FollowPipeline already running")
             return
+
+        # Pause quiet mode so it doesn't override our motor commands
+        self._pause_quiet_mode()
 
         # Boost camera exposure for low-light following
         self._boost_camera_exposure()
@@ -144,6 +187,9 @@ class FollowPipeline:
 
         # Restore auto exposure
         self._restore_camera_exposure()
+
+        # Resume quiet mode now that we're done with motors
+        self._resume_quiet_mode()
 
         logger.info("FollowPipeline stopped")
 
