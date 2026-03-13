@@ -49,8 +49,8 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-FRAME_W = 640
-FRAME_H = 360
+FRAME_W = 800
+FRAME_H = 600
 
 
 class State(enum.Enum):
@@ -71,26 +71,26 @@ class FollowConfig:
     """
 
     # --- PD gains for turning (horizontal centering) ---
-    kp_turn: float = 0.35
-    kd_turn: float = 0.06
-    dead_zone_x: float = 30.0  # pixels — no turn if error < this
+    kp_turn: float = 0.55
+    kd_turn: float = 0.08
+    dead_zone_x: float = 40.0  # pixels — no turn if error < this
 
     # --- P gain for driving (distance control via bbox height) ---
-    kp_drive: float = 0.8
-    kd_drive: float = 0.1
-    target_height: float = 150.0  # target bbox height in pixels (~1m)
-    dead_zone_h: float = 15.0  # pixels — no drive if height error < this
+    kp_drive: float = 0.5
+    kd_drive: float = 0.08
+    target_height: float = 180.0  # target bbox height in pixels (~1.5m follow distance at 800x600)
+    dead_zone_h: float = 20.0  # pixels — no drive if height error < this
 
     # --- P gain for head pitch (vertical tracking) ---
-    kp_head: float = 0.15  # degrees per pixel of vertical offset
+    kp_head: float = 0.10  # degrees per pixel of vertical offset (gentler for 600px frame)
 
     # --- Speed limits ---
-    max_wheel_speed: float = 120.0  # mm/s safety cap
+    max_wheel_speed: float = 160.0  # mm/s (Vector max ~200, leave headroom)
     min_tracking_confidence: float = 0.3
 
     # --- Tracking thresholds ---
-    min_hits_for_following: int = 5  # Kalman hits before TRACKING → FOLLOWING
-    target_lost_frames: int = 15  # frames without detection → SEARCHING
+    min_hits_for_following: int = 3  # Kalman hits before TRACKING → FOLLOWING (faster lock)
+    target_lost_frames: int = 20  # frames without detection → SEARCHING (more patient)
 
     # --- Search behaviour ---
     search_head_angles: tuple[float, ...] = (10.0, 30.0, -10.0, 0.0)

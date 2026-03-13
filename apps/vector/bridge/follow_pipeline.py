@@ -132,8 +132,22 @@ class FollowPipeline:
                 # Run YOLO detection
                 detections = self._detector.detect(frame)
 
+                if detections:
+                    logger.debug(
+                        "YOLO: %d person(s), best conf=%.2f",
+                        len(detections), max(d.confidence for d in detections),
+                    )
+
                 # Feed into Kalman tracker
                 confirmed_tracks = self._tracker.update(detections)
+
+                if confirmed_tracks:
+                    primary = self._tracker.get_primary_track()
+                    if primary:
+                        logger.debug(
+                            "Kalman: track_id=%d hits=%d cx=%.0f cy=%.0f h=%.0f",
+                            primary.track_id, primary.hits, primary.cx, primary.cy, primary.height,
+                        )
 
                 # Emit TrackedPersonEvent for the primary (best) track
                 if confirmed_tracks:

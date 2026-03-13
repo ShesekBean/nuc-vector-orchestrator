@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FRAME_H = 360
+FRAME_H = 600
 
 
 @dataclass
