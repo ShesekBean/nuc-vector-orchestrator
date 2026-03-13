@@ -932,6 +932,25 @@ async def display_color(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "DISPLAY_COLOR_FAILED")
 
 
+async def call_status(request: web.Request) -> web.Response:
+    """GET /call/status — get LiveKit call status including streamer connection."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    bridge = conn.livekit_bridge
+    if bridge is None:
+        return web.json_response({"active": False, "bridge": "not_initialized"})
+
+    try:
+        status_data = await bridge.get_status()
+        return web.json_response(status_data)
+    except Exception as exc:
+        logger.exception("Call status check failed")
+        return _json_error(500, str(exc), "CALL_STATUS_FAILED")
+
+
 def setup_routes(app: web.Application) -> None:
     """Register all bridge routes on the application."""
     app.router.add_get("/health", health)
@@ -954,3 +973,4 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/call/start", call_start)
     app.router.add_post("/call/stop", call_stop)
     app.router.add_get("/call/join-url", call_join_url)
+    app.router.add_get("/call/status", call_status)

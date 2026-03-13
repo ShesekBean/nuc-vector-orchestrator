@@ -5,11 +5,15 @@ can see and hear through the robot in real-time via a browser or phone
 LiveKit client.  Subscribes to remote audio tracks and plays them
 through Vector's speaker, enabling bidirectional communication.
 
-Data flow::
+Two-way streaming architecture::
 
-    Vector camera → CameraClient → JPEG → decode → RGBA VideoFrame → LiveKit
-    Vector mic    → AudioClient  → PCM  → AudioFrame → LiveKit
-    LiveKit remote audio → PCM → Vector say_text() / stream_wav_file()
+    Camera OUT: Vector camera → CameraClient → JPEG → RGBA VideoFrame → LiveKit
+    Mic OUT:    vector-streamer (on Vector) → Opus/TCP → NUC → AudioFrame → LiveKit
+    Audio IN:   LiveKit remote audio → PCM → Vector stream_wav_file()
+    Video IN:   LiveKit remote video → downscale 160x80 → DisplayFaceImageRGB → Vector OLED
+
+The vector-streamer native binary on Vector streams Opus-encoded mic audio
+over TCP (port 5555). This bridge connects as a TCP client to receive it.
 
 Usage::
 
@@ -29,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import struct
 import tempfile
 import wave
 from typing import TYPE_CHECKING, Any
@@ -68,6 +73,27 @@ INITIAL_RECONNECT_DELAY = 1.0
 # Auto-disconnect when no remote participants for this long (seconds)
 EMPTY_ROOM_TIMEOUT = 3 * 60  # 3 minutes
 
+# vector-streamer TCP connection (mic audio from Vector)
+STREAMER_TCP_PORT = 5555
+STREAMER_RECONNECT_DELAY = 5.0  # seconds between reconnect attempts
+
+# TCP frame protocol (matches protocol.h)
+_FRAME_TYPE_H264 = 0x01
+_FRAME_TYPE_OPUS = 0x02
+_FRAME_TYPE_JPEG = 0x03
+_FRAME_TYPE_PCM = 0x10
+_FRAME_TYPE_PING = 0xF0
+_FRAME_TYPE_PONG = 0xF1
+_FRAME_HEADER_SIZE = 5  # 1 byte type + 4 bytes LE length
+_MAX_FRAME_SIZE = 512 * 1024
+
+# Video-in display settings (remote video → Vector OLED)
+DISPLAY_WIDTH = 160
+DISPLAY_HEIGHT = 80
+SDK_WIDTH = 184
+SDK_HEIGHT = 96
+VIDEO_IN_FPS = 10  # Max display update rate
+
 
 class LiveKitBridge:
     """Bidirectional LiveKit WebRTC session for Vector.
@@ -92,6 +118,9 @@ class LiveKitBridge:
         livekit_url: str = DEFAULT_LIVEKIT_URL,
         api_key: str | None = None,
         api_secret: str | None = None,
+        vector_ip: str = "192.168.1.73",
+        streamer_port: int = STREAMER_TCP_PORT,
+        enable_video_in: bool = True,
     ) -> None:
         self._camera = camera_client
         self._audio = audio_client
@@ -116,6 +145,19 @@ class LiveKitBridge:
         self._should_reconnect = False
         self._playing_audio = False  # guard against overlapping playback
         self._empty_room_timer: asyncio.TimerHandle | None = None
+
+        # vector-streamer TCP connection (mic audio from Vector)
+        self._vector_ip = vector_ip
+        self._streamer_port = streamer_port
+        self._tcp_reader: asyncio.StreamReader | None = None
+        self._tcp_writer: asyncio.StreamWriter | None = None
+        self._tcp_task: asyncio.Task | None = None
+        self._opus_decoder: Any | None = None
+
+        # Video-in: remote video → Vector OLED display
+        self._enable_video_in = enable_video_in
+        self._video_in_task: asyncio.Task | None = None
+        self._video_in_active = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -158,6 +200,8 @@ class LiveKitBridge:
             "active": self._active,
             "room": self._room_name,
             "livekit_url": self._livekit_url,
+            "streamer_connected": self._tcp_writer is not None and not self._tcp_writer.is_closing(),
+            "video_in_active": self._video_in_active,
         }
 
     # ------------------------------------------------------------------
@@ -214,15 +258,20 @@ class LiveKitBridge:
         await self._room.local_participant.publish_track(video_track, video_opts)
         logger.info("Published video track (vector-camera)")
 
-        # NOTE: Vector mic audio is NOT published to LiveKit.
-        # The SDK's AudioFeed only provides signal_power (a 980Hz calibration
-        # tone), not actual microphone PCM.  Raw mic capture requires
-        # Qualcomm ADSP routing which is not accessible via the SDK.
-        # Audio flows ONE-WAY: user speaks → LiveKit → Vector speaker.
-        logger.info("Mic audio NOT published (SDK AudioFeed provides signal_power, not raw PCM)")
+        # Create and publish audio track for mic (fed by vector-streamer TCP)
+        self._audio_source = rtc.AudioSource(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
+        audio_track = rtc.LocalAudioTrack.create_audio_track(
+            "vector-mic", self._audio_source
+        )
+        audio_opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
+        await self._room.local_participant.publish_track(audio_track, audio_opts)
+        logger.info("Published audio track (vector-mic) — fed by vector-streamer TCP")
 
-        # Start publishing loops (video only)
+        # Start publishing loops
         self._video_task = asyncio.create_task(self._video_publish_loop())
+
+        # Start vector-streamer TCP connection for mic audio
+        self._tcp_task = asyncio.create_task(self._streamer_tcp_loop())
 
         self._active = True
         self._emit_session_event(active=True, room=room)
@@ -236,9 +285,14 @@ class LiveKitBridge:
         self._cancel_empty_room_timer()
         was_active = self._active
         self._active = False
+        self._video_in_active = False
 
-        # Cancel publishing tasks
-        for task in (self._video_task, self._audio_pub_task, self._audio_sub_task):
+        # Cancel all tasks
+        all_tasks = (
+            self._video_task, self._audio_pub_task, self._audio_sub_task,
+            self._tcp_task, self._video_in_task,
+        )
+        for task in all_tasks:
             if task and not task.done():
                 task.cancel()
                 try:
@@ -249,6 +303,18 @@ class LiveKitBridge:
         self._video_task = None
         self._audio_pub_task = None
         self._audio_sub_task = None
+        self._tcp_task = None
+        self._video_in_task = None
+
+        # Close TCP connection to vector-streamer
+        if self._tcp_writer:
+            try:
+                self._tcp_writer.close()
+                await self._tcp_writer.wait_closed()
+            except Exception:
+                pass
+            self._tcp_writer = None
+            self._tcp_reader = None
 
         # Disconnect from room
         if self._room:
@@ -343,29 +409,40 @@ class LiveKitBridge:
         publication: rtc.RemoteTrackPublication,
         participant: rtc.RemoteParticipant,
     ) -> None:
-        """Handle incoming remote tracks — subscribe to audio for playback."""
-        if track.kind != rtc.TrackKind.KIND_AUDIO:
-            logger.debug(
-                "Ignoring non-audio track from %s", participant.identity
-            )
-            return
-
+        """Handle incoming remote tracks — audio for speaker, video for OLED."""
         # Skip our own published tracks (identity starts with "vector-robot")
         if participant.identity.startswith("vector-robot"):
             logger.debug(
-                "Ignoring own audio track from %s", participant.identity
+                "Ignoring own track from %s", participant.identity
             )
             return
 
-        logger.info(
-            "Subscribed to audio track from %s", participant.identity
-        )
-        if self._audio_sub_task and not self._audio_sub_task.done():
-            self._audio_sub_task.cancel()
+        if track.kind == rtc.TrackKind.KIND_AUDIO:
+            logger.info(
+                "Subscribed to audio track from %s", participant.identity
+            )
+            if self._audio_sub_task and not self._audio_sub_task.done():
+                self._audio_sub_task.cancel()
 
-        self._audio_sub_task = asyncio.create_task(
-            self._remote_audio_loop(track, participant.identity)
-        )
+            self._audio_sub_task = asyncio.create_task(
+                self._remote_audio_loop(track, participant.identity)
+            )
+
+        elif track.kind == rtc.TrackKind.KIND_VIDEO and self._enable_video_in:
+            logger.info(
+                "Subscribed to video track from %s — displaying on OLED",
+                participant.identity,
+            )
+            if self._video_in_task and not self._video_in_task.done():
+                self._video_in_task.cancel()
+
+            self._video_in_task = asyncio.create_task(
+                self._video_in_display_loop(track, participant.identity)
+            )
+        else:
+            logger.debug(
+                "Ignoring track kind=%s from %s", track.kind, participant.identity
+            )
 
     async def _remote_audio_loop(
         self, track: rtc.RemoteTrack, participant_id: str
@@ -573,6 +650,243 @@ class LiveKitBridge:
             except Exception:
                 logger.warning("LiveKit reconnect failed", exc_info=True)
                 delay = min(delay * 2, MAX_RECONNECT_DELAY)
+
+    # ------------------------------------------------------------------
+    # vector-streamer TCP client (mic audio from Vector)
+    # ------------------------------------------------------------------
+
+    async def _streamer_tcp_loop(self) -> None:
+        """Connect to vector-streamer on Vector and receive Opus mic audio.
+
+        Reconnects automatically if connection drops.
+        """
+        logger.info(
+            "Starting vector-streamer TCP client → %s:%d",
+            self._vector_ip, self._streamer_port,
+        )
+
+        # Lazily init Opus decoder
+        if self._opus_decoder is None:
+            try:
+                from opuslib import Decoder as OpusDecoder
+                self._opus_decoder = OpusDecoder(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
+                logger.info("Opus decoder initialized (opuslib)")
+            except ImportError:
+                logger.warning(
+                    "opuslib not installed — mic audio from vector-streamer "
+                    "will not be available. Install with: pip install opuslib"
+                )
+                return
+
+        published_count = 0
+
+        while self._active:
+            try:
+                reader, writer = await asyncio.open_connection(
+                    self._vector_ip, self._streamer_port
+                )
+                self._tcp_reader = reader
+                self._tcp_writer = writer
+                logger.info("Connected to vector-streamer at %s:%d",
+                            self._vector_ip, self._streamer_port)
+
+                while self._active:
+                    # Read frame header: [type:1][length:4 LE]
+                    header = await reader.readexactly(_FRAME_HEADER_SIZE)
+                    frame_type = header[0]
+                    frame_len = struct.unpack_from("<I", header, 1)[0]
+
+                    if frame_len > _MAX_FRAME_SIZE:
+                        logger.warning("Frame too large: %d bytes", frame_len)
+                        break
+
+                    # Read payload
+                    if frame_len > 0:
+                        payload = await reader.readexactly(frame_len)
+                    else:
+                        payload = b""
+
+                    if frame_type == _FRAME_TYPE_OPUS:
+                        await self._handle_opus_audio(payload)
+                        published_count += 1
+                        if published_count <= 3 or published_count % 500 == 0:
+                            logger.info(
+                                "Streamer mic audio frame #%d (%d bytes Opus)",
+                                published_count, len(payload),
+                            )
+
+                    elif frame_type == _FRAME_TYPE_PING:
+                        # Respond with pong
+                        pong = struct.pack("<BI", _FRAME_TYPE_PONG, 0)
+                        writer.write(pong)
+                        await writer.drain()
+
+                    elif frame_type in (_FRAME_TYPE_H264, _FRAME_TYPE_JPEG):
+                        # Future: handle camera frames from vector-streamer
+                        pass
+
+            except asyncio.CancelledError:
+                raise
+            except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
+                logger.debug("vector-streamer connection failed: %s", e)
+            except asyncio.IncompleteReadError:
+                logger.debug("vector-streamer disconnected (incomplete read)")
+            except Exception:
+                logger.warning("vector-streamer TCP error", exc_info=True)
+            finally:
+                if self._tcp_writer:
+                    try:
+                        self._tcp_writer.close()
+                    except Exception:
+                        pass
+                self._tcp_writer = None
+                self._tcp_reader = None
+
+            if self._active:
+                logger.info(
+                    "Reconnecting to vector-streamer in %.0fs...",
+                    STREAMER_RECONNECT_DELAY,
+                )
+                await asyncio.sleep(STREAMER_RECONNECT_DELAY)
+
+        logger.info("Streamer TCP loop ended (published %d mic frames)", published_count)
+
+    async def _handle_opus_audio(self, opus_data: bytes) -> None:
+        """Decode Opus packet and publish as LiveKit audio frame."""
+        if not self._opus_decoder or not self._audio_source:
+            return
+
+        try:
+            # Decode Opus → PCM int16 (320 samples for 20ms at 16kHz)
+            pcm = self._opus_decoder.decode(opus_data, 320)  # frame_size=320
+
+            # Create AudioFrame for LiveKit
+            frame = rtc.AudioFrame(
+                data=pcm,
+                sample_rate=AUDIO_SAMPLE_RATE,
+                num_channels=AUDIO_CHANNELS,
+                samples_per_channel=len(pcm) // 2,  # int16 = 2 bytes per sample
+            )
+            await self._audio_source.capture_frame(frame)
+        except Exception:
+            logger.debug("Opus decode/publish failed", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Video-in: remote video → Vector OLED display
+    # ------------------------------------------------------------------
+
+    async def _video_in_display_loop(
+        self, track: rtc.RemoteTrack, participant_id: str
+    ) -> None:
+        """Receive remote video frames and display on Vector's OLED.
+
+        Downscales to 160x80, embeds in 184x96 SDK frame, and sends
+        via set_screen_with_image_data().
+        """
+        logger.info("Video-in display loop started for %s", participant_id)
+        self._video_in_active = True
+        video_stream = rtc.VideoStream(track)
+        frame_count = 0
+        min_interval = 1.0 / VIDEO_IN_FPS
+        last_display_time = 0.0
+
+        try:
+            from PIL import Image as PILImage
+            from anki_vector.screen import convert_image_to_screen_data
+
+            async for event in video_stream:
+                if not self._active:
+                    break
+
+                frame_count += 1
+                import time as _time
+                now = _time.monotonic()
+
+                # Rate-limit display updates
+                if now - last_display_time < min_interval:
+                    continue
+
+                try:
+                    video_frame: rtc.VideoFrame = event.frame
+
+                    if frame_count <= 3:
+                        logger.info(
+                            "Video-in frame #%d: %dx%d type=%s",
+                            frame_count, video_frame.width, video_frame.height,
+                            video_frame.type,
+                        )
+
+                    # Convert to PIL Image
+                    rgba_data = bytes(video_frame.data)
+                    img = PILImage.frombytes(
+                        "RGBA",
+                        (video_frame.width, video_frame.height),
+                        rgba_data,
+                    ).convert("RGB")
+
+                    # Resize to fit 160x80 preserving aspect ratio
+                    img_w, img_h = img.size
+                    scale = min(DISPLAY_WIDTH / img_w, DISPLAY_HEIGHT / img_h)
+                    new_w = int(img_w * scale)
+                    new_h = int(img_h * scale)
+                    resized = img.resize((new_w, new_h), PILImage.LANCZOS)
+
+                    # Create 160x80 canvas centered
+                    display = PILImage.new("RGB", (DISPLAY_WIDTH, DISPLAY_HEIGHT), (0, 0, 0))
+                    offset_x = (DISPLAY_WIDTH - new_w) // 2
+                    offset_y = (DISPLAY_HEIGHT - new_h) // 2
+                    display.paste(resized, (offset_x, offset_y))
+
+                    # Embed into 184x96 SDK frame
+                    sdk_frame = PILImage.new("RGB", (SDK_WIDTH, SDK_HEIGHT), (0, 0, 0))
+                    sdk_frame.paste(display, (0, 0))
+
+                    # Send to Vector's OLED (in executor to avoid blocking)
+                    screen_data = convert_image_to_screen_data(sdk_frame)
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(
+                        None,
+                        self._robot.screen.set_screen_with_image_data,
+                        screen_data,
+                        0.2,  # duration_sec — short, will be refreshed
+                    )
+
+                    last_display_time = now
+
+                    if frame_count <= 3 or frame_count % 100 == 0:
+                        logger.info("Displayed video-in frame #%d on OLED", frame_count)
+
+                except Exception:
+                    logger.debug("Video-in frame display failed", exc_info=True)
+
+        except asyncio.CancelledError:
+            logger.debug("Video-in display loop cancelled")
+        except Exception:
+            logger.exception("Video-in display loop error")
+        finally:
+            self._video_in_active = False
+            await video_stream.aclose()
+
+            # Restore face animation after video-in ends
+            try:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, self._restore_face)
+            except Exception:
+                logger.debug("Failed to restore face after video-in", exc_info=True)
+
+            logger.info("Video-in display loop ended (%d frames)", frame_count)
+
+    def _restore_face(self) -> None:
+        """Restore face animation after displaying video on OLED."""
+        import time as _time
+        try:
+            self._robot.conn.release_control()
+            _time.sleep(0.5)
+            self._robot.conn.request_control()
+            _time.sleep(0.5)
+            logger.info("Face animation restored after video-in")
+        except Exception:
+            logger.debug("Face restore failed", exc_info=True)
 
     # ------------------------------------------------------------------
     # Frame conversion

@@ -1,0 +1,42 @@
+# vector-streamer.service — Audio/video streamer daemon for LiveKit bridge
+#
+# Runs on Vector. Streams mic audio (Opus) to NUC over TCP.
+# NUC connects to port 5555 to receive audio and send speaker PCM.
+#
+# Install:
+#   scp vector-streamer root@vector:/anki/bin/
+#   scp vector-streamer.service root@vector:/etc/systemd/system/
+#   ssh vector 'systemctl daemon-reload && systemctl enable vector-streamer'
+#
+# Logs:
+#   ssh vector 'journalctl -u vector-streamer -f'
+
+[Unit]
+Description=Vector LiveKit audio/video streamer
+After=vic-engine.service vic-anim.service
+Wants=vic-engine.service
+
+[Service]
+Type=simple
+ExecStart=/anki/bin/vector-streamer -p 5555 -m /dev/socket/mic_sock
+Restart=on-failure
+RestartSec=5
+
+# Run as root to access /dev/socket/mic_sock (owned by root:anki)
+User=root
+Group=anki
+
+# Environment
+Environment=LD_LIBRARY_PATH=/anki/lib:/usr/lib
+
+# Resource limits
+LimitNOFILE=1024
+MemoryMax=16M
+
+# Logging to stderr (captured by journald)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vector-streamer
+
+[Install]
+WantedBy=multi-user.target
