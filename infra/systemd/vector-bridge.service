@@ -14,6 +14,7 @@ Environment=PYTHONPATH=%h/Documents/claude/nuc-vector-orchestrator
 Environment=VECTOR_SERIAL=0dd1cdcf
 Environment=VECTOR_BRIDGE_PORT=8081
 Environment=VECTOR_BRIDGE_HOST=127.0.0.1
+# Also binds to 172.17.0.1 (Docker bridge) so OpenClaw container can reach the bridge
 
 # Security hardening
 NoNewPrivileges=yes

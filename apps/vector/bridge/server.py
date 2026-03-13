@@ -120,8 +120,30 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGTERM, _graceful_shutdown)
 
-    logger.info("Starting Vector bridge on %s:%d", args.host, args.port)
-    web.run_app(app, host=args.host, port=args.port, print=None)
+    # Bind to localhost + Docker bridge IP so OpenClaw container can reach us
+    import asyncio
+
+    async def _run():
+        runner = web.AppRunner(app)
+        await runner.setup()
+        sites = []
+        for host in (args.host, "172.17.0.1"):
+            try:
+                site = web.TCPSite(runner, host, args.port)
+                await site.start()
+                sites.append(host)
+                logger.info("Listening on %s:%d", host, args.port)
+            except OSError as exc:
+                logger.warning("Could not bind to %s:%d — %s", host, args.port, exc)
+        if not sites:
+            logger.error("No addresses bound — exiting")
+            return
+        try:
+            await asyncio.Event().wait()  # run forever
+        finally:
+            await runner.cleanup()
+
+    asyncio.run(_run())
     return 0
 
 
