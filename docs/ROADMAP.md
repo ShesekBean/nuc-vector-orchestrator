@@ -87,7 +87,7 @@ Stream camera frames to NUC for ML inference.
 | 11 | [YOLO person detection](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/11) | #10, #29, #36 | stuck | YOLOv8n via OpenVINO on NUC. ~15fps. Publishes detections to event bus. |
 | 12 | [Face recognition](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/12) | #10 | stuck | YuNet detection + SFace embeddings via OpenVINO. Identifies known faces. |
 | 13 | [Scene description](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/13) | #10, #11 | stuck | LLM-based scene description from camera frame + YOLO detections. |
-| 14 | [Face display (OLED)](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/14) | #3 | stuck | `DisplayImage` gRPC — 184x96 OLED. Expressions, status, emoji. New capability. |
+| 14 | [Face display (OLED)](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/14) | #3 | stuck | `DisplayImage` gRPC — 160x80 OLED (SDK sends 184x96, vic-engine converts). Expressions, status, emoji. New capability. |
 
 **Phase 2 unlocks:** Person following (#15), obstacle avoidance (#17), intercom photo (#24).
 
@@ -279,7 +279,7 @@ Custom native binaries to run on Vector, enabling capabilities not available thr
 | Feature | Why Custom Binary | Details |
 |---------|-------------------|---------|
 | **Mic audio streaming** | Vector's 4 DMIC mics are accessed through Qualcomm ADSP via `libaudio_engine.so` (FastRPC). The SDK's `AudioFeed` only returns metadata (signal_power), not raw PCM. Standard ALSA `arecord` cannot capture — TERT_MI2S (internal codec) gives white noise (no mics wired to ADC), QUAT_MI2S (external codec) gives I/O error (ADSP clocks not initialized through kernel ALSA). vic-anim owns the mic through ADSP, bypassing the kernel entirely. | Binary uses `libaudio_engine.so` to open mic via ADSP FastRPC, streams 16kHz PCM over TCP socket to NUC. Enables continuous mic audio for LiveKit calls and voice processing without wake word dependency. |
-| **Display arbitrary image** | SDK's `DisplayImage` gRPC accepts raw image data but the current API may have limitations for custom images. A native binary could write directly to the 184x96 OLED framebuffer for full control over what's displayed. | Binary accepts image data (e.g., via stdin or TCP) and writes to OLED display hardware. Enables custom faces, status screens, QR codes, etc. |
+| **Display arbitrary image** | SDK's `DisplayImage` gRPC accepts raw image data but the current API may have limitations for custom images. A native binary could write directly to the 160x80 OLED framebuffer for full control over what's displayed. (SDK sends 184x96; vic-engine converts stride for Xray hardware.) | Binary accepts image data (e.g., via stdin or TCP) and writes to OLED display hardware. Enables custom faces, status screens, QR codes, etc. |
 
 **Build environment:**
 - Target: ARM (Qualcomm Snapdragon 212 / MSM8909, 32-bit ARMv7)

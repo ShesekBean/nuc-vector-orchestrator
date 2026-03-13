@@ -158,7 +158,7 @@ movement commands and release promptly. Do NOT leave robot.connect() open when d
 - Lift: `SetLiftHeight(height_mm, speed_mmps)`
 - LEDs: `SetBackpackLights(front, middle, back)` — RGBA per segment
 - Audio: `PlayAudio(wav_bytes)`, `AudioFeed` (raw gRPC for mic)
-- Display: `DisplayImage(image_bytes)` — 184x96 OLED
+- Display: `DisplayImage(image_bytes)` — 160x80 OLED (SDK sends 184x96; vic-engine converts stride)
 - Sensors: `BatteryState`, `RobotState` (accel, gyro, cliff, touch)
 
 **RULES:**

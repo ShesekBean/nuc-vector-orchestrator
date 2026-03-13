@@ -68,7 +68,7 @@
 
 | Feature | Description |
 |---------|-------------|
-| Face display | 184x96 OLED — face animations, status display, emoji |
+| Face display | 160x80 OLED (Vector 2.0 Xray; SDK sends 184x96, vic-engine converts stride) — face animations, status display, emoji |
 | Lift mechanism | Motorized forklift — can pick up small objects (Vector's cube) |
 | Cube interaction | Detects and interacts with light cube (tap, roll, stack) |
 | Cliff detection | 4 cliff sensors — table-safe operation |
@@ -159,7 +159,7 @@ client.SetBackpackLights(ctx, front, middle, back) // each has RGBA
 client.PlayAudio(ctx, audioData) // WAV bytes
 
 // Display
-client.DisplayImage(ctx, imageBytes) // 184x96 OLED
+client.DisplayImage(ctx, imageBytes) // 160x80 OLED (SDK accepts 184x96; vic-engine converts)
 
 // Sensors
 client.BatteryState(ctx) // voltage, charging, level
