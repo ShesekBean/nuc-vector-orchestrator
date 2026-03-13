@@ -154,6 +154,15 @@ class ConnectionManager:
             event_bus=self._nuc_bus,
         )
 
+        from apps.vector.bridge.follow_pipeline import FollowPipeline
+
+        self._follow_pipeline = FollowPipeline(
+            camera_client=self._camera_client,
+            motor_controller=self._motor_controller,
+            head_controller=self._head_controller,
+            nuc_bus=self._nuc_bus,
+        )
+
         self._connected = True
         logger.info("Connected to Vector successfully")
 
@@ -164,6 +173,8 @@ class ConnectionManager:
 
         logger.info("Disconnecting from Vector...")
         try:
+            if self._follow_pipeline:
+                self._follow_pipeline.stop()
             if self._motor_controller:
                 self._motor_controller.stop()
             if self._lift_controller:
@@ -195,6 +206,7 @@ class ConnectionManager:
         self._camera_client = None
         self._audio_client = None
         self._livekit_bridge = None
+        self._follow_pipeline = None
         self._nuc_bus = None
         logger.info("Disconnected from Vector")
 
