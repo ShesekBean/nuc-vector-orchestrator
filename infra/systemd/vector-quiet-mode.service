@@ -5,7 +5,6 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ophirsw
 WorkingDirectory=/home/ophirsw/Documents/claude/nuc-vector-orchestrator
 ExecStart=/usr/bin/python3 scripts/vector-quiet-mode.py
 Restart=on-failure
