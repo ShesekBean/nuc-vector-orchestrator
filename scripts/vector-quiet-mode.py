@@ -6,6 +6,11 @@ OVERRIDE_BEHAVIORS_PRIORITY. When a touch (button tap) is detected,
 releases control for TOUCH_RELEASE_DURATION seconds so vic-engine can
 handle the wake word flow, then re-acquires control.
 
+Supports pause/resume via Unix signals (used by follow pipeline):
+- SIGUSR1 → pause (release control, stay alive)
+- SIGUSR2 → resume (re-acquire OVERRIDE control)
+PID file written to /tmp/vector-quiet-mode.pid on startup.
+
 Usage:
     python3 scripts/vector-quiet-mode.py
 
@@ -14,6 +19,7 @@ Stop with Ctrl-C to release control (Vector resumes autonomous behavior).
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import signal
@@ -34,11 +40,34 @@ CONTROL_POLL_INTERVAL = 2.0
 # Gives vic-engine time to handle wake word → STT → intent → TTS response.
 TOUCH_RELEASE_DURATION = 15.0
 
+# PID file for follow pipeline integration
+PID_FILE = "/tmp/vector-quiet-mode.pid"
+
+
+def _write_pid_file() -> None:
+    """Write current PID to file so other processes can signal us."""
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+    logger.info("PID file written: %s (pid=%d)", PID_FILE, os.getpid())
+
+
+def _remove_pid_file() -> None:
+    """Remove PID file on exit."""
+    try:
+        os.remove(PID_FILE)
+        logger.debug("PID file removed: %s", PID_FILE)
+    except FileNotFoundError:
+        pass
+
 
 def main():
     import anki_vector
     from anki_vector.connection import ControlPriorityLevel
     from anki_vector.util import degrees
+
+    # Write PID file and register cleanup
+    _write_pid_file()
+    atexit.register(_remove_pid_file)
 
     logger.info("Connecting to Vector (serial=%s)...", SERIAL)
     robot = anki_vector.Robot(
@@ -63,30 +92,63 @@ def main():
     logger.info(
         "Vector is still and quiet. Wake word still works.\n"
         "  Touch (back tap) releases control for %ds to allow wake word flow.\n"
+        "  SIGUSR1 pauses (follow pipeline), SIGUSR2 resumes.\n"
         "  Press Ctrl-C to release control and exit.",
         int(TOUCH_RELEASE_DURATION),
     )
 
-    # Handle graceful shutdown
+    # Mutable state shared with signal handlers
     stop = False
+    paused = False
 
-    def _signal_handler(sig, frame):
+    def _stop_handler(sig, frame):
         nonlocal stop
         stop = True
 
-    signal.signal(signal.SIGINT, _signal_handler)
-    signal.signal(signal.SIGTERM, _signal_handler)
+    def _pause_handler(sig, frame):
+        nonlocal paused
+        if paused:
+            return
+        paused = True
+        logger.info("SIGUSR1 received — pausing quiet mode (releasing control)")
+        try:
+            robot.conn.release_control()
+        except Exception as e:
+            logger.warning("Release control on pause failed: %s", e)
+
+    def _resume_handler(sig, frame):
+        nonlocal paused
+        if not paused:
+            return
+        paused = False
+        logger.info("SIGUSR2 received — resuming quiet mode (re-acquiring control)")
+        try:
+            robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
+            set_neutral()
+        except Exception as e:
+            logger.warning("Re-acquire control on resume failed: %s", e)
+
+    signal.signal(signal.SIGINT, _stop_handler)
+    signal.signal(signal.SIGTERM, _stop_handler)
+    signal.signal(signal.SIGUSR1, _pause_handler)
+    signal.signal(signal.SIGUSR2, _resume_handler)
 
     # Track touch state for edge detection
     was_touched = False
     # When non-zero, we're in the touch-release window (control released)
     touch_release_until = 0.0
-    has_control = True
 
     last_control_request = time.monotonic()
     while not stop:
         try:
             time.sleep(0.25)
+
+            # While paused by follow pipeline, skip all control logic
+            if paused:
+                continue
+
             now = time.monotonic()
 
             # Check touch sensor for button wake word
@@ -100,7 +162,6 @@ def main():
                 logger.info("Touch detected! Releasing control for %ds for wake word flow.", int(TOUCH_RELEASE_DURATION))
                 try:
                     robot.conn.release_control()
-                    has_control = False
                 except Exception as e:
                     logger.warning("Release control failed: %s", e)
                 touch_release_until = now + TOUCH_RELEASE_DURATION
@@ -119,7 +180,6 @@ def main():
                     robot.conn.request_control(
                         behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
                     )
-                    has_control = True
                     set_neutral()
                 except Exception as e:
                     logger.warning("Re-acquire control failed: %s", e)
@@ -132,7 +192,6 @@ def main():
                     robot.conn.request_control(
                         behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
                     )
-                    has_control = True
                     set_neutral()
                 except Exception as e:
                     logger.warning("Control re-request failed: %s", e)
@@ -146,6 +205,7 @@ def main():
     except Exception:
         pass
     robot.disconnect()
+    _remove_pid_file()
     logger.info("Disconnected. Vector will resume autonomous behavior.")
 
 

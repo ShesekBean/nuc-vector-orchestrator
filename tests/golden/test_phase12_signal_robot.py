@@ -78,7 +78,7 @@ async def _openclaw_chat(message: str, timeout_s: float = 30.0) -> str:
                 challenge_msg.get("type") == "event"
                 and challenge_msg.get("event") == "connect.challenge"
             ):
-                challenge_msg.get("payload", {})  # acknowledge challenge
+                payload = challenge_msg.get("payload", {})
 
             connect_id = str(uuid.uuid4())
             await ws.send_json({
