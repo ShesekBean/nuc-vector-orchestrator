@@ -49,7 +49,14 @@ VOICE_SESSION_KEY = "hook:voice"
 PROTOCOL_VERSION = 3
 
 # Timeout for agent response
-AGENT_TIMEOUT_MS = 30_000
+AGENT_TIMEOUT_MS = 60_000
+
+# Lock to serialize OpenClaw requests — prevents 2nd wake word from
+# aborting the 1st request's in-flight chat session.
+_openclaw_lock = asyncio.Lock()
+_last_response: str | None = None
+_last_response_time: float = 0.0
+_RESPONSE_REUSE_WINDOW = 3.0  # seconds
 
 
 def load_gateway_token() -> str:
@@ -88,7 +95,7 @@ def _extract_text(msg: object) -> str:
     return ""
 
 
-async def openclaw_chat(message: str, timeout_s: float = 30.0) -> str:
+async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
     """Send a message to OpenClaw via WebSocket and wait for the response.
 
     Connects to OpenClaw's WebSocket gateway, authenticates, sends a
@@ -288,9 +295,28 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
     # Check if streaming is requested (wire-pod always uses streaming)
     stream = body.get("stream", False)
 
-    # Get response from OpenClaw
-    response_text = await openclaw_chat(user_message)
-    logger.info("OpenClaw response: '%s'", response_text[:100])
+    # Serialize requests: if another request is in-flight, wait for it
+    # and reuse its response (wire-pod often re-triggers on the same utterance).
+    global _last_response, _last_response_time
+
+    if _openclaw_lock.locked():
+        logger.info("Request already in-flight, waiting for it to finish...")
+        async with _openclaw_lock:
+            # Reuse the response from the request that just finished
+            if _last_response and (time.monotonic() - _last_response_time) < _RESPONSE_REUSE_WINDOW:
+                response_text = _last_response
+                logger.info("Reusing in-flight response: '%s'", response_text[:100])
+            else:
+                response_text = await openclaw_chat(user_message)
+                _last_response = response_text
+                _last_response_time = time.monotonic()
+                logger.info("OpenClaw response: '%s'", response_text[:100])
+    else:
+        async with _openclaw_lock:
+            response_text = await openclaw_chat(user_message)
+            _last_response = response_text
+            _last_response_time = time.monotonic()
+            logger.info("OpenClaw response: '%s'", response_text[:100])
 
     if stream:
         # SSE streaming response (OpenAI format)
