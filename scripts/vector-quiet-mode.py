@@ -2,8 +2,9 @@
 """Hold Vector in quiet mode — still and silent, but wake word still works.
 
 Connects to Vector via SDK and holds behavior control indefinitely at
-OVERRIDE_BEHAVIORS_PRIORITY. Periodically re-requests control in case
-vic-engine took it for a wake word interaction.
+OVERRIDE_BEHAVIORS_PRIORITY. When a touch (button tap) is detected,
+releases control for TOUCH_RELEASE_DURATION seconds so vic-engine can
+handle the wake word flow, then re-acquires control.
 
 Usage:
     python3 scripts/vector-quiet-mode.py
@@ -26,8 +27,12 @@ logger = logging.getLogger("vector-quiet-mode")
 
 SERIAL = os.environ.get("VECTOR_SERIAL", "0dd1cdcf")
 
-# How often to re-assert control (seconds)
+# How often to re-assert control (seconds) — only when not in touch-release window
 CONTROL_POLL_INTERVAL = 2.0
+
+# How long to release control after a touch event (seconds).
+# Gives vic-engine time to handle wake word → STT → intent → TTS response.
+TOUCH_RELEASE_DURATION = 15.0
 
 
 def main():
@@ -57,7 +62,9 @@ def main():
 
     logger.info(
         "Vector is still and quiet. Wake word still works.\n"
-        "  Press Ctrl-C to release control and exit."
+        "  Touch (back tap) releases control for %ds to allow wake word flow.\n"
+        "  Press Ctrl-C to release control and exit.",
+        int(TOUCH_RELEASE_DURATION),
     )
 
     # Handle graceful shutdown
@@ -70,17 +77,62 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
-    # Main loop: periodically re-request control to reclaim after wake word
+    # Track touch state for edge detection
+    was_touched = False
+    # When non-zero, we're in the touch-release window (control released)
+    touch_release_until = 0.0
+    has_control = True
+
     last_control_request = time.monotonic()
     while not stop:
         try:
-            time.sleep(0.5)
+            time.sleep(0.25)
             now = time.monotonic()
+
+            # Check touch sensor for button wake word
+            try:
+                is_touched = robot.status.is_button_pressed
+            except Exception:
+                is_touched = False
+
+            # Edge detection: touch just started
+            if is_touched and not was_touched:
+                logger.info("Touch detected! Releasing control for %ds for wake word flow.", int(TOUCH_RELEASE_DURATION))
+                try:
+                    robot.conn.release_control()
+                    has_control = False
+                except Exception as e:
+                    logger.warning("Release control failed: %s", e)
+                touch_release_until = now + TOUCH_RELEASE_DURATION
+
+            was_touched = is_touched
+
+            # In touch-release window — don't re-acquire control
+            if touch_release_until > 0 and now < touch_release_until:
+                continue
+
+            # Touch-release window expired — re-acquire control
+            if touch_release_until > 0 and now >= touch_release_until:
+                logger.info("Touch-release window expired. Re-acquiring control.")
+                touch_release_until = 0.0
+                try:
+                    robot.conn.request_control(
+                        behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+                    )
+                    has_control = True
+                    set_neutral()
+                except Exception as e:
+                    logger.warning("Re-acquire control failed: %s", e)
+                last_control_request = now
+                continue
+
+            # Normal polling: periodically re-request control
             if now - last_control_request >= CONTROL_POLL_INTERVAL:
                 try:
                     robot.conn.request_control(
                         behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
                     )
+                    has_control = True
                     set_neutral()
                 except Exception as e:
                     logger.warning("Control re-request failed: %s", e)
