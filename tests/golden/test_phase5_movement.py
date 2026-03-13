@@ -99,6 +99,6 @@ class TestPhase5MovementBatch:
                 pose_before.position.x != pose_after.position.x
                 or pose_before.position.y != pose_after.position.y
             ), "Robot position unchanged after drive"
-        print(f"    Position changed ✓")
+        print("    Position changed ✓")
 
         print("\n>>> Phase 5 — ALL TESTS PASSED")

@@ -81,7 +81,7 @@ def main():
     was_touched = False
     # When non-zero, we're in the touch-release window (control released)
     touch_release_until = 0.0
-    has_control = True
+    _has_control = True
 
     last_control_request = time.monotonic()
     while not stop:
@@ -100,7 +100,7 @@ def main():
                 logger.info("Touch detected! Releasing control for %ds for wake word flow.", int(TOUCH_RELEASE_DURATION))
                 try:
                     robot.conn.release_control()
-                    has_control = False
+                    _has_control = False
                 except Exception as e:
                     logger.warning("Release control failed: %s", e)
                 touch_release_until = now + TOUCH_RELEASE_DURATION
@@ -119,7 +119,7 @@ def main():
                     robot.conn.request_control(
                         behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
                     )
-                    has_control = True
+                    _has_control = True
                     set_neutral()
                 except Exception as e:
                     logger.warning("Re-acquire control failed: %s", e)
@@ -132,7 +132,7 @@ def main():
                     robot.conn.request_control(
                         behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
                     )
-                    has_control = True
+                    _has_control = True
                     set_neutral()
                 except Exception as e:
                     logger.warning("Control re-request failed: %s", e)
