@@ -8,12 +8,13 @@ through Vector's speaker, enabling bidirectional communication.
 Two-way streaming architecture::
 
     Camera OUT: Vector camera → CameraClient → JPEG → RGBA VideoFrame → LiveKit
-    Mic OUT:    vector-streamer (on Vector) → Opus/TCP → NUC → AudioFrame → LiveKit
+    Mic OUT:    wire-pod chipper → AudioTap TCP (localhost:5556) → raw PCM → LiveKit
     Audio IN:   LiveKit remote audio → PCM → Vector stream_wav_file()
     Video IN:   LiveKit remote video → downscale 160x80 → DisplayFaceImageRGB → Vector OLED
 
-The vector-streamer native binary on Vector streams Opus-encoded mic audio
-over TCP (port 5555). This bridge connects as a TCP client to receive it.
+Wire-pod's chipper taps decoded mic audio (16kHz S16LE mono PCM) during
+voice sessions and streams it over TCP on localhost:5556. Note: mic audio
+only flows after "Hey Vector" wake word triggers a voice session.
 
 Usage::
 
@@ -33,7 +34,6 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-import struct
 import tempfile
 import wave
 from typing import TYPE_CHECKING, Any
@@ -73,19 +73,10 @@ INITIAL_RECONNECT_DELAY = 1.0
 # Auto-disconnect when no remote participants for this long (seconds)
 EMPTY_ROOM_TIMEOUT = 3 * 60  # 3 minutes
 
-# vector-streamer TCP connection (mic audio from Vector)
-STREAMER_TCP_PORT = 5555
-STREAMER_RECONNECT_DELAY = 5.0  # seconds between reconnect attempts
-
-# TCP frame protocol (matches protocol.h)
-_FRAME_TYPE_H264 = 0x01
-_FRAME_TYPE_OPUS = 0x02
-_FRAME_TYPE_JPEG = 0x03
-_FRAME_TYPE_PCM = 0x10
-_FRAME_TYPE_PING = 0xF0
-_FRAME_TYPE_PONG = 0xF1
-_FRAME_HEADER_SIZE = 5  # 1 byte type + 4 bytes LE length
-_MAX_FRAME_SIZE = 512 * 1024
+# Wire-pod chipper audio tap (mic audio via localhost TCP)
+CHIPPER_TAP_PORT = 5556
+CHIPPER_TAP_HOST = "127.0.0.1"
+CHIPPER_TAP_RECONNECT_DELAY = 5.0  # seconds between reconnect attempts
 
 # Video-in display settings (remote video → Vector OLED)
 DISPLAY_WIDTH = 160
@@ -118,8 +109,6 @@ class LiveKitBridge:
         livekit_url: str = DEFAULT_LIVEKIT_URL,
         api_key: str | None = None,
         api_secret: str | None = None,
-        vector_ip: str = "192.168.1.73",
-        streamer_port: int = STREAMER_TCP_PORT,
         enable_video_in: bool = True,
     ) -> None:
         self._camera = camera_client
@@ -146,13 +135,10 @@ class LiveKitBridge:
         self._playing_audio = False  # guard against overlapping playback
         self._empty_room_timer: asyncio.TimerHandle | None = None
 
-        # vector-streamer TCP connection (mic audio from Vector)
-        self._vector_ip = vector_ip
-        self._streamer_port = streamer_port
+        # Wire-pod chipper audio tap (mic PCM from localhost)
         self._tcp_reader: asyncio.StreamReader | None = None
         self._tcp_writer: asyncio.StreamWriter | None = None
         self._tcp_task: asyncio.Task | None = None
-        self._opus_decoder: Any | None = None
 
         # Video-in: remote video → Vector OLED display
         self._enable_video_in = enable_video_in
@@ -200,7 +186,7 @@ class LiveKitBridge:
             "active": self._active,
             "room": self._room_name,
             "livekit_url": self._livekit_url,
-            "streamer_connected": self._tcp_writer is not None and not self._tcp_writer.is_closing(),
+            "chipper_tap_connected": self._tcp_writer is not None and not self._tcp_writer.is_closing(),
             "video_in_active": self._video_in_active,
         }
 
@@ -258,20 +244,20 @@ class LiveKitBridge:
         await self._room.local_participant.publish_track(video_track, video_opts)
         logger.info("Published video track (vector-camera)")
 
-        # Create and publish audio track for mic (fed by vector-streamer TCP)
+        # Create and publish audio track for mic (fed by wire-pod chipper tap)
         self._audio_source = rtc.AudioSource(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
         audio_track = rtc.LocalAudioTrack.create_audio_track(
             "vector-mic", self._audio_source
         )
         audio_opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
         await self._room.local_participant.publish_track(audio_track, audio_opts)
-        logger.info("Published audio track (vector-mic) — fed by vector-streamer TCP")
+        logger.info("Published audio track (vector-mic) — fed by chipper tap")
 
         # Start publishing loops
         self._video_task = asyncio.create_task(self._video_publish_loop())
 
-        # Start vector-streamer TCP connection for mic audio
-        self._tcp_task = asyncio.create_task(self._streamer_tcp_loop())
+        # Start wire-pod chipper audio tap for mic audio
+        self._tcp_task = asyncio.create_task(self._chipper_tap_loop())
 
         self._active = True
         self._emit_session_event(active=True, room=room)
@@ -306,7 +292,7 @@ class LiveKitBridge:
         self._tcp_task = None
         self._video_in_task = None
 
-        # Close TCP connection to vector-streamer
+        # Close TCP connection to chipper audio tap
         if self._tcp_writer:
             try:
                 self._tcp_writer.close()
@@ -652,87 +638,70 @@ class LiveKitBridge:
                 delay = min(delay * 2, MAX_RECONNECT_DELAY)
 
     # ------------------------------------------------------------------
-    # vector-streamer TCP client (mic audio from Vector)
+    # Wire-pod chipper audio tap (mic PCM from localhost:5556)
     # ------------------------------------------------------------------
 
-    async def _streamer_tcp_loop(self) -> None:
-        """Connect to vector-streamer on Vector and receive Opus mic audio.
+    async def _chipper_tap_loop(self) -> None:
+        """Connect to wire-pod chipper audio tap and receive raw PCM.
 
-        Reconnects automatically if connection drops.
+        The chipper tap streams decoded 16kHz S16LE mono PCM during
+        voice sessions (after "Hey Vector" wake word). Reconnects
+        automatically if connection drops.
         """
         logger.info(
-            "Starting vector-streamer TCP client → %s:%d",
-            self._vector_ip, self._streamer_port,
+            "Starting chipper audio tap client → %s:%d",
+            CHIPPER_TAP_HOST, CHIPPER_TAP_PORT,
         )
 
-        # Lazily init Opus decoder
-        if self._opus_decoder is None:
-            try:
-                from opuslib import Decoder as OpusDecoder
-                self._opus_decoder = OpusDecoder(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
-                logger.info("Opus decoder initialized (opuslib)")
-            except ImportError:
-                logger.warning(
-                    "opuslib not installed — mic audio from vector-streamer "
-                    "will not be available. Install with: pip install opuslib"
-                )
-                return
-
         published_count = 0
+        # 20ms of 16kHz mono int16 = 320 samples = 640 bytes
+        CHUNK_SIZE = 640
 
         while self._active:
             try:
                 reader, writer = await asyncio.open_connection(
-                    self._vector_ip, self._streamer_port
+                    CHIPPER_TAP_HOST, CHIPPER_TAP_PORT
                 )
                 self._tcp_reader = reader
                 self._tcp_writer = writer
-                logger.info("Connected to vector-streamer at %s:%d",
-                            self._vector_ip, self._streamer_port)
+                logger.info("Connected to chipper audio tap at %s:%d",
+                            CHIPPER_TAP_HOST, CHIPPER_TAP_PORT)
 
                 while self._active:
-                    # Read frame header: [type:1][length:4 LE]
-                    header = await reader.readexactly(_FRAME_HEADER_SIZE)
-                    frame_type = header[0]
-                    frame_len = struct.unpack_from("<I", header, 1)[0]
-
-                    if frame_len > _MAX_FRAME_SIZE:
-                        logger.warning("Frame too large: %d bytes", frame_len)
+                    # Read raw PCM in 20ms chunks (no framing — just raw bytes)
+                    pcm_data = await reader.read(CHUNK_SIZE)
+                    if not pcm_data:
+                        logger.debug("Chipper tap: connection closed (EOF)")
                         break
 
-                    # Read payload
-                    if frame_len > 0:
-                        payload = await reader.readexactly(frame_len)
-                    else:
-                        payload = b""
+                    if len(pcm_data) < 2:
+                        continue
 
-                    if frame_type == _FRAME_TYPE_OPUS:
-                        await self._handle_opus_audio(payload)
+                    # Publish raw PCM directly as LiveKit audio frame
+                    samples_per_channel = len(pcm_data) // 2  # int16 = 2 bytes
+                    try:
+                        frame = rtc.AudioFrame(
+                            data=pcm_data,
+                            sample_rate=AUDIO_SAMPLE_RATE,
+                            num_channels=AUDIO_CHANNELS,
+                            samples_per_channel=samples_per_channel,
+                        )
+                        await self._audio_source.capture_frame(frame)
                         published_count += 1
                         if published_count <= 3 or published_count % 500 == 0:
                             logger.info(
-                                "Streamer mic audio frame #%d (%d bytes Opus)",
-                                published_count, len(payload),
+                                "Chipper tap mic frame #%d (%d bytes PCM, %d samples)",
+                                published_count, len(pcm_data), samples_per_channel,
                             )
-
-                    elif frame_type == _FRAME_TYPE_PING:
-                        # Respond with pong
-                        pong = struct.pack("<BI", _FRAME_TYPE_PONG, 0)
-                        writer.write(pong)
-                        await writer.drain()
-
-                    elif frame_type in (_FRAME_TYPE_H264, _FRAME_TYPE_JPEG):
-                        # Future: handle camera frames from vector-streamer
-                        pass
+                    except Exception:
+                        logger.debug("Failed to publish chipper tap audio", exc_info=True)
 
             except asyncio.CancelledError:
                 raise
             except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
-                logger.debug("vector-streamer connection failed: %s", e)
-            except asyncio.IncompleteReadError:
-                logger.debug("vector-streamer disconnected (incomplete read)")
+                logger.debug("Chipper tap connection failed: %s", e)
             except Exception:
-                logger.warning("vector-streamer TCP error", exc_info=True)
+                logger.warning("Chipper tap TCP error", exc_info=True)
             finally:
                 if self._tcp_writer:
                     try:
@@ -744,32 +713,12 @@ class LiveKitBridge:
 
             if self._active:
                 logger.info(
-                    "Reconnecting to vector-streamer in %.0fs...",
-                    STREAMER_RECONNECT_DELAY,
+                    "Reconnecting to chipper tap in %.0fs...",
+                    CHIPPER_TAP_RECONNECT_DELAY,
                 )
-                await asyncio.sleep(STREAMER_RECONNECT_DELAY)
+                await asyncio.sleep(CHIPPER_TAP_RECONNECT_DELAY)
 
-        logger.info("Streamer TCP loop ended (published %d mic frames)", published_count)
-
-    async def _handle_opus_audio(self, opus_data: bytes) -> None:
-        """Decode Opus packet and publish as LiveKit audio frame."""
-        if not self._opus_decoder or not self._audio_source:
-            return
-
-        try:
-            # Decode Opus → PCM int16 (320 samples for 20ms at 16kHz)
-            pcm = self._opus_decoder.decode(opus_data, 320)  # frame_size=320
-
-            # Create AudioFrame for LiveKit
-            frame = rtc.AudioFrame(
-                data=pcm,
-                sample_rate=AUDIO_SAMPLE_RATE,
-                num_channels=AUDIO_CHANNELS,
-                samples_per_channel=len(pcm) // 2,  # int16 = 2 bytes per sample
-            )
-            await self._audio_source.capture_frame(frame)
-        except Exception:
-            logger.debug("Opus decode/publish failed", exc_info=True)
+        logger.info("Chipper tap loop ended (published %d mic frames)", published_count)
 
     # ------------------------------------------------------------------
     # Video-in: remote video → Vector OLED display
