@@ -665,13 +665,29 @@ def _send_image_to_screen(robot: "Any", sdk_image: "Any", duration_sec: float) -
     robot.screen.set_screen_with_image_data(screen_data, duration_sec=duration_sec)
 
 
+def _restore_face_animation(robot: "Any") -> None:
+    """Restore normal face animation after displaying a static image.
+
+    DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
+    Releasing and re-acquiring behavior control forces a full face reset.
+    """
+    try:
+        logger.info("Restoring face: releasing behavior control...")
+        robot.conn.release_control()
+        time.sleep(0.5)
+        robot.conn.request_control()
+        time.sleep(0.5)
+        logger.info("Face animation restored via control cycle")
+    except Exception:
+        logger.exception("Could not restore face animation")
+
+
 def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
                           duration: float, stop_event: threading.Event) -> None:
     """Re-send image every 0.5s for *duration* seconds to suppress eye animations.
 
-    Each send tells vic-engine to hold the image for 1s (slightly longer than
-    our 0.5s re-send interval, to avoid flicker).  When the hold ends, we stop
-    re-sending and the last image naturally expires after ≤1s.
+    After the hold ends, plays a short animation to restore the normal face
+    (DisplayFaceImage permanently disables KeepFaceAlive in vic-anim).
     """
     end_time = time.monotonic() + duration
     interval = 0.5
@@ -680,14 +696,16 @@ def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
         if remaining <= 0:
             break
         try:
-            # Tell vic-engine to hold for just slightly longer than our interval
-            # so there's no flicker, but also not much overshoot when we stop.
             hold_sec = min(interval + 0.3, remaining + 0.1)
             _send_image_to_screen(robot, sdk_image, hold_sec)
         except Exception:
             logger.exception("Display hold send failed")
             break
         stop_event.wait(min(interval, remaining))
+
+    # Restore normal face animation (eyes) after hold ends
+    logger.info("Display hold ended (stopped=%s)", stop_event.is_set())
+    _restore_face_animation(robot)
 
 
 def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float) -> None:
