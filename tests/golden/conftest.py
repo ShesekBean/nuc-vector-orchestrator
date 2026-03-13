@@ -7,7 +7,10 @@ Phases 2, 5, and 6 are skipped but NUC-only phases continue.
 from __future__ import annotations
 
 import importlib
+import json
 import os
+import shlex
+import subprocess
 import sys
 import types
 from unittest.mock import MagicMock
@@ -78,6 +81,9 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "phase7: Signal integration")
     config.addinivalue_line("markers", "phase8: Agent loop")
     config.addinivalue_line("markers", "phase9: Event bus integration")
+    config.addinivalue_line("markers", "phase10: Services health")
+    config.addinivalue_line("markers", "phase12: Signal robot E2E")
+    config.addinivalue_line("markers", "phase13: LiveKit integration")
     config.addinivalue_line("markers", "robot: Requires live Vector robot")
 
     # Restore real numpy/PIL/cv2 if test_evaluator mocked them
@@ -169,6 +175,55 @@ def repo_root() -> str:
         d = os.path.dirname(d)
     # Fallback to cwd
     return os.getcwd()
+
+
+def send_to_signal(message: str, image_path: str | None = None) -> bool:
+    """Send a message (and optional image) to the Signal group.
+
+    Returns True if the send succeeded, False otherwise.
+    Does not raise — test assertions should not depend on Signal delivery.
+    """
+    group_id = "BUrA+nRRpsfdYgftby/jpJ7Ugy5PBzYWg89oNNr4nF4="
+    container = "openclaw-gateway"
+
+    params: dict = {"groupId": group_id, "message": message}
+
+    # Copy image into container if provided
+    container_path = None
+    if image_path and os.path.isfile(image_path):
+        container_path = f"/tmp/{os.path.basename(image_path)}"
+        try:
+            subprocess.run(
+                ["sg", "docker", "-c",
+                 f"docker cp {shlex.quote(image_path)} {container}:{container_path}"],
+                capture_output=True, timeout=10,
+            )
+            params["attachments"] = [container_path]
+        except Exception:
+            container_path = None
+
+    payload = json.dumps({"jsonrpc": "2.0", "method": "send", "params": params, "id": 1})
+    payload_file = "/tmp/sig-test-msg.json"
+    with open(payload_file, "w") as f:
+        f.write(payload)
+
+    try:
+        subprocess.run(
+            ["sg", "docker", "-c",
+             f"docker cp {payload_file} {container}:/tmp/sig-test-msg.json"],
+            capture_output=True, timeout=10,
+        )
+        result = subprocess.run(
+            ["sg", "docker", "-c",
+             f"docker exec {container} curl -sf -X POST "
+             f"http://127.0.0.1:8080/api/v1/rpc "
+             f"-H 'Content-Type: application/json' "
+             f"-d @/tmp/sig-test-msg.json"],
+            capture_output=True, text=True, timeout=15,
+        )
+        return "SUCCESS" in result.stdout
+    except Exception:
+        return False
 
 
 @pytest.fixture(scope="session")
