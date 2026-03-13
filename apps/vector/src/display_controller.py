@@ -1,7 +1,9 @@
-"""Face display controller for Vector's 184×96 OLED screen.
+"""Face display controller for Vector's 160×80 OLED screen.
 
-Renders procedural face expressions and status overlays, then pushes them
-to Vector via ``convert_image_to_screen_data`` + ``set_screen_with_image_data``.
+Renders procedural face expressions and status overlays at native 160×80,
+embeds into a 184×96 SDK frame, then pushes to Vector via
+``convert_image_to_screen_data`` + ``set_screen_with_image_data``.
+vic-engine converts stride 184→160 automatically for Xray hardware.
 
 Usage::
 
@@ -24,9 +26,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Screen geometry
-SCREEN_W = 184
-SCREEN_H = 96
+# Actual Vector 2.0 (Xray) screen resolution
+SCREEN_W = 160
+SCREEN_H = 80
+# SDK requires 184x96 images; vic-engine converts stride 184→160 for Xray
+SDK_W = 184
+SDK_H = 96
 
 
 # ---------------------------------------------------------------------------
@@ -65,61 +70,61 @@ class FaceDef:
     mouth: MouthShape
 
 
-# Eye positions (centred on 184×96 canvas)
-_LEFT_EYE_CX = 62
-_RIGHT_EYE_CX = 122
-_EYE_CY = 36
+# Eye positions (centred on 160×80 canvas)
+_LEFT_EYE_CX = 54
+_RIGHT_EYE_CX = 106
+_EYE_CY = 30
 
 EXPRESSIONS: dict[str, FaceDef] = {
     "idle": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 14, 16),
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 14, 16),
-        mouth=MouthShape(72, 70, 112, 82, 0, 180),
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 12, 13),
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 12, 13),
+        mouth=MouthShape(63, 58, 97, 68, 0, 180),
     ),
     "happy": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 16, 18),
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 16, 18),
-        mouth=MouthShape(62, 64, 122, 86, 0, 180),
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 14, 15),
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 14, 15),
+        mouth=MouthShape(54, 53, 106, 72, 0, 180),
     ),
     "sad": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY + 4, 12, 10),
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 4, 12, 10),
-        mouth=MouthShape(72, 72, 112, 86, 180, 360),
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY + 3, 10, 8),
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 3, 10, 8),
+        mouth=MouthShape(63, 60, 97, 72, 180, 360),
     ),
     "thinking": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 14, 8),   # squinted
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 14, 16),
-        mouth=MouthShape(80, 76, 104, 82, 0, 0),  # flat line
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 12, 7),   # squinted
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 12, 13),
+        mouth=MouthShape(70, 63, 90, 68, 0, 0),  # flat line
     ),
     "listening": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 16, 20),  # wide
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 16, 20),
-        mouth=MouthShape(82, 72, 102, 80, 0, 180),  # small 'o'
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 14, 17),  # wide
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 14, 17),
+        mouth=MouthShape(71, 60, 89, 67, 0, 180),  # small 'o'
     ),
     "speaking": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 14, 16),
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 14, 16),
-        mouth=MouthShape(72, 66, 112, 86, 0, 180),  # open wide
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 12, 13),
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 12, 13),
+        mouth=MouthShape(63, 55, 97, 72, 0, 180),  # open wide
     ),
     "curious": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY - 2, 14, 20),  # raised
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 2, 12, 14),  # normal
-        mouth=MouthShape(80, 74, 104, 82, 0, 180),  # small smile
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY - 2, 12, 17),  # raised
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 2, 10, 12),  # normal
+        mouth=MouthShape(70, 62, 90, 68, 0, 180),  # small smile
     ),
     "excited": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 18, 22),  # extra wide
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 18, 22),
-        mouth=MouthShape(58, 62, 126, 90, 0, 180),  # big open smile
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY, 16, 18),  # extra wide
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY, 16, 18),
+        mouth=MouthShape(50, 52, 110, 75, 0, 180),  # big open smile
     ),
     "sleepy": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY + 4, 14, 6),  # half closed
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 4, 14, 6),
-        mouth=MouthShape(80, 76, 104, 82, 0, 0),  # flat line
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY + 3, 12, 5),  # half closed
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY + 3, 12, 5),
+        mouth=MouthShape(70, 63, 90, 68, 0, 0),  # flat line
     ),
     "startled": FaceDef(
-        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY - 4, 18, 24),  # very wide
-        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY - 4, 18, 24),
-        mouth=MouthShape(82, 70, 102, 84, 0, 180),  # small O
+        left_eye=EyeShape(_LEFT_EYE_CX, _EYE_CY - 3, 16, 20),  # very wide
+        right_eye=EyeShape(_RIGHT_EYE_CX, _EYE_CY - 3, 16, 20),
+        mouth=MouthShape(71, 58, 89, 70, 0, 180),  # small O
     ),
 }
 
@@ -146,10 +151,10 @@ def _draw_mouth(draw: Any, mouth: MouthShape, color: tuple[int, int, int] = (0, 
 
 
 def render_face(expression: str, frame_num: int = 0) -> Any:
-    """Render a face expression to a PIL Image (184×96 RGB).
+    """Render a face expression to a PIL Image (160×80 RGB).
 
     *frame_num* is used for animation effects (blink, speaking mouth cycle).
-    Returns a PIL.Image.Image.
+    Returns a PIL.Image.Image at native 160×80 resolution.
     """
     # Lazy import — PIL may not be available in all environments
     from PIL import Image, ImageDraw  # noqa: F811
@@ -183,11 +188,11 @@ def render_face(expression: str, frame_num: int = 0) -> Any:
     # Thinking animation: bouncing dots instead of normal mouth
     if expression == "thinking":
         _draw_mouth(draw, mouth)
-        dot_y = 78
+        dot_y = 65
         for i in range(3):
             offset = (frame_num + i * 3) % 9
             bounce = abs(offset - 4)
-            dx = 78 + i * 14
+            dx = 68 + i * 12
             draw.ellipse([dx - 2, dot_y - bounce - 2, dx + 2, dot_y - bounce + 2],
                          fill=(0, 200, 255))
     else:
@@ -199,7 +204,7 @@ def render_face(expression: str, frame_num: int = 0) -> Any:
 def render_status(battery_pct: int = -1,
                   wifi_strength: int = -1,
                   detection_text: str = "") -> Any:
-    """Render a status overlay screen (184×96 RGB PIL Image).
+    """Render a status overlay screen (160×80 RGB PIL Image).
 
     Parameters
     ----------
@@ -252,7 +257,7 @@ def render_status(battery_pct: int = -1,
 # ---------------------------------------------------------------------------
 
 class DisplayController:
-    """Manages Vector's 184×96 OLED face display.
+    """Manages Vector's 160×80 OLED face display.
 
     Parameters
     ----------
@@ -271,8 +276,11 @@ class DisplayController:
         self._frame_interval = 1.0 / self._fps
 
         self._expression = "idle"
-        self._mode = "face"  # "face" or "status"
+        self._mode = "face"  # "face", "status", or "image"
         self._status_args: dict[str, Any] = {}
+        self._held_image: Any = None  # PIL Image held in "image" mode
+        self._image_duration: float = 0.0  # how long to hold image (0 = until changed)
+        self._image_start: float = 0.0
         self._frame_num = 0
 
         self._lock = threading.Lock()
@@ -298,6 +306,7 @@ class DisplayController:
         with self._lock:
             self._expression = name
             self._mode = "face"
+            self._held_image = None
             self._frame_num = 0
 
     def show_status(self, battery_pct: int = -1, wifi_strength: int = -1,
@@ -305,19 +314,33 @@ class DisplayController:
         """Switch to status overlay mode."""
         with self._lock:
             self._mode = "status"
+            self._held_image = None
             self._status_args = {
                 "battery_pct": battery_pct,
                 "wifi_strength": wifi_strength,
                 "detection_text": detection_text,
             }
 
-    def show_image(self, pil_image: Any) -> None:
-        """Display an arbitrary PIL Image on Vector's OLED (one-shot).
+    def show_image(self, pil_image: Any, duration: float = 0.0) -> None:
+        """Display an arbitrary PIL Image on Vector's OLED.
 
-        The image is resized to 184×96 if necessary. Does not affect the
-        animation loop mode — the next animation frame will overwrite it.
+        Switches to "image" mode which suppresses the eye animation loop.
+        The image is resized to 160×80 (native) and embedded into a 184×96 SDK frame.
+
+        Parameters
+        ----------
+        pil_image : PIL.Image.Image
+            Image to display.
+        duration : float
+            How long to hold the image in seconds. 0 means hold until
+            another mode is set (e.g. set_expression or show_status).
         """
-        self._send_to_screen(pil_image)
+        with self._lock:
+            self._mode = "image"
+            self._held_image = pil_image
+            self._image_duration = duration
+            self._image_start = time.monotonic()
+        self._send_to_screen(pil_image, duration_sec=max(duration, 10.0))
 
     @property
     def expression(self) -> str:
@@ -369,9 +392,24 @@ class DisplayController:
                     expr = self._expression
                     frame = self._frame_num
                     status_args = self._status_args.copy()
+                    held_image = self._held_image
+                    image_duration = self._image_duration
+                    image_start = self._image_start
                     self._frame_num += 1
 
-                if mode == "face":
+                if mode == "image":
+                    # Check if timed image has expired
+                    if image_duration > 0 and (t0 - image_start) >= image_duration:
+                        with self._lock:
+                            self._mode = "face"
+                            self._held_image = None
+                        img = render_face(expr, frame)
+                    elif held_image is not None:
+                        # Re-send held image to keep it on screen
+                        img = held_image
+                    else:
+                        img = render_face(expr, frame)
+                elif mode == "face":
                     img = render_face(expr, frame)
                 else:
                     img = render_status(**status_args)
@@ -385,8 +423,16 @@ class DisplayController:
             if sleep_time > 0:
                 self._stop_event.wait(sleep_time)
 
-    def _send_to_screen(self, pil_image: Any) -> None:
-        """Convert PIL image and push to Vector's OLED."""
+    def _send_to_screen(self, pil_image: Any, duration_sec: float = 0.0) -> None:
+        """Convert PIL image and push to Vector's OLED.
+
+        Parameters
+        ----------
+        duration_sec : float
+            Duration hint for vic-anim's EnableKeepFaceAlive. If 0, uses
+            frame_interval + 0.5s (suitable for animation). For held images,
+            pass a longer duration to suppress eye animations.
+        """
         try:
             from anki_vector.screen import convert_image_to_screen_data
         except ImportError:
@@ -395,7 +441,7 @@ class DisplayController:
 
         from PIL import Image as PILImage
 
-        # Ensure correct size
+        # Resize content to native 160×80 if needed
         if pil_image.size != (SCREEN_W, SCREEN_H):
             pil_image = pil_image.resize((SCREEN_W, SCREEN_H), PILImage.LANCZOS)
 
@@ -403,9 +449,18 @@ class DisplayController:
         if pil_image.mode != "RGB":
             pil_image = pil_image.convert("RGB")
 
+        # Embed 160×80 content into 184×96 SDK frame (top-left aligned).
+        # vic-engine reads 160 pixels from each 184-pixel row for Xray hardware.
+        sdk_frame = PILImage.new("RGB", (SDK_W, SDK_H), (0, 0, 0))
+        sdk_frame.paste(pil_image, (0, 0))
+        pil_image = sdk_frame
+
+        if duration_sec <= 0:
+            duration_sec = self._frame_interval + 0.5
+
         screen_data = convert_image_to_screen_data(pil_image)
         self._robot.screen.set_screen_with_image_data(
-            screen_data, duration_sec=self._frame_interval + 0.5
+            screen_data, duration_sec=duration_sec
         )
 
     def _subscribe_events(self, bus: Any) -> None:
