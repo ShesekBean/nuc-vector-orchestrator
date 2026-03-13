@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING
 
@@ -609,6 +611,298 @@ async def call_join_url(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "TOKEN_ERROR")
 
 
+# ---------------------------------------------------------------------------
+# Display image/text/color helpers
+# ---------------------------------------------------------------------------
+
+# Actual Vector 2.0 (Xray) screen resolution
+_DISPLAY_W = 160
+_DISPLAY_H = 80
+# SDK requires 184x96 images; vic-engine converts stride 184→160 for Xray
+_SDK_W = 184
+_SDK_H = 96
+
+# Active display-hold threads — keyed by "display_hold"
+_display_hold_threads: dict[str, threading.Event] = {}
+_display_hold_lock = threading.Lock()
+
+
+def _prepare_for_screen(pil_image: "Any") -> "Any":
+    """Resize a PIL image to fit 160x80 (letterboxed) and embed in 184x96 SDK frame.
+
+    Returns a 184x96 RGB PIL Image ready for convert_image_to_screen_data.
+    """
+    from PIL import Image as PILImage
+
+    # Ensure RGB
+    if pil_image.mode != "RGB":
+        pil_image = pil_image.convert("RGB")
+
+    # Resize to fit 160x80 preserving aspect ratio with black letterbox
+    img_w, img_h = pil_image.size
+    scale = min(_DISPLAY_W / img_w, _DISPLAY_H / img_h)
+    new_w = int(img_w * scale)
+    new_h = int(img_h * scale)
+    resized = pil_image.resize((new_w, new_h), PILImage.LANCZOS)
+
+    # Create 160x80 black canvas and paste centered
+    display = PILImage.new("RGB", (_DISPLAY_W, _DISPLAY_H), (0, 0, 0))
+    offset_x = (_DISPLAY_W - new_w) // 2
+    offset_y = (_DISPLAY_H - new_h) // 2
+    display.paste(resized, (offset_x, offset_y))
+
+    # Embed into 184x96 SDK frame (top-left, rest is black)
+    sdk_frame = PILImage.new("RGB", (_SDK_W, _SDK_H), (0, 0, 0))
+    sdk_frame.paste(display, (0, 0))
+    return sdk_frame
+
+
+def _send_image_to_screen(robot: "Any", sdk_image: "Any", duration_sec: float) -> None:
+    """Send a 184x96 PIL image to Vector's OLED via SDK."""
+    from anki_vector.screen import convert_image_to_screen_data
+
+    screen_data = convert_image_to_screen_data(sdk_image)
+    robot.screen.set_screen_with_image_data(screen_data, duration_sec=duration_sec)
+
+
+def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
+                          duration: float, stop_event: threading.Event) -> None:
+    """Re-send image every 0.5s for *duration* seconds to suppress eye animations."""
+    end_time = time.monotonic() + duration
+    interval = 0.5
+    while not stop_event.is_set() and time.monotonic() < end_time:
+        try:
+            _send_image_to_screen(robot, sdk_image, min(interval + 0.5, duration))
+        except Exception:
+            logger.exception("Display hold send failed")
+            break
+        stop_event.wait(interval)
+
+
+def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float) -> None:
+    """Start a background thread that holds an image on screen for *duration* seconds.
+
+    Cancels any previous hold thread.
+    """
+    with _display_hold_lock:
+        # Stop previous hold if any
+        prev = _display_hold_threads.get("display_hold")
+        if prev is not None:
+            prev.set()
+
+        stop_event = threading.Event()
+        _display_hold_threads["display_hold"] = stop_event
+
+    t = threading.Thread(
+        target=_hold_image_on_screen,
+        args=(robot, sdk_image, duration, stop_event),
+        name="display-hold",
+        daemon=True,
+    )
+    t.start()
+
+
+def _render_text_image(text: str, fg_color: tuple, bg_color: tuple) -> "Any":
+    """Render text centered on a 160x80 canvas."""
+    from PIL import Image as PILImage, ImageDraw
+
+    img = PILImage.new("RGB", (_DISPLAY_W, _DISPLAY_H), bg_color)
+    draw = ImageDraw.Draw(img)
+
+    # Use default font; get text bounding box for centering
+    bbox = draw.textbbox((0, 0), text)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+
+    # Center the text
+    x = (_DISPLAY_W - text_w) // 2
+    y = (_DISPLAY_H - text_h) // 2
+    draw.text((x, y), text, fill=fg_color)
+    return img
+
+
+def _parse_color(color_str: str) -> tuple:
+    """Parse a color string (hex like '#FF0000' or name like 'red') to RGB tuple."""
+    from PIL import ImageColor
+    try:
+        return ImageColor.getrgb(color_str)
+    except (ValueError, AttributeError):
+        raise ValueError(f"Unknown color: {color_str}")
+
+
+# ---------------------------------------------------------------------------
+# Display route handlers
+# ---------------------------------------------------------------------------
+
+
+async def display_image(request: web.Request) -> web.Response:
+    """POST /display/image — display an image on Vector's OLED face.
+
+    Accepts:
+      - multipart/form-data with 'image' file field
+      - JSON with 'image' field containing base64-encoded image data
+    Optional: 'duration' (seconds, default 10)
+    """
+    conn: "ConnectionManager" = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    duration = 10.0
+
+    try:
+        from PIL import Image as PILImage
+
+        content_type = request.content_type or ""
+
+        if "multipart" in content_type:
+            reader = await request.multipart()
+            image_data = None
+            while True:
+                part = await reader.next()
+                if part is None:
+                    break
+                if part.name == "image":
+                    image_data = await part.read()
+                elif part.name == "duration":
+                    raw = await part.text()
+                    duration = float(raw)
+
+            if not image_data:
+                return _json_error(400, "Missing 'image' field in multipart", "MISSING_IMAGE")
+
+        elif "json" in content_type:
+            try:
+                body = await request.json()
+            except Exception:
+                return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
+            b64 = body.get("image")
+            if not b64:
+                return _json_error(400, "Missing 'image' field (base64)", "MISSING_IMAGE")
+            duration = float(body.get("duration", duration))
+            image_data = base64.b64decode(b64)
+
+        else:
+            # Try reading raw body as image data
+            image_data = await request.read()
+            if not image_data:
+                return _json_error(400, "No image data in request body", "MISSING_IMAGE")
+            # Check for duration query param
+            dur_str = request.query.get("duration")
+            if dur_str:
+                duration = float(dur_str)
+
+        pil_image = PILImage.open(io.BytesIO(image_data))
+        sdk_frame = _prepare_for_screen(pil_image)
+
+        # Send immediately, then hold in background
+        await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
+        _start_display_hold(conn.robot, sdk_frame, duration)
+
+        return web.json_response({
+            "status": "ok",
+            "duration": duration,
+            "original_size": list(pil_image.size),
+        })
+    except ValueError as exc:
+        return _json_error(400, str(exc), "INVALID_INPUT")
+    except Exception as exc:
+        logger.exception("Display image failed")
+        return _json_error(500, str(exc), "DISPLAY_IMAGE_FAILED")
+
+
+async def display_text(request: web.Request) -> web.Response:
+    """POST /display/text — render and display text on Vector's OLED face.
+
+    Body: {"text": "Hello!", "fg_color": "#00FF00", "bg_color": "#000000", "duration": 10}
+    """
+    conn: "ConnectionManager" = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
+    text = body.get("text")
+    if not text:
+        return _json_error(400, "Missing 'text' field", "MISSING_PARAMS")
+
+    duration = float(body.get("duration", 10))
+
+    try:
+        fg_color = _parse_color(body.get("fg_color", "#FFFFFF"))
+        bg_color = _parse_color(body.get("bg_color", "#000000"))
+    except ValueError as exc:
+        return _json_error(400, str(exc), "INVALID_COLOR")
+
+    try:
+        text_img = _render_text_image(text, fg_color, bg_color)
+        sdk_frame = _prepare_for_screen(text_img)
+
+        await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
+        _start_display_hold(conn.robot, sdk_frame, duration)
+
+        return web.json_response({
+            "status": "ok",
+            "text": text,
+            "duration": duration,
+        })
+    except Exception as exc:
+        logger.exception("Display text failed")
+        return _json_error(500, str(exc), "DISPLAY_TEXT_FAILED")
+
+
+async def display_color(request: web.Request) -> web.Response:
+    """POST /display/color — fill Vector's OLED face with a solid color.
+
+    Body: {"color": "#FF0000", "duration": 10}
+    Color can be hex ("#FF0000") or name ("red").
+    """
+    conn: "ConnectionManager" = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
+    color_str = body.get("color")
+    if not color_str:
+        return _json_error(400, "Missing 'color' field", "MISSING_PARAMS")
+
+    duration = float(body.get("duration", 10))
+
+    try:
+        rgb = _parse_color(color_str)
+    except ValueError as exc:
+        return _json_error(400, str(exc), "INVALID_COLOR")
+
+    try:
+        from PIL import Image as PILImage
+
+        fill_img = PILImage.new("RGB", (_DISPLAY_W, _DISPLAY_H), rgb)
+        sdk_frame = _prepare_for_screen(fill_img)
+
+        await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
+        _start_display_hold(conn.robot, sdk_frame, duration)
+
+        return web.json_response({
+            "status": "ok",
+            "color": color_str,
+            "rgb": list(rgb),
+            "duration": duration,
+        })
+    except Exception as exc:
+        logger.exception("Display color failed")
+        return _json_error(500, str(exc), "DISPLAY_COLOR_FAILED")
+
+
 def setup_routes(app: web.Application) -> None:
     """Register all bridge routes on the application."""
     app.router.add_get("/health", health)
@@ -625,6 +919,9 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/follow/status", follow_status)
     app.router.add_post("/audio/play", audio_play)
     app.router.add_get("/audio/status", audio_status)
+    app.router.add_post("/display/image", display_image)
+    app.router.add_post("/display/text", display_text)
+    app.router.add_post("/display/color", display_color)
     app.router.add_post("/call/start", call_start)
     app.router.add_post("/call/stop", call_stop)
     app.router.add_get("/call/join-url", call_join_url)
