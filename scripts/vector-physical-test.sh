@@ -1,7 +1,7 @@
 #!/bin/bash
 # vector-physical-test.sh — Interactive Signal-based physical test runner for Vector
 #
-# Runs test steps through the Vector HTTP bridge (localhost:8080) and collects
+# Runs test steps through the Vector HTTP bridge (localhost:8081) and collects
 # pass/fail verdicts from Ophir via Signal.
 #
 # Usage:
@@ -24,7 +24,7 @@ source "$REPO_DIR/scripts/signal-interactive.sh"
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
-BRIDGE_URL="${VECTOR_BRIDGE_URL:-http://localhost:8080}"
+BRIDGE_URL="${VECTOR_BRIDGE_URL:-http://localhost:8081}"
 ISSUE_NUM="${VECTOR_TEST_ISSUE:-0}"
 TEST_CATEGORIES=""
 RESULT_FILE=""

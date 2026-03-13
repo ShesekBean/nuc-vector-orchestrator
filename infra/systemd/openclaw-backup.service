@@ -1,11 +1,11 @@
 [Unit]
-Description=OpenClaw hourly backup
+Description=Backup OpenClaw config to git
 After=network.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/ophirsw/Documents/claude/openclaw
-ExecStart=/home/ophirsw/Documents/claude/openclaw/backup-openclaw.sh
+WorkingDirectory=/home/ophirsw/Documents/claude/nuc-orchestrator
+ExecStart=/usr/bin/bash /home/ophirsw/Documents/claude/nuc-orchestrator/scripts/backup-openclaw.sh
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=openclaw-backup

@@ -43,6 +43,7 @@ class ConnectionManager:
         self._audio_client: Any | None = None
         self._livekit_bridge: Any | None = None
         self._nuc_bus: Any | None = None
+        self._follow_pipeline: Any | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -95,6 +96,11 @@ class ConnectionManager:
         if self._audio_client is None:
             raise ConnectionError("Not connected to Vector")
         return self._audio_client
+
+    @property
+    def follow_pipeline(self) -> Any:
+        """FollowPipeline instance, or None if not initialised."""
+        return self._follow_pipeline
 
     @property
     def livekit_bridge(self) -> Any:

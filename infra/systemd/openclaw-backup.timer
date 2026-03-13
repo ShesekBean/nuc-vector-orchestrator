@@ -1,9 +1,9 @@
 [Unit]
-Description=OpenClaw hourly backup timer
+Description=OpenClaw backup timer (every 6 hours)
 
 [Timer]
-OnCalendar=hourly
-RandomizedDelaySec=3min
+OnCalendar=*-*-* 00/6:00:00
+RandomizedDelaySec=5min
 Persistent=true
 
 [Install]

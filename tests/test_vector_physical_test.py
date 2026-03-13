@@ -35,7 +35,7 @@ class TestScriptStructure:
 
     def test_script_uses_bridge_url(self):
         content = SCRIPT_PATH.read_text()
-        assert "localhost:8080" in content or "VECTOR_BRIDGE_URL" in content
+        assert "localhost:8081" in content or "VECTOR_BRIDGE_URL" in content
 
     def test_script_has_all_test_categories(self):
         content = SCRIPT_PATH.read_text()

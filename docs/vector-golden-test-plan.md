@@ -173,6 +173,8 @@ Tests the full Signal→OpenClaw→robot path via WebSocket (no actual Signal me
 | 13.2 | Room connect | Connect to `robot-cam` room succeeds |
 | 13.3 | Bridge import | `livekit_bridge.py` imports without error |
 
+**Note:** LiveKit bridge includes auto-disconnect on 3-minute empty room timeout.
+
 ---
 
 ## Summary

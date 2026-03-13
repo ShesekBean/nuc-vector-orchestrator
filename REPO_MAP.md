@@ -21,18 +21,26 @@ nuc-vector-orchestrator/
 │   ├── control_plane/
 │   │   └── agent_loop/            ← main agent loop (dispatches workers)
 │   │       ├── __main__.py        ← entry point: python3 -m apps.control_plane.agent_loop
+│   │       ├── account_rotation.py ← multi-account quota rotation
+│   │       ├── board.py           ← board/dispatch state tracking
 │   │       ├── config.py          ← configuration + LLM provider parsing
 │   │       ├── dispatch.py        ← worker dispatch, PR review, merge gate
 │   │       ├── github.py          ← GitHub API wrapper (gh CLI)
 │   │       ├── inbox.py           ← Signal inbox processing
 │   │       ├── llm.py             ← LLM invocation (claude CLI)
+│   │       ├── log.py             ← logging utilities
 │   │       ├── loop.py            ← main loop class
 │   │       ├── pgm.py             ← issue health auditor + Signal notifications
 │   │       ├── signal_client.py   ← Signal message sending
-│   │       └── state.py           ← TSV state file management
+│   │       ├── state.py           ← TSV state file management
+│   │       └── watchdog.py        ← worker timeout watchdog
 │   ├── test_harness/              ← vision oracle + automated testing
+│   │   ├── action_evaluator.py    ← action evaluation logic
+│   │   ├── automated_test.py     ← automated test runner
+│   │   ├── camera_capture.py     ← camera frame capture
+│   │   ├── evolution_agent.py    ← evolution/experiment agent
 │   │   ├── golden_test_r3_archived.py ← R3 golden test (archived, replaced by tests/golden/)
-│   │   └── voice_commands/        ← test WAV files
+│   │   └── vision_config.yaml    ← vision pipeline configuration
 │   ├── openclaw/                  ← OpenClaw config backup + extensions (additive)
 │   │   ├── docker/                ← Container run scripts (sanitized, tokens via env vars)
 │   │   │   ├── openclaw-gateway-run.sh  ← Signal gateway container
@@ -65,11 +73,23 @@ nuc-vector-orchestrator/
 │       │   ├── face_recognition/  ← YuNet + SFace (NUC)
 │       │   ├── planner/           ← Visual SLAM + PD controller → gRPC motor commands
 │       │   │   ├── __init__.py    ← PD follow controller (proportional-derivative tracking)
+│       │   │   ├── follow_planner.py ← person-following planner
+│       │   │   ├── head_tracker.py   ← head servo tracking logic
+│       │   │   ├── obstacle_detector.py ← camera-based obstacle detection
 │       │   │   └── visual_slam.py ← monocular ORB-SLAM for camera-only navigation
 │       │   ├── livekit_bridge.py   ← LiveKit WebRTC bridge (camera → LiveKit Cloud, user audio → Vector speaker; one-way audio)
 │       │   ├── voice/             ← wake word + OpenClaw Talk Mode bridge (NUC)
 │       │   │   ├── audio_client.py ← Vector mic gRPC consumer (resamples 15625→16000 Hz, ring buffer)
-│       │   ├── camera/            ← gRPC camera feed consumer
+│       │   │   ├── echo_cancel.py ← echo cancellation for mic input
+│       │   │   ├── message_relay.py ← voice message relay
+│       │   │   ├── openclaw_voice_bridge.py ← OpenClaw voice integration
+│       │   │   ├── speech_output.py ← TTS speech output
+│       │   │   ├── voice_command_router.py ← voice command routing
+│       │   │   └── wake_word.py   ← wake word detection
+│       │   ├── camera/            ← gRPC camera feed consumer + scene description
+│       │   │   ├── camera_client.py  ← camera frame streaming
+│       │   │   ├── camera_benchmark.py ← camera performance benchmarking
+│       │   │   └── scene_describer.py ← Claude Vision scene description
 │       │   ├── display_controller.py ← OLED display image/text rendering
 │       │   ├── head_controller.py  ← head servo angle control with safety clamping
 │       │   ├── led_controller.py   ← eye color + animated LED patterns (priority-based state manager)
@@ -98,15 +118,14 @@ nuc-vector-orchestrator/
 │       ├── config/                ← Vector connection config
 │       └── models/                ← ML models (YOLO, face)
 ├── config/                        ← shared cross-component configuration
-│   ├── llm-provider.yaml         ← LLM provider + model selection
-│   └── sprint-definitions.yaml   ← sprint metadata
+│   └── llm-provider.yaml         ← LLM provider + model selection
 ├── deploy/
 │   └── vector/                    ← Vector deployment (OSKR setup, wire-pod)
 ├── scripts/                       ← operational utility scripts
 │   ├── wire-pod-setup.sh         ← wire-pod installation on NUC
 │   ├── vector-connect.sh         ← Vector gRPC connectivity test
 │   ├── vector-quiet-mode.py      ← Hold Vector still+silent (wake word active, touch-release for button wake word)
-│   ├── openclaw-voice-proxy.py   ← Wire-pod → OpenClaw voice bridge (OpenAI API, voice context prefix)
+│   ├── openclaw-voice-proxy.py   ← Wire-pod → OpenClaw voice bridge (standalone script, OpenAI API, voice context prefix)
 │   ├── sprint-end.sh             ← end-of-sprint test/backup workflow
 │   ├── pgm-signal-gate.sh        ← rate-limited Signal notifications
 │   ├── signal-interactive.sh     ← interactive test Signal library
@@ -117,7 +136,7 @@ nuc-vector-orchestrator/
 │   ├── vector/                    ← Vector infra (wire-pod config, OSKR setup)
 │   │   └── web-setup/            ← Local mirror of vector-web-setup.anki.bot (BLE pairing)
 │   ├── docker/                    ← Signal gateway Docker setup
-│   ├── systemd/                   ← Service units (wire-pod, voice proxy, quiet mode)
+│   ├── systemd/                   ← Service units (wire-pod, quiet mode, supervisor, bridge, agent loop)
 │   ├── dns/                       ← NUC dnsmasq
 │   └── safety-cop/                ← NUC safety_cop.py
 ├── docs/                          ← documentation
@@ -138,7 +157,9 @@ nuc-vector-orchestrator/
 │   │   ├── test_phase7_signal.py    ← Signal → OpenClaw → robot E2E
 │   │   ├── test_phase8_agentloop.py ← agent loop health checks
 │   │   ├── test_phase9_eventbus.py  ← event bus integration
-│   │   └── test_phase11_voice_proxy.py ← voice proxy pipeline + intent bypass
+│   │   ├── test_phase10_services.py ← systemd service health checks
+│   │   ├── test_phase12_signal_robot.py ← Signal → robot E2E integration
+│   │   └── test_phase13_livekit.py  ← LiveKit video bridge tests
 │   └── vector/                    ← Vector-specific tests
 │       └── test_intercom.py       ← intercom module tests (photo + text messaging)
 ├── .claude/                       ← Claude Code configuration
@@ -164,7 +185,7 @@ nuc-vector-orchestrator/
 
 1. **Agent Loop**: `python3 -m apps.control_plane.agent_loop` (systemd: `nuc-agent-loop.service`)
 2. **wire-pod**: Native service on NUC (systemd: `wire-pod.service`, root)
-3. **Voice Proxy**: `python3 scripts/openclaw-voice-proxy.py` (systemd: `openclaw-voice-proxy.service`) — bridges wire-pod STT → OpenClaw LLM
+3. **Voice Proxy**: `python3 scripts/openclaw-voice-proxy.py` (standalone script) — bridges wire-pod STT → OpenClaw LLM
 4. **Quiet Mode**: `python3 scripts/vector-quiet-mode.py` (systemd: `vector-quiet-mode.service`) — keeps Vector still+silent; detects back-tap and releases control for 15s to allow button wake word flow
 5. **Vector Supervisor**: `python3 -m apps.vector` (component lifecycle: startup, health, reconnect)
 6. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility)

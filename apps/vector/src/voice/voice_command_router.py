@@ -4,7 +4,7 @@ Implements the dual strategy from issue #22:
 
 1. **Wire-pod intents** — simple built-in commands (forward, stop, volume)
    are handled locally by mapping SDK ``user_intent`` events to HTTP bridge
-   endpoints on ``localhost:8080``.
+   endpoints on ``localhost:8081``.
 
 2. **OpenClaw agent** — custom commands ("follow me", "what do you see",
    financial queries) are handled by ``OpenClawVoiceBridge`` via the

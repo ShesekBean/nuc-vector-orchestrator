@@ -8,10 +8,10 @@ NotifyAccess=main
 ExecStart=/usr/bin/python3 -m apps.control_plane.agent_loop
 Restart=always
 RestartSec=30
-WatchdogSec=300
+WatchdogSec=2400
 Environment=HOME=/home/ophirsw
 Environment=PATH=/home/ophirsw/.nvm/versions/node/v24.14.0/bin:/home/ophirsw/.local/bin:/usr/local/bin:/usr/bin:/bin
-WorkingDirectory=/home/ophirsw/Documents/claude/nuc-orchestrator
+WorkingDirectory=/home/ophirsw/Documents/claude/nuc-vector-orchestrator
 
 [Install]
 WantedBy=default.target
