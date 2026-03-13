@@ -1,6 +1,6 @@
 #!/bin/bash
 # Wire-pod launcher for systemd
-cd /home/ophirsw/Documents/claude/wire-pod/chipper
+cd /home/ophirsw/Documents/claude/wire-pod/chipper || exit 1
 
 export HOME=/root
 export GOPATH=/root/go

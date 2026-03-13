@@ -74,13 +74,11 @@ async def _openclaw_chat(message: str, timeout_s: float = 30.0) -> str:
             timeout=aiohttp.ClientWSTimeout(ws_close=5.0),
         ) as ws:
             challenge_msg = await asyncio.wait_for(ws.receive_json(), timeout=5.0)
-            nonce = ""
             if (
                 challenge_msg.get("type") == "event"
                 and challenge_msg.get("event") == "connect.challenge"
             ):
-                payload = challenge_msg.get("payload", {})
-                nonce = payload.get("nonce", "")
+                challenge_msg.get("payload", {})  # acknowledge challenge
 
             connect_id = str(uuid.uuid4())
             await ws.send_json({
