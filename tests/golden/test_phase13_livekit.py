@@ -36,8 +36,11 @@ def _load_credentials() -> tuple[str, str, str]:
 
 def _livekit_installed() -> bool:
     try:
-        from livekit import api, rtc
-        return True
+        import importlib.util
+        return (
+            importlib.util.find_spec("livekit.api") is not None
+            and importlib.util.find_spec("livekit.rtc") is not None
+        )
     except (ImportError, ModuleNotFoundError):
         return False
 
