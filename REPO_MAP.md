@@ -105,6 +105,8 @@ nuc-vector-orchestrator/
 ├── scripts/                       ← operational utility scripts
 │   ├── wire-pod-setup.sh         ← wire-pod installation on NUC
 │   ├── vector-connect.sh         ← Vector gRPC connectivity test
+│   ├── vector-quiet-mode.py      ← Hold Vector still+silent (wake word active)
+│   ├── openclaw-voice-proxy.py   ← Wire-pod → OpenClaw voice bridge (OpenAI API)
 │   ├── sprint-end.sh             ← end-of-sprint test/backup workflow
 │   ├── pgm-signal-gate.sh        ← rate-limited Signal notifications
 │   ├── signal-interactive.sh     ← interactive test Signal library
@@ -115,7 +117,7 @@ nuc-vector-orchestrator/
 │   ├── vector/                    ← Vector infra (wire-pod config, OSKR setup)
 │   │   └── web-setup/            ← Local mirror of vector-web-setup.anki.bot (BLE pairing)
 │   ├── docker/                    ← Signal gateway Docker setup
-│   ├── systemd/                   ← Service units
+│   ├── systemd/                   ← Service units (wire-pod, voice proxy, quiet mode)
 │   ├── dns/                       ← NUC dnsmasq
 │   └── safety-cop/                ← NUC safety_cop.py
 ├── docs/                          ← documentation
@@ -135,7 +137,8 @@ nuc-vector-orchestrator/
 │   │   ├── test_phase6_following.py ← person-following pipeline
 │   │   ├── test_phase7_signal.py    ← Signal → OpenClaw → robot E2E
 │   │   ├── test_phase8_agentloop.py ← agent loop health checks
-│   │   └── test_phase9_eventbus.py  ← event bus integration
+│   │   ├── test_phase9_eventbus.py  ← event bus integration
+│   │   └── test_phase11_voice_proxy.py ← voice proxy pipeline + intent bypass
 │   └── vector/                    ← Vector-specific tests
 │       └── test_intercom.py       ← intercom module tests (photo + text messaging)
 ├── .claude/                       ← Claude Code configuration
@@ -160,10 +163,12 @@ nuc-vector-orchestrator/
 ## Key Entry Points
 
 1. **Agent Loop**: `python3 -m apps.control_plane.agent_loop` (systemd: `nuc-agent-loop.service`)
-2. **wire-pod**: Docker container or native service on NUC
-3. **Vector Supervisor**: `python3 -m apps.vector` (component lifecycle: startup, health, reconnect)
-4. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility)
-5. **Process Management**: `bash scripts/start-all.sh` / `bash scripts/kill-all.sh`
+2. **wire-pod**: Native service on NUC (systemd: `wire-pod.service`, root)
+3. **Voice Proxy**: `python3 scripts/openclaw-voice-proxy.py` (systemd: `openclaw-voice-proxy.service`) — bridges wire-pod STT → OpenClaw LLM
+4. **Quiet Mode**: `python3 scripts/vector-quiet-mode.py` (systemd: `vector-quiet-mode.service`) — keeps Vector still+silent, wake word active
+5. **Vector Supervisor**: `python3 -m apps.vector` (component lifecycle: startup, health, reconnect)
+6. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility)
+7. **Process Management**: `bash scripts/start-all.sh` / `bash scripts/kill-all.sh`
 
 ## Testing
 

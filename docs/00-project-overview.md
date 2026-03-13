@@ -25,6 +25,19 @@ Two machines coordinate via GitHub Issues in a single monorepo:
 6. **wire-pod on NUC** — replaces Anki cloud services
 7. **New hardware** — face display, lift, cube, touch sensor, 4-mic beamforming
 
+## Voice Pipeline
+
+```
+Vector mic → wake word (Porcupine PV) → wire-pod (Vosk STT)
+  → IntentGraph → openclaw-voice-proxy → OpenClaw LLM → Vector SayText
+```
+
+- **wire-pod** (`wire-pod.service`): Replaces Anki cloud. Handles wake word, STT (Vosk), intent routing.
+- **Voice proxy** (`openclaw-voice-proxy.service`): Bridges wire-pod to OpenClaw via OpenAI-compatible API. Serializes requests to prevent double-trigger abort. 60s timeout for tool-heavy queries.
+- **Built-in intents disabled**: All wire-pod intents set to `requiresexact=True` in `en-US.json` so conversational queries route to OpenClaw instead of being intercepted.
+- **Quiet mode** (`vector-quiet-mode.service`): Holds SDK behavior control at `OVERRIDE_BEHAVIORS_PRIORITY` to keep Vector still and silent. Wake word still works (processed at vic-engine level). Button wake word enabled (tap back to trigger).
+- **Firmware**: WireOS 3.0.1.32oskr (slot B). Stock 2.0.1.6091oskr on slot A as fallback.
+
 ## Key Files to Read First
 
 1. **`REPO_MAP.md`** — monorepo directory structure and entry points
