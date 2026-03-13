@@ -105,8 +105,8 @@ nuc-vector-orchestrator/
 ├── scripts/                       ← operational utility scripts
 │   ├── wire-pod-setup.sh         ← wire-pod installation on NUC
 │   ├── vector-connect.sh         ← Vector gRPC connectivity test
-│   ├── vector-quiet-mode.py      ← Hold Vector still+silent (wake word active)
-│   ├── openclaw-voice-proxy.py   ← Wire-pod → OpenClaw voice bridge (OpenAI API)
+│   ├── vector-quiet-mode.py      ← Hold Vector still+silent (wake word active, touch-release for button wake word)
+│   ├── openclaw-voice-proxy.py   ← Wire-pod → OpenClaw voice bridge (OpenAI API, voice context prefix)
 │   ├── sprint-end.sh             ← end-of-sprint test/backup workflow
 │   ├── pgm-signal-gate.sh        ← rate-limited Signal notifications
 │   ├── signal-interactive.sh     ← interactive test Signal library
@@ -165,7 +165,7 @@ nuc-vector-orchestrator/
 1. **Agent Loop**: `python3 -m apps.control_plane.agent_loop` (systemd: `nuc-agent-loop.service`)
 2. **wire-pod**: Native service on NUC (systemd: `wire-pod.service`, root)
 3. **Voice Proxy**: `python3 scripts/openclaw-voice-proxy.py` (systemd: `openclaw-voice-proxy.service`) — bridges wire-pod STT → OpenClaw LLM
-4. **Quiet Mode**: `python3 scripts/vector-quiet-mode.py` (systemd: `vector-quiet-mode.service`) — keeps Vector still+silent, wake word active
+4. **Quiet Mode**: `python3 scripts/vector-quiet-mode.py` (systemd: `vector-quiet-mode.service`) — keeps Vector still+silent; detects back-tap and releases control for 15s to allow button wake word flow
 5. **Vector Supervisor**: `python3 -m apps.vector` (component lifecycle: startup, health, reconnect)
 6. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility)
 7. **Process Management**: `bash scripts/start-all.sh` / `bash scripts/kill-all.sh`
