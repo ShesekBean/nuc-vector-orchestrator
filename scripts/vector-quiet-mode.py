@@ -35,25 +35,34 @@ def main():
     import anki_vector
     from anki_vector.util import degrees
 
+    from anki_vector.connection import ControlPriorityLevel
+
     logger.info("Connecting to Vector (serial=%s)...", SERIAL)
     robot = anki_vector.Robot(
         serial=SERIAL,
         default_logging=False,
-        behavior_control_level=None,  # we'll manage control manually
+        behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
     )
     robot.connect()
-    logger.info("Connected. Requesting behavior control...")
+    logger.info("Connected with OVERRIDE_BEHAVIORS_PRIORITY. Suppressing all autonomous behaviors.")
 
-    # Request behavior control — this suppresses autonomous behaviors
-    robot.conn.request_control()
-    logger.info("Behavior control acquired. Vector is now in quiet mode.")
-
-    # Set neutral pose: head level, lift down
+    # Set neutral pose: head level, lift down, stop motors
     try:
         robot.behavior.set_head_angle(degrees(0))
         robot.behavior.set_lift_height(0.0)
+        robot.motors.set_wheel_motors(0, 0)
     except Exception as e:
         logger.warning("Could not set neutral pose: %s", e)
+
+    # Set volume to minimum to reduce noise
+    try:
+        from anki_vector.messaging import protocol
+        robot.conn.grpc_interface.SetMasterVolume(
+            protocol.MasterVolumeRequest(volume_level=protocol.Volume.Value("LOW"))
+        )
+        logger.info("Volume set to LOW")
+    except Exception as e:
+        logger.warning("Could not set volume: %s", e)
 
     logger.info(
         "Vector is still and quiet. Wake word still works.\n"
