@@ -236,8 +236,8 @@ When the user's message starts with or contains the word **"robot"**, activate t
 - "robot sad" → POST /display {"expression": "sad"}
 
 ### Display Image / Text / Color on Face
-- **CRITICAL: If the user sends an image attachment AND says "robot show this" / "robot display this", you MUST display the ATTACHED IMAGE on Vector's face — do NOT take a robot photo. Save the attachment to /tmp, base64-encode it, and POST to /display/image.** This is the #1 most commonly confused command.
-- "robot show this" or "robot display this" (with image attachment) → save attachment to /tmp, then POST /display/image with base64-encoded image data
+- **CRITICAL: If the user sends an image attachment AND says "robot show this" / "robot display this", you MUST display the ATTACHED IMAGE on Vector's face — do NOT take a robot photo.** The attachment path appears in the message as `[media attached: /path/to/file.jpg]`. Base64-encode that file and POST to /display/image. This is the #1 most commonly confused command.
+- "robot show this" or "robot display this" (with image attachment) → read the path from the `[media attached: ...]` note, base64-encode it, and POST /display/image
 - "robot show text Hello" → POST /display/text {"text": "Hello"}
 - "robot display message Good morning" → POST /display/text {"text": "Good morning", "fg_color": "#00FF00"}
 - "robot screen red" → POST /display/color {"color": "red"}
@@ -306,10 +306,10 @@ Example for "robot screen red":
 curl -sf -X POST http://172.17.0.1:8081/display/color -H 'Content-Type: application/json' -d '{"color":"red","duration":10}'
 ```
 
-Example for displaying an image attachment (base64):
+Example for displaying an image attachment (the path comes from the `[media attached: ...]` note in the message):
 ```bash
-IMAGE_B64=$(base64 -w0 /tmp/signal-attachment.jpg)
-curl -sf -X POST http://172.17.0.1:8081/display/image -H 'Content-Type: application/json' -d "{\"image\":\"$IMAGE_B64\",\"duration\":15}"
+IMAGE_B64=$(base64 -w0 /home/node/.openclaw/media/inbound/ATTACHMENT_UUID.jpg)
+curl -sf -X POST http://172.17.0.1:8081/display/image -H 'Content-Type: application/json' -d "{\"image\":\"$IMAGE_B64\",\"duration\":5}"
 ```
 
 Example for "robot photo":
@@ -367,5 +367,5 @@ Example: "Driving forward 300mm... done! Vector scooted forward about 30cm. Batt
 - If bridge returns 503, Vector is offline — tell the user
 - Follow planner may return 501 if not yet wired to the bridge
 - Call endpoints return 503 if LiveKit bridge not initialised — tell the user to check LiveKit config
-- **ATTACHMENT DISPLAY vs PHOTO**: When user sends an image via Signal with "show this" or "display this", save the ATTACHED IMAGE to /tmp and POST it as base64 to /display/image. Do NOT confuse this with "robot photo" (which captures from the robot camera). The key signal: if there's an attachment + "show/display", display the attachment.
+- **ATTACHMENT DISPLAY vs PHOTO**: When user sends an image via Signal with "show this" or "display this", the attachment path is in the `[media attached: /path/to/file.jpg]` note. Base64-encode that file and POST to /display/image. Do NOT confuse this with "robot photo" (which captures from the robot camera). The key signal: if there's a `[media attached: ...]` note + "show/display", display the attachment.
 - Display image/text/color endpoints hold the image on screen for the specified duration (default 10s), suppressing Vector's eye animations
