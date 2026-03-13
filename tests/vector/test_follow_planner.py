@@ -39,7 +39,8 @@ def config():
         search_head_dwell_s=0.01,
         search_body_dwell_s=0.01,
         search_head_angles=(10.0, 30.0),
-        search_body_angles=(90.0, 90.0),
+        search_step_deg=90.0,
+        search_max_cycles=1,
         loop_hz=100.0,  # fast loop for tests
         target_lost_frames=3,
         min_hits_for_following=2,
@@ -392,7 +393,7 @@ class TestFollowPlannerSearch:
         # Let search complete (no tracks → eventually IDLE)
         timeout = (
             len(config.search_head_angles) * config.search_head_dwell_s
-            + len(config.search_body_angles) * config.search_body_dwell_s
+            + int(360.0 / config.search_step_deg) * config.search_max_cycles * config.search_body_dwell_s
             + 1.0
         )
         deadline = time.monotonic() + timeout
@@ -410,7 +411,7 @@ class TestFollowPlannerSearch:
         planner.start()
         timeout = (
             len(config.search_head_angles) * config.search_head_dwell_s
-            + len(config.search_body_angles) * config.search_body_dwell_s
+            + int(360.0 / config.search_step_deg) * config.search_max_cycles * config.search_body_dwell_s
             + 1.0
         )
         deadline = time.monotonic() + timeout
@@ -440,7 +441,7 @@ class TestFollowPlannerSearch:
         planner.start()
         timeout = (
             len(config.search_head_angles) * config.search_head_dwell_s
-            + len(config.search_body_angles) * config.search_body_dwell_s
+            + int(360.0 / config.search_step_deg) * config.search_max_cycles * config.search_body_dwell_s
             + 1.0
         )
         deadline = time.monotonic() + timeout
@@ -453,8 +454,8 @@ class TestFollowPlannerSearch:
 class TestFollowConfig:
     def test_default_config(self):
         cfg = FollowConfig()
-        assert cfg.max_wheel_speed == 120.0
-        assert cfg.target_height == 150.0
+        assert cfg.max_wheel_speed == 160.0
+        assert cfg.target_height == 180.0
         assert cfg.loop_hz == 10.0
 
     def test_custom_config(self):

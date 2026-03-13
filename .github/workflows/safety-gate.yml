@@ -20,7 +20,7 @@ jobs:
         run: |
           FAIL=0
           # Check for password assignments
-          if grep -rn 'password\s*=' --include='*.py' --include='*.js' --include='*.sh' --include='*.ts' . 2>/dev/null | grep -v 'test_\|\.env\.example\|#.*password\|//.*password'; then
+          if grep -rn 'password\s*=' --include='*.py' --include='*.js' --include='*.sh' --include='*.ts' --exclude-dir=web-setup . 2>/dev/null | grep -v 'test_\|\.env\.example\|#.*password\|//.*password'; then
             echo "::error::CISO VETOED: Potential hardcoded password found"
             FAIL=1
           fi

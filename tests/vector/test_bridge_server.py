@@ -51,7 +51,12 @@ def _make_mock_conn(connected: bool = True) -> MagicMock:
     # Display controller
     conn.display_controller = MagicMock()
 
-    # Camera — robot.camera.capture_single_image
+    # Camera — capture route tries camera_client.get_latest_jpeg() first,
+    # then falls back to robot.camera.capture_single_image().
+    # Return None from camera_client so the fallback path is exercised.
+    conn.camera_client = MagicMock()
+    conn.camera_client.get_latest_jpeg = MagicMock(return_value=None)
+
     mock_image = MagicMock()
     mock_pil = MagicMock()
     mock_image.raw_image = mock_pil
@@ -380,24 +385,79 @@ async def test_status(aiohttp_client):
 
 
 # ---------------------------------------------------------------------------
-# Stub endpoints (501)
+# Follow status endpoint
 # ---------------------------------------------------------------------------
 
 
-async def test_follow_start_stub(aiohttp_client):
+async def test_follow_status_inactive(aiohttp_client):
     conn = _make_mock_conn()
+    mock_pipeline = MagicMock()
+    mock_pipeline.get_status = MagicMock(return_value={"active": False})
+    conn.follow_pipeline = mock_pipeline
+    app = create_app(conn)
+    client = await aiohttp_client(app)
+    resp = await client.get("/follow/status")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["active"] is False
+
+
+async def test_follow_status_active(aiohttp_client):
+    conn = _make_mock_conn()
+    mock_pipeline = MagicMock()
+    mock_pipeline.get_status = MagicMock(return_value={
+        "active": True,
+        "state": "following",
+        "locked_track_id": 3,
+        "detector": {"fps": 6.6, "avg_inference_ms": 151.2, "frame_count": 450},
+        "tracker": {"track_count": 2, "confirmed_count": 1},
+        "obstacle": {"zone": "clear", "speed_scale": 1.0, "escape_count": 0},
+    })
+    conn.follow_pipeline = mock_pipeline
+    app = create_app(conn)
+    client = await aiohttp_client(app)
+    resp = await client.get("/follow/status")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["active"] is True
+    assert data["state"] == "following"
+    assert data["locked_track_id"] == 3
+    assert data["detector"]["fps"] == 6.6
+    assert data["tracker"]["confirmed_count"] == 1
+    assert data["obstacle"]["zone"] == "clear"
+
+
+async def test_follow_status_no_pipeline(aiohttp_client):
+    conn = _make_mock_conn()
+    conn.follow_pipeline = None
+    app = create_app(conn)
+    client = await aiohttp_client(app)
+    resp = await client.get("/follow/status")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["active"] is False
+
+
+async def test_follow_start_no_pipeline(aiohttp_client):
+    conn = _make_mock_conn()
+    conn.follow_pipeline = None
     app = create_app(conn)
     client = await aiohttp_client(app)
     resp = await client.post("/follow/start")
-    assert resp.status == 501
+    assert resp.status == 503
+    data = await resp.json()
+    assert data["code"] == "PIPELINE_UNAVAILABLE"
 
 
-async def test_follow_stop_stub(aiohttp_client):
+async def test_follow_stop_no_pipeline(aiohttp_client):
     conn = _make_mock_conn()
+    conn.follow_pipeline = None
     app = create_app(conn)
     client = await aiohttp_client(app)
     resp = await client.post("/follow/stop")
-    assert resp.status == 501
+    assert resp.status == 503
+    data = await resp.json()
+    assert data["code"] == "PIPELINE_UNAVAILABLE"
 
 
 async def test_call_start_already_active(aiohttp_client):
@@ -619,7 +679,7 @@ class TestCreateApp:
         expected = [
             "/health", "/move", "/stop", "/head", "/lift", "/led",
             "/capture", "/display", "/status",
-            "/follow/start", "/follow/stop",
+            "/follow/start", "/follow/stop", "/follow/status",
             "/audio/play",
             "/call/start", "/call/stop",
         ]

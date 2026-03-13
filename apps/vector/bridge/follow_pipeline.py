@@ -126,6 +126,31 @@ class FollowPipeline:
         self._tracker.clear()
         logger.info("FollowPipeline stopped")
 
+    def get_status(self) -> dict:
+        """Return pipeline status and diagnostics as a dict."""
+        if not self._running:
+            return {"active": False}
+
+        return {
+            "active": True,
+            "state": self._planner.state.value,
+            "locked_track_id": self._planner.locked_track_id,
+            "detector": {
+                "fps": round(self._detector.fps, 1),
+                "avg_inference_ms": round(self._detector.avg_inference_ms, 1),
+                "frame_count": self._detector.frame_count,
+            },
+            "tracker": {
+                "track_count": self._tracker.track_count,
+                "confirmed_count": self._tracker.confirmed_count,
+            },
+            "obstacle": {
+                "zone": self._obstacle.zone,
+                "speed_scale": round(self._obstacle.speed_scale, 2),
+                "escape_count": self._obstacle.escape_count,
+            },
+        }
+
     def _detection_loop(self) -> None:
         """Grab frames, run YOLO, feed Kalman tracker, emit events."""
         period = 1.0 / DETECTION_HZ

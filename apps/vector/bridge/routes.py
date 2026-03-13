@@ -410,6 +410,25 @@ async def follow_stop(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "FOLLOW_STOP_FAILED")
 
 
+async def follow_status(request: web.Request) -> web.Response:
+    """GET /follow/status — follow pipeline diagnostics."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    pipeline = conn.follow_pipeline
+    if pipeline is None:
+        return web.json_response({"active": False})
+
+    try:
+        status_data = await _run_sync(pipeline.get_status)
+        return web.json_response(status_data)
+    except Exception as exc:
+        logger.exception("Follow status check failed")
+        return _json_error(500, str(exc), "FOLLOW_STATUS_FAILED")
+
+
 async def audio_play(request: web.Request) -> web.Response:
     """POST /audio/play — play audio on Vector speaker.
 
@@ -603,6 +622,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/status", status)
     app.router.add_post("/follow/start", follow_start)
     app.router.add_post("/follow/stop", follow_stop)
+    app.router.add_get("/follow/status", follow_status)
     app.router.add_post("/audio/play", audio_play)
     app.router.add_get("/audio/status", audio_status)
     app.router.add_post("/call/start", call_start)
