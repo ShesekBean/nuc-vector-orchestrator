@@ -207,8 +207,7 @@ class PersonDetector:
         # Only apply when we did aggressive brightening (noise is amplified)
         if mean_brightness < 50:
             result = cv2.fastNlMeansDenoisingColored(
-                result, None, h=6, hForColorComponents=6,
-                templateWindowSize=7, searchWindowSize=21,
+                result, None, 6, 6, 7, 21,
             )
 
         return result
