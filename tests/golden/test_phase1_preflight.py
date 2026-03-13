@@ -1,9 +1,7 @@
-"""Phase 1 — Preflight: Robot Connectivity + Battery Gate (~12s).
+"""Phase 1 — Preflight: Robot Connectivity + Battery Gate.
 
 Gate: If this phase fails, skip Phases 2, 5, 6.
 NUC-only phases (3, 4, 7, 8, 9) still run.
-
-Tests 1.1–1.5 from docs/vector-golden-test-plan.md.
 """
 
 from __future__ import annotations
@@ -16,54 +14,33 @@ import pytest
 pytestmark = [pytest.mark.phase1, pytest.mark.robot]
 
 
-# 1.1 Vector SDK connects
 class TestVectorConnect:
     def test_sdk_connects(self, robot_connected):
         """1.1 — robot.connect() succeeds, robot.status populated."""
-        robot = robot_connected
-        # If we got here, connection succeeded (fixture handles connect)
-        status = robot.status
-        assert status is not None
+        assert robot_connected.status is not None
 
 
-# 1.2 Battery voltage
 class TestBatteryVoltage:
     def test_battery_above_safe_threshold(self, robot_connected):
-        """1.2 — Battery level safe for motors."""
-        robot = robot_connected
-        battery = robot.get_battery_state()
-        # battery_volts is 0.0 on wirepod SDK — use battery_level instead
-        # 1=LOW, 2=NOMINAL, 3=FULL
+        """1.2 — Battery level safe for motors (>= LOW)."""
+        battery = robot_connected.get_battery_state()
         assert battery.battery_level >= 1, (
             f"Battery level too low: {battery.battery_level} (need >= 1/LOW)"
         )
 
 
-# 1.3 gRPC round-trip latency
 class TestGRPCLatency:
     def test_latency_under_500ms(self, robot_connected):
         """1.3 — Timed get_battery_state() < 500ms."""
-        robot = robot_connected
         start = time.monotonic()
-        robot.get_battery_state()
+        robot_connected.get_battery_state()
         elapsed_ms = (time.monotonic() - start) * 1000
         assert elapsed_ms < 500, f"gRPC latency too high: {elapsed_ms:.0f}ms"
 
 
-# 1.4 Request control
-class TestRequestControl:
-    def test_control_granted(self, robot_connected):
-        """1.4 — request_control() grants control."""
-        robot = robot_connected
-        robot.conn.request_control()
-        # No exception means control was granted
-
-
-# 1.5 Release control
-class TestReleaseControl:
-    def test_clean_handoff(self, robot_connected):
-        """1.5 — Release + re-request → clean handoff, no errors."""
-        robot = robot_connected
-        robot.conn.release_control()
-        robot.conn.request_control()
-        # No exception means clean handoff
+class TestControlHandoff:
+    def test_request_release_cycle(self, robot_connected):
+        """1.4 — Request, release, and re-request control cleanly."""
+        robot_connected.conn.request_control()
+        robot_connected.conn.release_control()
+        robot_connected.conn.request_control()
