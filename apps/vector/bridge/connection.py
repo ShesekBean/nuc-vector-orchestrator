@@ -32,6 +32,7 @@ class ConnectionManager:
         self._serial = serial
         self._robot: Any | None = None
         self._connected = False
+        self._mode: str = "quiet"  # "quiet" or "playful"
 
         # Controllers — created on connect
         self._motor_controller: Any | None = None
@@ -124,8 +125,14 @@ class ConnectionManager:
         from apps.vector.src.motor_controller import MotorController
         from apps.vector.src.voice.audio_client import AudioClient
 
-        logger.info("Connecting to Vector (serial=%s)...", self._serial)
-        self._robot = anki_vector.Robot(serial=self._serial, default_logging=False)
+        from anki_vector.connection import ControlPriorityLevel
+
+        logger.info("Connecting to Vector (serial=%s) with OVERRIDE_BEHAVIORS...", self._serial)
+        self._robot = anki_vector.Robot(
+            serial=self._serial,
+            default_logging=False,
+            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+        )
         self._robot.connect()
 
         self._nuc_bus = NucEventBus()
@@ -210,6 +217,40 @@ class ConnectionManager:
         self._follow_pipeline = None
         self._nuc_bus = None
         logger.info("Disconnected from Vector")
+
+    @property
+    def mode(self) -> str:
+        """Current behavior mode: 'quiet' or 'playful'."""
+        return self._mode
+
+    def set_mode(self, mode: str) -> None:
+        """Switch between 'quiet' (still) and 'playful' (autonomous behaviors).
+
+        In quiet mode, the bridge holds OVERRIDE_BEHAVIORS_PRIORITY so Vector
+        stays still. In playful mode, control is released and vic-engine runs
+        its behavior tree (exploring, looking around, reacting).
+        """
+        if mode not in ("quiet", "playful"):
+            raise ValueError(f"Unknown mode: {mode!r} (expected 'quiet' or 'playful')")
+        if mode == self._mode:
+            logger.info("Already in %s mode", mode)
+            return
+        if not self._connected or self._robot is None:
+            raise ConnectionError("Not connected to Vector")
+
+        from anki_vector.connection import ControlPriorityLevel
+
+        if mode == "quiet":
+            logger.info("Switching to quiet mode (OVERRIDE_BEHAVIORS)")
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
+            self._robot.motors.set_wheel_motors(0, 0)
+        else:  # playful
+            logger.info("Switching to playful mode (releasing control)")
+            self._robot.conn.release_control()
+
+        self._mode = mode
 
     def get_battery_state(self) -> dict:
         """Read battery state and return as dict."""

@@ -951,6 +951,40 @@ async def call_status(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "CALL_STATUS_FAILED")
 
 
+async def mode_get(request: web.Request) -> web.Response:
+    """GET /mode — get current behavior mode."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+    return web.json_response({"mode": conn.mode})
+
+
+async def mode_set(request: web.Request) -> web.Response:
+    """POST /mode — set behavior mode. Body: {"mode": "quiet"|"playful"}."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "BAD_REQUEST")
+
+    mode = body.get("mode")
+    if mode not in ("quiet", "playful"):
+        return _json_error(400, "mode must be 'quiet' or 'playful'", "BAD_REQUEST")
+
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, conn.set_mode, mode)
+        return web.json_response({"mode": conn.mode})
+    except Exception as exc:
+        logger.exception("Mode switch failed")
+        return _json_error(500, str(exc), "MODE_SWITCH_FAILED")
+
+
 def setup_routes(app: web.Application) -> None:
     """Register all bridge routes on the application."""
     app.router.add_get("/health", health)
@@ -974,3 +1008,5 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/call/stop", call_stop)
     app.router.add_get("/call/join-url", call_join_url)
     app.router.add_get("/call/status", call_status)
+    app.router.add_get("/mode", mode_get)
+    app.router.add_post("/mode", mode_set)
