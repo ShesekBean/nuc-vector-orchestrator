@@ -25,9 +25,9 @@ from apps.vector.src.events.event_types import (
     YoloPersonDetectedEvent,
 )
 
-if TYPE_CHECKING:
-    import numpy as np
+import numpy as np
 
+if TYPE_CHECKING:
     from apps.vector.src.events.nuc_event_bus import NucEventBus
 
 logger = logging.getLogger(__name__)
@@ -101,14 +101,17 @@ class PersonDetector:
         if self._model is None:
             self.load_model()
 
-        # CLAHE preprocessing for Vector's dark OV7251 camera
+        # Multi-stage low-light preprocessing for Vector's dark OV7251 camera
         enhanced = self._enhance_low_light(frame)
+
+        # Adaptive confidence: lower threshold in dark frames for more detections
+        conf = self._adaptive_confidence(frame)
 
         t0 = time.perf_counter()
         results = self._model(
             enhanced,
             verbose=False,
-            conf=self._confidence_threshold,
+            conf=conf,
             iou=self._iou_threshold,
             classes=[_PERSON_CLASS],
         )
@@ -158,24 +161,84 @@ class PersonDetector:
 
     @staticmethod
     def _enhance_low_light(frame: np.ndarray) -> np.ndarray:
-        """Apply CLAHE to improve contrast in Vector's dark camera frames.
+        """Multi-stage low-light enhancement for Vector's dark OV7251 camera.
 
-        Converts to LAB color space, applies CLAHE to the L (lightness)
-        channel, then converts back. This boosts contrast without
-        over-saturating colors — proven technique for low-light YOLO.
+        Pipeline (applied adaptively based on frame brightness):
+        1. Gamma correction (brightens dark regions non-linearly)
+        2. CLAHE on L channel (adaptive contrast enhancement)
+        3. Fast denoising (reduces noise amplified by steps 1-2)
+
+        In very dark frames (<40 mean brightness), aggressive gamma is
+        applied first. In moderate frames, only CLAHE is used.
         """
         import cv2
 
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        # Measure frame brightness to adapt pipeline
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mean_brightness = gray.mean()
+
+        result = frame
+
+        # Stage 1: Gamma correction for very dark frames
+        # gamma < 1.0 brightens; more aggressive when darker
+        if mean_brightness < 80:
+            if mean_brightness < 30:
+                gamma = 0.35  # extremely dark — aggressive brightening
+            elif mean_brightness < 50:
+                gamma = 0.45  # very dark
+            else:
+                gamma = 0.6  # moderately dark
+            table = (((np.arange(256) / 255.0) ** gamma) * 255).astype(np.uint8)
+            result = cv2.LUT(result, table)
+
+        # Stage 2: CLAHE on L channel (adaptive histogram equalization)
+        lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB)
         l_channel, a_channel, b_channel = cv2.split(lab)
 
-        # clipLimit=3.0 balances contrast boost vs noise amplification
-        # tileGridSize=8x8 is standard for detection tasks
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        # Higher clipLimit for darker frames (more contrast boost needed)
+        clip_limit = 4.0 if mean_brightness < 50 else 3.0
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
         l_enhanced = clahe.apply(l_channel)
 
         lab_enhanced = cv2.merge([l_enhanced, a_channel, b_channel])
-        return cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+        result = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+
+        # Stage 3: Fast denoising to reduce noise from gamma + CLAHE
+        # Only apply when we did aggressive brightening (noise is amplified)
+        if mean_brightness < 50:
+            result = cv2.fastNlMeansDenoisingColored(
+                result, None, h=6, hForColorComponents=6,
+                templateWindowSize=7, searchWindowSize=21,
+            )
+
+        return result
+
+    def _adaptive_confidence(self, frame: np.ndarray) -> float:
+        """Compute adaptive confidence threshold based on frame brightness.
+
+        Dark frames get a lower threshold (more permissive) because
+        person features are harder to distinguish. Bright frames get
+        a higher threshold to reduce false positives.
+        """
+        import cv2
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        mean_brightness = gray.mean()
+
+        base = self._confidence_threshold
+
+        if mean_brightness < 30:
+            # Extremely dark — be very permissive
+            return max(0.12, base - 0.12)
+        elif mean_brightness < 60:
+            # Dark — moderately permissive
+            return max(0.15, base - 0.08)
+        elif mean_brightness < 120:
+            # Normal — use default
+            return base
+        else:
+            # Bright — be stricter
+            return min(0.5, base + 0.10)
 
     def _parse_results(
         self, results: list, frame_shape: tuple[int, ...]

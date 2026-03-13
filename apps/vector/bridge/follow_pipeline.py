@@ -98,6 +98,9 @@ class FollowPipeline:
             logger.warning("FollowPipeline already running")
             return
 
+        # Boost camera exposure for low-light following
+        self._boost_camera_exposure()
+
         # Load YOLO model (first call may take a few seconds)
         logger.info("Loading YOLO model for person detection...")
         self._detector.load_model()
@@ -138,6 +141,10 @@ class FollowPipeline:
             self._thread = None
 
         self._tracker.clear()
+
+        # Restore auto exposure
+        self._restore_camera_exposure()
+
         logger.info("FollowPipeline stopped")
 
     def get_status(self) -> dict:
@@ -224,3 +231,28 @@ class FollowPipeline:
             sleep_time = period - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
+
+    def _boost_camera_exposure(self) -> None:
+        """Ensure camera auto-exposure is enabled for best low-light performance.
+
+        Testing showed Vector's auto-exposure (OV7251) already optimizes for
+        available light.  Manual exposure settings produced darker frames than
+        auto, so we just make sure auto-exposure is active.
+        """
+        if self._robot is None:
+            return
+        try:
+            self._robot.camera.enable_auto_exposure()
+            logger.info("Camera auto-exposure enabled for follow pipeline")
+        except Exception:
+            logger.warning("Failed to enable auto-exposure", exc_info=True)
+
+    def _restore_camera_exposure(self) -> None:
+        """Restore camera to auto-exposure after pipeline stops."""
+        if self._robot is None:
+            return
+        try:
+            self._robot.camera.enable_auto_exposure()
+            logger.debug("Camera auto-exposure restored")
+        except Exception:
+            logger.warning("Failed to restore auto-exposure", exc_info=True)
