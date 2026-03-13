@@ -93,7 +93,7 @@ class PersonDetector:
         """Run person detection on a single BGR frame.
 
         Args:
-            frame: BGR numpy array, typically 640x360 from Vector camera.
+            frame: BGR numpy array (800x600 from Vector camera).
 
         Returns:
             List of ``Detection`` objects for persons found in the frame.
@@ -101,9 +101,12 @@ class PersonDetector:
         if self._model is None:
             self.load_model()
 
+        # CLAHE preprocessing for Vector's dark OV7251 camera
+        enhanced = self._enhance_low_light(frame)
+
         t0 = time.perf_counter()
         results = self._model(
-            frame,
+            enhanced,
             verbose=False,
             conf=self._confidence_threshold,
             iou=self._iou_threshold,
@@ -152,6 +155,27 @@ class PersonDetector:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _enhance_low_light(frame: np.ndarray) -> np.ndarray:
+        """Apply CLAHE to improve contrast in Vector's dark camera frames.
+
+        Converts to LAB color space, applies CLAHE to the L (lightness)
+        channel, then converts back. This boosts contrast without
+        over-saturating colors — proven technique for low-light YOLO.
+        """
+        import cv2
+
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab)
+
+        # clipLimit=3.0 balances contrast boost vs noise amplification
+        # tileGridSize=8x8 is standard for detection tasks
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        l_enhanced = clahe.apply(l_channel)
+
+        lab_enhanced = cv2.merge([l_enhanced, a_channel, b_channel])
+        return cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
 
     def _parse_results(
         self, results: list, frame_shape: tuple[int, ...]

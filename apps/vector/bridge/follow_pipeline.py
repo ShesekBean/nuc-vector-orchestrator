@@ -26,6 +26,7 @@ from apps.vector.src.detector.kalman_tracker import KalmanTracker
 from apps.vector.src.detector.person_detector import PersonDetector
 from apps.vector.src.events.event_types import TRACKED_PERSON, TrackedPersonEvent
 from apps.vector.src.planner.follow_planner import FollowPlanner
+from apps.vector.src.planner.obstacle_detector import ObstacleDetector
 
 if TYPE_CHECKING:
     from apps.vector.src.camera.camera_client import CameraClient
@@ -60,7 +61,11 @@ class FollowPipeline:
 
         self._detector = PersonDetector(event_bus=nuc_bus)
         self._tracker = KalmanTracker()
-        self._planner = FollowPlanner(motor_controller, head_controller, nuc_bus)
+        self._obstacle = ObstacleDetector(motor_controller, nuc_bus)
+        self._planner = FollowPlanner(
+            motor_controller, head_controller, nuc_bus,
+            obstacle_detector=self._obstacle,
+        )
 
         self._running = False
         self._thread: threading.Thread | None = None
@@ -87,6 +92,9 @@ class FollowPipeline:
         self._running = True
         self._tracker.clear()
 
+        # Start obstacle detector (listens for motor events)
+        self._obstacle.start()
+
         # Start detection loop thread
         self._thread = threading.Thread(
             target=self._detection_loop, name="follow-detection", daemon=True
@@ -106,6 +114,9 @@ class FollowPipeline:
 
         # Stop planner first (stops motors)
         self._planner.stop()
+
+        # Stop obstacle detector
+        self._obstacle.stop()
 
         # Stop detection loop
         if self._thread is not None:
