@@ -52,6 +52,10 @@ class CameraClient:
         self._streaming = False
         self._lock = threading.Lock()
 
+        # Polling fallback (when SDK events don't fire)
+        self._poll_thread: threading.Thread | None = None
+        self._poll_stop = threading.Event()
+
         # Reconnection state
         self._reconnect_thread: threading.Thread | None = None
         self._should_reconnect = False
@@ -132,16 +136,37 @@ class CameraClient:
     # ------------------------------------------------------------------
 
     def _start_feed(self) -> None:
-        """Initialize camera feed and subscribe to events."""
+        """Initialize camera feed with event subscription + polling fallback."""
         from anki_vector.events import Events
 
         try:
+            # Ensure image streaming is enabled on the robot before opening
+            # the feed.  After repeated connect/disconnect cycles the robot
+            # can be left with streaming disabled, causing the gRPC
+            # CameraFeed to deliver zero frames.
+            if not self._robot.camera.image_streaming_enabled():
+                logger.info("Image streaming was disabled on robot — enabling")
+                from anki_vector.messaging import protocol as _proto
+
+                async def _enable():
+                    req = _proto.EnableImageStreamingRequest(enable=True)
+                    return await self._robot.conn.grpc_interface.EnableImageStreaming(req)
+
+                future = self._robot.conn.run_coroutine(_enable())
+                future.result(timeout=5.0)
             self._robot.camera.init_camera_feed()
             self._robot.events.subscribe(
                 self._on_new_image, Events.new_camera_image
             )
             self._streaming = True
             logger.info("Camera feed started (buffer_size=%d)", self._buffer_size)
+
+            # Start polling fallback — picks up frames even when events don't fire
+            self._poll_stop.clear()
+            self._poll_thread = threading.Thread(
+                target=self._poll_loop, daemon=True, name="camera-poll"
+            )
+            self._poll_thread.start()
         except Exception:
             logger.exception("Failed to start camera feed")
             self._streaming = False
@@ -153,6 +178,13 @@ class CameraClient:
 
         if not self._streaming:
             return
+
+        # Stop polling thread first
+        self._poll_stop.set()
+        if self._poll_thread and self._poll_thread.is_alive():
+            self._poll_thread.join(timeout=3.0)
+            self._poll_thread = None
+
         try:
             self._robot.events.unsubscribe(
                 self._on_new_image, Events.new_camera_image
@@ -219,6 +251,62 @@ class CameraClient:
             target=self._reconnect_loop, daemon=True
         )
         self._reconnect_thread.start()
+
+    def _poll_loop(self) -> None:
+        """Poll robot.camera.latest_image at ~15fps as fallback for SDK events.
+
+        The SDK's ``new_camera_image`` event doesn't always fire (e.g. when
+        behavior control is held by the bridge).  This thread polls the camera
+        directly and buffers any new frames it finds.
+        """
+        logger.info("Poll thread starting")
+        import cv2
+        import numpy as np
+        from anki_vector.exceptions import (
+            VectorCameraFeedException,
+            VectorPropertyValueNotReadyException,
+        )
+
+        interval = 1.0 / 15  # ~15 fps target
+        last_id = None  # track image identity to avoid duplicates
+
+        while not self._poll_stop.is_set():
+            try:
+                try:
+                    image = self._robot.camera.latest_image
+                except (VectorPropertyValueNotReadyException, VectorCameraFeedException):
+                    self._poll_stop.wait(0.5)
+                    continue
+
+                if image is None:
+                    self._poll_stop.wait(interval)
+                    continue
+
+                # Deduplicate: skip if same image object as last time
+                img_id = id(image)
+                if img_id == last_id:
+                    self._poll_stop.wait(interval)
+                    continue
+                last_id = img_id
+
+                now = time.monotonic()
+                pil_img = image.raw_image
+                rgb_array = np.asarray(pil_img)
+                bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+
+                ok, jpeg_buf = cv2.imencode(".jpg", bgr_array)
+                jpeg_bytes = jpeg_buf.tobytes() if ok else b""
+
+                with self._lock:
+                    self._frames.append(bgr_array)
+                    self._jpegs.append(jpeg_bytes)
+                    self._timestamps.append(now)
+                    self._frame_count += 1
+
+            except Exception:
+                logger.warning("Poll frame error", exc_info=True)
+
+            self._poll_stop.wait(interval)
 
     def _reconnect_loop(self) -> None:
         """Try to restart the camera feed with exponential backoff."""

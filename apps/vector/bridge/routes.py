@@ -248,9 +248,14 @@ async def capture(request: web.Request) -> web.Response:
 
     try:
         def _capture_frame() -> bytes:
+            # Try camera client buffer first (works when feed is active)
+            jpeg = conn.camera_client.get_latest_jpeg()
+            if jpeg:
+                return jpeg
+            # Fallback to single capture (only works when feed is NOT active)
             image = conn.robot.camera.capture_single_image()
             if image is None:
-                raise RuntimeError("Camera capture returned None")
+                raise RuntimeError("Camera not producing frames — try again in a few seconds")
             import io
             buf = io.BytesIO()
             image.raw_image.save(buf, format="JPEG")
