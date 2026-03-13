@@ -51,7 +51,12 @@ def _make_mock_conn(connected: bool = True) -> MagicMock:
     # Display controller
     conn.display_controller = MagicMock()
 
-    # Camera — robot.camera.capture_single_image
+    # Camera — capture route tries camera_client.get_latest_jpeg() first,
+    # then falls back to robot.camera.capture_single_image().
+    # Return None from camera_client so the fallback path is exercised.
+    conn.camera_client = MagicMock()
+    conn.camera_client.get_latest_jpeg = MagicMock(return_value=None)
+
     mock_image = MagicMock()
     mock_pil = MagicMock()
     mock_image.raw_image = mock_pil

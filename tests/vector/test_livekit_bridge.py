@@ -14,8 +14,6 @@ import pytest
 from apps.vector.src.events.event_types import LIVEKIT_SESSION
 from apps.vector.src.events.nuc_event_bus import NucEventBus
 from apps.vector.src.livekit_bridge import (
-    AUDIO_CHANNELS,
-    AUDIO_SAMPLE_RATE,
     DEFAULT_LIVEKIT_URL,
     FRAME_HEIGHT,
     FRAME_WIDTH,
@@ -142,22 +140,22 @@ class TestFrameConversion:
         frame = LiveKitBridge._jpeg_to_video_frame(b"")
         assert frame is None
 
-    def test_pcm_to_audio_frame_valid(self):
-        """Valid int16 PCM bytes should produce an AudioFrame."""
-        pcm = b"\x00\x01\x02\x03"  # 2 samples of 16-bit PCM
-        frame = LiveKitBridge._pcm_to_audio_frame(pcm)
-        assert frame is not None
-        assert frame.sample_rate == AUDIO_SAMPLE_RATE
-        assert frame.num_channels == AUDIO_CHANNELS
-        assert frame.samples_per_channel == 2
+    def test_pcm_has_signal_with_loud_audio(self):
+        """PCM buffer with loud samples should be detected as having signal."""
+        import struct
+        # 4 samples well above default threshold (200)
+        pcm = struct.pack("<4h", 0, 500, -300, 0)
+        assert LiveKitBridge._pcm_has_signal(pcm) is True
 
-    def test_pcm_to_audio_frame_empty(self):
-        """Empty bytes should return None."""
-        assert LiveKitBridge._pcm_to_audio_frame(b"") is None
+    def test_pcm_has_signal_with_silence(self):
+        """PCM buffer with only near-zero samples should return False."""
+        import struct
+        pcm = struct.pack("<4h", 0, 1, -1, 0)
+        assert LiveKitBridge._pcm_has_signal(pcm) is False
 
-    def test_pcm_to_audio_frame_single_byte(self):
-        """Single byte (less than one int16 sample) should return None."""
-        assert LiveKitBridge._pcm_to_audio_frame(b"\x00") is None
+    def test_pcm_has_signal_empty(self):
+        """Empty bytes should return False."""
+        assert LiveKitBridge._pcm_has_signal(b"") is False
 
 
 # ---------------------------------------------------------------------------
@@ -231,8 +229,8 @@ class TestLifecycle:
             assert bridge.is_active
             assert bridge.room_name == "test-room"
             mock_room.connect.assert_called_once()
-            # Should publish both video and audio tracks
-            assert mock_room.local_participant.publish_track.call_count == 2
+            # Should publish video track only (mic audio not available via SDK)
+            assert mock_room.local_participant.publish_track.call_count == 1
 
             # Cleanup
             await bridge.stop()
