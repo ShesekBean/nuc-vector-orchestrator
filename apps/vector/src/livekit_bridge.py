@@ -98,8 +98,10 @@ class LiveKitBridge:
         self._robot = robot
         self._bus = event_bus
         self._livekit_url = livekit_url
-        self._api_key = api_key
-        self._api_secret = api_secret
+
+        import os
+        self._api_key = api_key or os.environ.get("LIVEKIT_API_KEY")
+        self._api_secret = api_secret or os.environ.get("LIVEKIT_API_SECRET")
 
         self._room: rtc.Room | None = None
         self._video_source: rtc.VideoSource | None = None
@@ -164,6 +166,11 @@ class LiveKitBridge:
 
     def _generate_token(self, room: str) -> str:
         """Generate a LiveKit access token for the given room."""
+        if not self._api_key or not self._api_secret:
+            raise RuntimeError(
+                "LiveKit api_key and api_secret must be set — either pass them "
+                "explicitly or set LIVEKIT_API_KEY / LIVEKIT_API_SECRET env vars"
+            )
         token = lk_api.AccessToken(
             api_key=self._api_key,
             api_secret=self._api_secret,
