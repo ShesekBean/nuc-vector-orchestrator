@@ -2,9 +2,8 @@
 """Hold Vector in quiet mode — still and silent, but wake word still works.
 
 Connects to Vector via SDK and holds behavior control indefinitely at
-OVERRIDE_BEHAVIORS_PRIORITY. When vic-engine takes control for a wake
-word interaction, this script re-requests control as soon as it's
-released, keeping Vector quiet between interactions.
+OVERRIDE_BEHAVIORS_PRIORITY. Periodically re-requests control in case
+vic-engine took it for a wake word interaction.
 
 Usage:
     python3 scripts/vector-quiet-mode.py
@@ -17,7 +16,6 @@ from __future__ import annotations
 import logging
 import os
 import signal
-import threading
 import time
 
 logging.basicConfig(
@@ -27,6 +25,9 @@ logging.basicConfig(
 logger = logging.getLogger("vector-quiet-mode")
 
 SERIAL = os.environ.get("VECTOR_SERIAL", "0dd1cdcf")
+
+# How often to re-assert control (seconds)
+CONTROL_POLL_INTERVAL = 2.0
 
 
 def main():
@@ -38,39 +39,21 @@ def main():
     robot = anki_vector.Robot(
         serial=SERIAL,
         default_logging=False,
-        behavior_control_level=None,  # manage control manually
-    )
-    robot.connect()
-    logger.info("Connected. Requesting OVERRIDE_BEHAVIORS_PRIORITY control...")
-
-    # Track control state
-    has_control = threading.Event()
-
-    def _on_control_granted(event_type, event):
-        has_control.set()
-        logger.info("Behavior control granted — Vector is quiet.")
-
-    def _on_control_lost(event_type, event):
-        has_control.clear()
-        logger.info("Behavior control lost (wake word or other). Will re-request...")
-
-    # Subscribe to control events
-    robot.events.subscribe(_on_control_granted, anki_vector.events.Events.control_granted_response)
-    robot.events.subscribe(_on_control_lost, anki_vector.events.Events.control_lost_response)
-
-    # Initial control request
-    robot.conn.request_control(
         behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
     )
-    has_control.wait(timeout=5.0)
+    robot.connect()
+    logger.info("Connected with OVERRIDE_BEHAVIORS_PRIORITY.")
 
     # Set neutral pose
-    try:
-        robot.behavior.set_head_angle(degrees(0))
-        robot.behavior.set_lift_height(0.0)
-        robot.motors.set_wheel_motors(0, 0)
-    except Exception as e:
-        logger.warning("Could not set neutral pose: %s", e)
+    def set_neutral():
+        try:
+            robot.behavior.set_head_angle(degrees(0))
+            robot.behavior.set_lift_height(0.0)
+            robot.motors.set_wheel_motors(0, 0)
+        except Exception as e:
+            logger.debug("Neutral pose: %s", e)
+
+    set_neutral()
 
     logger.info(
         "Vector is still and quiet. Wake word still works.\n"
@@ -87,24 +70,21 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
-    # Main loop: hold control, re-request if lost
+    # Main loop: periodically re-request control to reclaim after wake word
+    last_control_request = time.monotonic()
     while not stop:
         try:
             time.sleep(0.5)
-            if not has_control.is_set():
-                logger.info("Re-requesting behavior control...")
-                robot.conn.request_control(
-                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-                )
-                has_control.wait(timeout=5.0)
-                if has_control.is_set():
-                    # Reset neutral pose after regaining control
-                    try:
-                        robot.behavior.set_head_angle(degrees(0))
-                        robot.behavior.set_lift_height(0.0)
-                        robot.motors.set_wheel_motors(0, 0)
-                    except Exception:
-                        pass
+            now = time.monotonic()
+            if now - last_control_request >= CONTROL_POLL_INTERVAL:
+                try:
+                    robot.conn.request_control(
+                        behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+                    )
+                    set_neutral()
+                except Exception as e:
+                    logger.warning("Control re-request failed: %s", e)
+                last_control_request = now
         except KeyboardInterrupt:
             break
 
