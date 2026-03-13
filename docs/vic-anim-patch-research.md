@@ -196,6 +196,27 @@ ssh root@192.168.1.73 "systemctl restart vic-robot"
 - **HW_VER:** `0x20` (confirmed via `emr-cat v` on robot)
 - **Gamma:** 2.1 (vs 1.0 on Vector 1.0)
 
+## KeepFaceAlive Bug & Bridge Workaround
+
+`DisplayFaceImage()` calls `EnableKeepFaceAlive(false, duration_ms)` in vic-anim
+(`animationStreamer.cpp:749`), which permanently sets a static flag
+`s_enableKeepFaceAlive = false`. This flag is **never restored** — the only code
+paths that call `EnableKeepFaceAlive(true)` are `SelfTestEnd` and `ExitCCScreen`.
+
+This means after any `set_screen_with_image_data()` call, Vector's face animation
+(eyes, blinks, darts) is permanently disabled until vic-anim restarts.
+
+**Attempted fixes that didn't work:**
+1. Patching vic-anim to call `RemoveKeepFaceAlive` without touching the flag — image still persists because `SetFaceImage` sprite stays
+2. Setting `s_enableKeepFaceAlive = true` immediately after `EnableKeepFaceAlive(false)` — `KeepFaceAlive()` only adds overlay layers, doesn't replace the `SetFaceImage` sprite
+3. `say_text(" ")` from the bridge connection — doesn't restore face (override priority issue)
+
+**Working fix (bridge software):** After the hold thread finishes, release and
+re-acquire SDK behavior control via `robot.conn.release_control()` /
+`robot.conn.request_control()`. This forces a full animation pipeline reset.
+
+Code: `apps/vector/bridge/routes.py` → `_restore_face_animation()`.
+
 ## Vector SSH Access
 
 ```bash
