@@ -537,6 +537,7 @@ class LiveKitBridge:
             return
         logger.info("No participants for %ds — auto-disconnecting", EMPTY_ROOM_TIMEOUT)
         await self.stop()
+        self._notify_signal_closed()
 
     def _on_disconnected(self, reason: str | None = None) -> None:
         """Handle LiveKit room disconnection."""
@@ -610,6 +611,21 @@ class LiveKitBridge:
     # ------------------------------------------------------------------
     # Event bus
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _notify_signal_closed() -> None:
+        """Send a Signal notification that the video call was closed."""
+        import subprocess
+
+        try:
+            subprocess.Popen(
+                ["bash", "scripts/pgm-signal-gate.sh", "milestone", "0",
+                 "🤖 Orchestrator: Video call closed — no participants for 3 minutes."],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            logger.debug("Failed to send Signal notification", exc_info=True)
 
     def _emit_session_event(self, *, active: bool, room: str) -> None:
         """Emit a LiveKitSessionEvent on the NUC event bus."""
