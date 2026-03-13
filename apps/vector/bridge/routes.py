@@ -667,16 +667,27 @@ def _send_image_to_screen(robot: "Any", sdk_image: "Any", duration_sec: float) -
 
 def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
                           duration: float, stop_event: threading.Event) -> None:
-    """Re-send image every 0.5s for *duration* seconds to suppress eye animations."""
+    """Re-send image every 0.5s for *duration* seconds to suppress eye animations.
+
+    Each send tells vic-engine to hold the image for 1s (slightly longer than
+    our 0.5s re-send interval, to avoid flicker).  When the hold ends, we stop
+    re-sending and the last image naturally expires after ≤1s.
+    """
     end_time = time.monotonic() + duration
     interval = 0.5
     while not stop_event.is_set() and time.monotonic() < end_time:
+        remaining = end_time - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            _send_image_to_screen(robot, sdk_image, min(interval + 0.5, duration))
+            # Tell vic-engine to hold for just slightly longer than our interval
+            # so there's no flicker, but also not much overshoot when we stop.
+            hold_sec = min(interval + 0.3, remaining + 0.1)
+            _send_image_to_screen(robot, sdk_image, hold_sec)
         except Exception:
             logger.exception("Display hold send failed")
             break
-        stop_event.wait(interval)
+        stop_event.wait(min(interval, remaining))
 
 
 def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float) -> None:
@@ -741,14 +752,14 @@ async def display_image(request: web.Request) -> web.Response:
     Accepts:
       - multipart/form-data with 'image' file field
       - JSON with 'image' field containing base64-encoded image data
-    Optional: 'duration' (seconds, default 10)
+    Optional: 'duration' (seconds, default 5)
     """
     conn: "ConnectionManager" = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
 
-    duration = 10.0
+    duration = 5.0
 
     try:
         from PIL import Image as PILImage
@@ -815,7 +826,7 @@ async def display_image(request: web.Request) -> web.Response:
 async def display_text(request: web.Request) -> web.Response:
     """POST /display/text — render and display text on Vector's OLED face.
 
-    Body: {"text": "Hello!", "fg_color": "#00FF00", "bg_color": "#000000", "duration": 10}
+    Body: {"text": "Hello!", "fg_color": "#00FF00", "bg_color": "#000000", "duration": 5}
     """
     conn: "ConnectionManager" = request.app["conn"]
     err = _require_connected(conn)
@@ -831,7 +842,7 @@ async def display_text(request: web.Request) -> web.Response:
     if not text:
         return _json_error(400, "Missing 'text' field", "MISSING_PARAMS")
 
-    duration = float(body.get("duration", 10))
+    duration = float(body.get("duration", 5))
 
     try:
         fg_color = _parse_color(body.get("fg_color", "#FFFFFF"))
@@ -876,7 +887,7 @@ async def display_color(request: web.Request) -> web.Response:
     if not color_str:
         return _json_error(400, "Missing 'color' field", "MISSING_PARAMS")
 
-    duration = float(body.get("duration", 10))
+    duration = float(body.get("duration", 5))
 
     try:
         rgb = _parse_color(color_str)

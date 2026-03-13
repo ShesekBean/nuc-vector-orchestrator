@@ -9,7 +9,7 @@ metadata: {"openclaw": {"emoji": "🤖"}}
 ## Overview
 You have DIRECT CONTROL of a physical robot (Anki/DDL Vector 2.0) via HTTP bridge on the NUC. When the user says "robot <command>", you MUST immediately execute the corresponding curl command — do not ask for clarification, do not explain, just DO IT and report the result.
 
-The robot has differential drive (tank treads, NO strafing), a 640x360 camera (120° FOV), eye color LEDs (hue/saturation), a 160x80 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
+The robot has differential drive (tank treads, NO strafing), a 640x360 camera (120° FOV), eye color LEDs (hue/saturation), a 184x96 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
 
 ## Bridge API Endpoints
 
@@ -120,6 +120,38 @@ Content-Type: application/json
 {"expression": "happy"}
 ```
 
+### Display Image on Face
+```
+POST /display/image
+
+Option 1 — Base64 JSON:
+Content-Type: application/json
+{"image": "<base64-encoded-image-data>", "duration": 10}
+
+Option 2 — Multipart form:
+Content-Type: multipart/form-data
+Fields: image (file), duration (optional, default 10)
+
+Option 3 — Raw image bytes in body (duration via ?duration=10 query param)
+```
+Displays an arbitrary image on Vector's 160x80 OLED face. The image is resized to fit (preserving aspect ratio, black letterbox) and held on screen for the specified duration (suppresses eye animations).
+
+### Display Text on Face
+```
+POST /display/text
+Content-Type: application/json
+{"text": "Hello!", "fg_color": "#00FF00", "bg_color": "#000000", "duration": 10}
+```
+Renders centered text on Vector's OLED face. `fg_color` and `bg_color` are optional (default white on black). `duration` is optional (default 10 seconds). Colors can be hex ("#FF0000") or names ("red", "green", "blue", etc).
+
+### Display Solid Color on Face
+```
+POST /display/color
+Content-Type: application/json
+{"color": "#FF0000", "duration": 10}
+```
+Fills Vector's OLED face with a solid color. Color can be hex ("#FF0000") or name ("red"). Duration is optional (default 10 seconds).
+
 ### Speak Text (TTS)
 ```
 POST /audio/play
@@ -203,6 +235,15 @@ When the user's message starts with or contains the word **"robot"**, activate t
 - "robot happy" → POST /display {"expression": "happy"}
 - "robot sad" → POST /display {"expression": "sad"}
 
+### Display Image / Text / Color on Face
+- **CRITICAL: If the user sends an image attachment AND says "robot show this" / "robot display this", you MUST display the ATTACHED IMAGE on Vector's face — do NOT take a robot photo. Save the attachment to /tmp, base64-encode it, and POST to /display/image.** This is the #1 most commonly confused command.
+- "robot show this" or "robot display this" (with image attachment) → save attachment to /tmp, then POST /display/image with base64-encoded image data
+- "robot show text Hello" → POST /display/text {"text": "Hello"}
+- "robot display message Good morning" → POST /display/text {"text": "Good morning", "fg_color": "#00FF00"}
+- "robot screen red" → POST /display/color {"color": "red"}
+- "robot screen blue" → POST /display/color {"color": "blue"}
+- "robot screen #FF00FF" → POST /display/color {"color": "#FF00FF"}
+
 ### Speech
 - "robot say hello" → POST /audio/play {"text": "hello"}
 - "robot say good morning Ophir" → POST /audio/play {"text": "good morning Ophir"}
@@ -255,6 +296,22 @@ Example for "robot lift up":
 curl -sf -X POST http://172.17.0.1:8081/lift -H 'Content-Type: application/json' -d '{"preset":"high"}'
 ```
 
+Example for "robot show text Hello World":
+```bash
+curl -sf -X POST http://172.17.0.1:8081/display/text -H 'Content-Type: application/json' -d '{"text":"Hello World","fg_color":"#00FF00","duration":10}'
+```
+
+Example for "robot screen red":
+```bash
+curl -sf -X POST http://172.17.0.1:8081/display/color -H 'Content-Type: application/json' -d '{"color":"red","duration":10}'
+```
+
+Example for displaying an image attachment (base64):
+```bash
+IMAGE_B64=$(base64 -w0 /tmp/signal-attachment.jpg)
+curl -sf -X POST http://172.17.0.1:8081/display/image -H 'Content-Type: application/json' -d "{\"image\":\"$IMAGE_B64\",\"duration\":15}"
+```
+
 Example for "robot photo":
 ```bash
 curl -sf http://172.17.0.1:8081/capture --output /tmp/robot-photo.jpg
@@ -277,6 +334,7 @@ Do NOT ask the user what they mean. Do NOT explain the API. Just run curl and te
 - Camera: "photo", "snapshot", "take a photo"
 - LEDs: "led red/green/blue/yellow/orange/purple/cyan/white/off"
 - Face: "happy", "sad"
+- Display: "show this" (with image), "show text ...", "display message ...", "screen red/blue/..."
 - Speech: "say hello", "say good morning"
 - Status: "battery", "health", "status", "how are you"
 - Control: "stop", "freeze", "follow me", "stop following"
@@ -309,3 +367,5 @@ Example: "Driving forward 300mm... done! Vector scooted forward about 30cm. Batt
 - If bridge returns 503, Vector is offline — tell the user
 - Follow planner may return 501 if not yet wired to the bridge
 - Call endpoints return 503 if LiveKit bridge not initialised — tell the user to check LiveKit config
+- **ATTACHMENT DISPLAY vs PHOTO**: When user sends an image via Signal with "show this" or "display this", save the ATTACHED IMAGE to /tmp and POST it as base64 to /display/image. Do NOT confuse this with "robot photo" (which captures from the robot camera). The key signal: if there's an attachment + "show/display", display the attachment.
+- Display image/text/color endpoints hold the image on screen for the specified duration (default 10s), suppressing Vector's eye animations
