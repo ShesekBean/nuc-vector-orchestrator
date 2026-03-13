@@ -1,0 +1,15 @@
+[Unit]
+Description=Wire-pod (Vector cloud replacement)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/ophirsw/Documents/claude/nuc-vector-orchestrator/scripts/wire-pod-start.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

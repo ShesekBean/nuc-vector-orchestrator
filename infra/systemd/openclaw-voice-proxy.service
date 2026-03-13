@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenClaw Voice Proxy (wire-pod to OpenClaw bridge)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ophirsw
+WorkingDirectory=/home/ophirsw/Documents/claude/nuc-vector-orchestrator
+ExecStart=/usr/bin/python3 scripts/openclaw-voice-proxy.py --port 8095
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
