@@ -65,6 +65,9 @@ AUDIO_PUBLISH_INTERVAL = 0.02  # 20ms chunks (standard WebRTC)
 MAX_RECONNECT_DELAY = 30.0
 INITIAL_RECONNECT_DELAY = 1.0
 
+# Auto-disconnect when no remote participants for this long (seconds)
+EMPTY_ROOM_TIMEOUT = 3 * 60  # 3 minutes
+
 
 class LiveKitBridge:
     """Bidirectional LiveKit WebRTC session for Vector.
@@ -110,6 +113,7 @@ class LiveKitBridge:
         self._room_name = ""
         self._should_reconnect = False
         self._playing_audio = False  # guard against overlapping playback
+        self._empty_room_timer: asyncio.TimerHandle | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -187,6 +191,8 @@ class LiveKitBridge:
         # Register event handlers before connecting
         self._room.on("disconnected", self._on_disconnected)
         self._room.on("track_subscribed", self._on_track_subscribed)
+        self._room.on("participant_connected", self._on_participant_connected)
+        self._room.on("participant_disconnected", self._on_participant_disconnected)
 
         logger.info("Connecting to LiveKit room %r at %s", room, self._livekit_url)
         await self._room.connect(self._livekit_url, token)
@@ -214,8 +220,13 @@ class LiveKitBridge:
         self._active = True
         self._emit_session_event(active=True, room=room)
 
+        # Start empty-room timer if nobody else is in the room yet
+        if not self._room.remote_participants:
+            self._start_empty_room_timer()
+
     async def _cleanup(self) -> None:
         """Cancel tasks, disconnect from room, emit session end event."""
+        self._cancel_empty_room_timer()
         was_active = self._active
         self._active = False
 
@@ -489,9 +500,48 @@ class LiveKitBridge:
     # Room event handlers
     # ------------------------------------------------------------------
 
+    def _on_participant_connected(self, participant: rtc.RemoteParticipant) -> None:
+        """A remote participant joined — cancel empty-room timer."""
+        logger.info("Participant joined: %s", participant.identity)
+        self._cancel_empty_room_timer()
+
+    def _on_participant_disconnected(self, participant: rtc.RemoteParticipant) -> None:
+        """A remote participant left — start empty-room timer if room is empty."""
+        logger.info("Participant left: %s", participant.identity)
+        if self._room and not self._room.remote_participants:
+            self._start_empty_room_timer()
+
+    def _start_empty_room_timer(self) -> None:
+        """Start a timer that auto-disconnects after EMPTY_ROOM_TIMEOUT."""
+        self._cancel_empty_room_timer()
+        loop = asyncio.get_event_loop()
+        logger.info(
+            "Room empty — will auto-disconnect in %ds", EMPTY_ROOM_TIMEOUT
+        )
+        self._empty_room_timer = loop.call_later(
+            EMPTY_ROOM_TIMEOUT, lambda: asyncio.ensure_future(self._empty_room_disconnect())
+        )
+
+    def _cancel_empty_room_timer(self) -> None:
+        """Cancel the empty-room auto-disconnect timer."""
+        if self._empty_room_timer is not None:
+            self._empty_room_timer.cancel()
+            self._empty_room_timer = None
+
+    async def _empty_room_disconnect(self) -> None:
+        """Auto-disconnect after the room has been empty for too long."""
+        self._empty_room_timer = None
+        # Double-check room is still empty
+        if self._room and self._room.remote_participants:
+            logger.info("Empty-room timer fired but room has participants — ignoring")
+            return
+        logger.info("No participants for %ds — auto-disconnecting", EMPTY_ROOM_TIMEOUT)
+        await self.stop()
+
     def _on_disconnected(self, reason: str | None = None) -> None:
         """Handle LiveKit room disconnection."""
         logger.warning("LiveKit room disconnected: %s", reason)
+        self._cancel_empty_room_timer()
         self._active = False
         self._emit_session_event(active=False, room=self._room_name)
 
