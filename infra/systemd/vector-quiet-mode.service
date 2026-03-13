@@ -1,0 +1,15 @@
+[Unit]
+Description=Vector quiet mode (still + silent, wake word active)
+After=network-online.target wire-pod.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ophirsw
+WorkingDirectory=/home/ophirsw/Documents/claude/nuc-vector-orchestrator
+ExecStart=/usr/bin/python3 scripts/vector-quiet-mode.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
