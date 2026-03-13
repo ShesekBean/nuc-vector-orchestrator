@@ -210,7 +210,7 @@ class KalmanTracker:
     def __init__(
         self,
         max_age: int = 15,  # frames without measurement before track is deleted
-        min_hits: int = 3,
+        min_hits: int = 1,  # react on first detection (was 3 — too slow for dark conditions)
         iou_threshold: float = 0.1,  # lowered from 0.2 — Vector's turning causes large shifts
         prediction_rate_hz: float = 10.0,
     ) -> None:

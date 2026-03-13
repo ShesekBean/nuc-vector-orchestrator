@@ -1,4 +1,4 @@
-"""YOLO11s person detector using OpenVINO inference on NUC.
+"""YOLO11n person detector using OpenVINO inference on NUC.
 
 Loads a YOLO model (preferring OpenVINO IR format for Intel hardware) and
 detects persons (COCO class 0) in camera frames.  Designed to consume
@@ -36,8 +36,9 @@ logger = logging.getLogger(__name__)
 _PERSON_CLASS = 0
 
 # Default model directory (relative to repo root)
+# YOLO11n (nano) for speed: 47ms vs 97ms for YOLO11s on NUC OpenVINO
 _DEFAULT_MODEL_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "models", "yolo11s_openvino_model"
+    os.path.dirname(__file__), "..", "..", "models", "yolo11n_openvino_model"
 )
 
 
@@ -46,7 +47,7 @@ class PersonDetector:
 
     Args:
         model_path: Path to YOLO model (OpenVINO IR dir or .pt file).
-            Defaults to ``apps/vector/models/yolo11s_openvino_model/``.
+            Defaults to ``apps/vector/models/yolo11n_openvino_model/``.
         confidence_threshold: Minimum detection confidence (0.0–1.0).
         iou_threshold: NMS IoU threshold for suppressing overlapping boxes.
         event_bus: Optional ``NucEventBus`` to publish detections on.
@@ -182,8 +183,10 @@ class PersonDetector:
         # Stage 1: Gamma correction for very dark frames
         # gamma < 1.0 brightens; more aggressive when darker
         if mean_brightness < 80:
-            if mean_brightness < 30:
-                gamma = 0.35  # extremely dark — aggressive brightening
+            if mean_brightness < 15:
+                gamma = 0.25  # pitch black — maximum brightening
+            elif mean_brightness < 30:
+                gamma = 0.35  # extremely dark
             elif mean_brightness < 50:
                 gamma = 0.45  # very dark
             else:
@@ -203,13 +206,11 @@ class PersonDetector:
         lab_enhanced = cv2.merge([l_enhanced, a_channel, b_channel])
         result = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
 
-        # Stage 3: Fast denoising to reduce noise from gamma + CLAHE
+        # Stage 3: Bilateral filter to reduce noise from gamma + CLAHE
         # Only apply when we did aggressive brightening (noise is amplified)
+        # Bilateral is ~1ms vs ~100ms for fastNlMeansDenoisingColored
         if mean_brightness < 50:
-            result = cv2.fastNlMeansDenoisingColored(
-                result, None, h=6, hForColorComponents=6,
-                templateWindowSize=7, searchWindowSize=21,
-            )
+            result = cv2.bilateralFilter(result, d=5, sigmaColor=75, sigmaSpace=75)
 
         return result
 
@@ -227,9 +228,12 @@ class PersonDetector:
 
         base = self._confidence_threshold
 
-        if mean_brightness < 30:
-            # Extremely dark — be very permissive
-            return max(0.12, base - 0.12)
+        if mean_brightness < 15:
+            # Pitch black — maximum permissive
+            return max(0.08, base - 0.17)
+        elif mean_brightness < 30:
+            # Extremely dark — very permissive
+            return max(0.10, base - 0.12)
         elif mean_brightness < 60:
             # Dark — moderately permissive
             return max(0.15, base - 0.08)

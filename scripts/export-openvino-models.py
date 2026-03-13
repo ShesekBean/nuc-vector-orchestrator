@@ -29,25 +29,27 @@ SFACE_URL = (
 
 
 def export_yolo(model_dir: str) -> None:
-    """Export YOLO11s to OpenVINO IR format."""
+    """Export YOLO11n (nano) to OpenVINO IR format.
+
+    YOLO11n chosen over YOLO11s for speed: 47ms vs 97ms on NUC OpenVINO.
+    Accuracy tradeoff is acceptable — Vector's dark OV7251 camera limits
+    detection quality regardless of model size.
+    """
     from ultralytics import YOLO
 
-    print("[1/3] Exporting YOLO11s to OpenVINO IR...")
+    print("[1/3] Exporting YOLO11n to OpenVINO IR...")
 
     # Work in model_dir so downloads and exports land there
     prev_dir = os.getcwd()
     os.chdir(model_dir)
     try:
-        # Download and load YOLO11s
-        model = YOLO("yolo11s.pt")
-
-        # Export to OpenVINO format (creates yolo11s_openvino_model/ directory)
+        model = YOLO("yolo11n.pt")
         export_path = model.export(format="openvino", imgsz=640, half=False)
         print(f"  Exported to: {export_path}")
     finally:
         os.chdir(prev_dir)
 
-    print("  YOLO11s export complete.")
+    print("  YOLO11n export complete.")
 
 
 def download_file(url: str, dest: str) -> None:
@@ -77,7 +79,7 @@ def verify_models(model_dir: str) -> bool:
     ok = True
 
     # Check YOLO OpenVINO model
-    yolo_dir = os.path.join(model_dir, "yolo11s_openvino_model")
+    yolo_dir = os.path.join(model_dir, "yolo11n_openvino_model")
     xml_files = [f for f in os.listdir(yolo_dir) if f.endswith(".xml")] if os.path.isdir(yolo_dir) else []
     if xml_files:
         print(f"  YOLO11s OpenVINO: OK ({xml_files[0]})")

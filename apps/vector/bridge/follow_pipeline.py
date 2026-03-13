@@ -36,8 +36,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Detection loop rate — YOLO runs at ~5-15fps on NUC with OpenVINO
-DETECTION_HZ = 5.0
+# Detection loop rate — YOLO11n runs at ~20fps on NUC with OpenVINO
+# Run as fast as possible; actual rate limited by inference time (~47ms)
+DETECTION_HZ = 20.0
 
 
 class FollowPipeline:
@@ -199,18 +200,16 @@ class FollowPipeline:
                 # Feed into Kalman tracker
                 confirmed_tracks = self._tracker.update(detections)
 
-                if confirmed_tracks:
+                # Only emit events when YOLO actually detected something.
+                # Kalman predictions without fresh YOLO data are stale —
+                # let the planner's lost-frames counter handle the gap.
+                if detections and confirmed_tracks:
                     primary = self._tracker.get_primary_track()
                     if primary:
                         logger.debug(
                             "Kalman: track_id=%d hits=%d cx=%.0f cy=%.0f h=%.0f conf=%.2f",
                             primary.track_id, primary.hits, primary.cx, primary.cy, primary.height, primary.confidence,
                         )
-
-                # Emit TrackedPersonEvent for the primary (best) track
-                if confirmed_tracks:
-                    primary = self._tracker.get_primary_track()
-                    if primary is not None:
                         event = TrackedPersonEvent(
                             track_id=primary.track_id,
                             cx=primary.cx,

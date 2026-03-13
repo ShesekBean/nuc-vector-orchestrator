@@ -87,17 +87,17 @@ class FollowConfig:
 
     # --- Speed limits ---
     max_wheel_speed: float = 160.0  # mm/s (Vector max ~200, leave headroom)
-    min_tracking_confidence: float = 0.3
+    min_tracking_confidence: float = 0.08  # accept weak detections in dark conditions
 
     # --- EMA smoothing on motor output (0.0=raw, 1.0=frozen) ---
-    ema_alpha: float = 0.3  # lower = smoother, higher = more responsive
+    ema_alpha: float = 0.6  # higher = more responsive (was 0.3, too sluggish)
 
     # --- Derivative low-pass filter ---
     derivative_filter_alpha: float = 0.5  # EMA on d_error to reject spikes
 
     # --- Tracking thresholds ---
-    min_hits_for_following: int = 3  # Kalman hits before TRACKING → FOLLOWING (faster lock)
-    target_lost_frames: int = 40  # control-loop ticks without detection → SEARCHING (~4s at 10Hz)
+    min_hits_for_following: int = 1  # react immediately — no Kalman confirmation delay
+    target_lost_frames: int = 60  # control-loop ticks without detection → SEARCHING (~4s at 15Hz)
 
     # --- Search behaviour ---
     search_head_angles: tuple[float, ...] = (10.0, 30.0, -10.0, 0.0)
@@ -108,7 +108,7 @@ class FollowConfig:
     search_step_deg: float = 60.0  # degrees per search rotation step (6 steps = 360°)
 
     # --- Control loop ---
-    loop_hz: float = 10.0  # target control loop rate
+    loop_hz: float = 15.0  # target control loop rate (higher = more responsive)
 
 
 # ---------------------------------------------------------------------------
@@ -210,9 +210,16 @@ class PDController:
         raw_right = max(-max_spd, min(max_spd, raw_right))
 
         # EMA smoothing — prevents jerky motor commands
+        # Reset EMA when direction reverses to avoid stale-state lag
         alpha = cfg.ema_alpha
-        self._ema_left = alpha * raw_left + (1.0 - alpha) * self._ema_left
-        self._ema_right = alpha * raw_right + (1.0 - alpha) * self._ema_right
+        if (raw_left > 0) != (self._ema_left > 0) and abs(raw_left) > 10:
+            self._ema_left = raw_left  # instant reset on direction change
+        else:
+            self._ema_left = alpha * raw_left + (1.0 - alpha) * self._ema_left
+        if (raw_right > 0) != (self._ema_right > 0) and abs(raw_right) > 10:
+            self._ema_right = raw_right
+        else:
+            self._ema_right = alpha * raw_right + (1.0 - alpha) * self._ema_right
 
         # Save state for derivative
         self._prev_error_x = error_x
@@ -375,8 +382,10 @@ class FollowPlanner:
         with self._track_lock:
             if self._locked_track_id is not None:
                 if event.track_id != self._locked_track_id:
-                    # Accept new track if we haven't seen the locked one recently
-                    if self._frames_without_track < 10:
+                    # Accept new track after just 2 missed frames (~130ms at 15Hz).
+                    # The old threshold of 10 caused stale-track lag when the person
+                    # made sudden position changes (Kalman creates new track ID).
+                    if self._frames_without_track < 2:
                         return  # still expecting locked track
                     # Locked track is gone — accept new one and re-lock
                     logger.info(
@@ -634,6 +643,11 @@ class FollowPlanner:
         self._bus.emit(
             MOTOR_COMMAND,
             MotorCommandEvent(left_speed_mmps=left, right_speed_mmps=right),
+        )
+
+        logger.debug(
+            "Motor: L=%.0f R=%.0f (cx=%.0f h=%.0f conf=%.2f)",
+            left, right, track.cx, track.height, track.confidence,
         )
 
         # Send to motors
