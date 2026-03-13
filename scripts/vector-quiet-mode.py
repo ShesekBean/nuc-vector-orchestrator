@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 """Hold Vector in quiet mode — still and silent, but wake word still works.
 
-Connects to Vector via SDK and holds behavior control indefinitely.
-This suppresses all autonomous behaviors (exploring, reacting to sounds,
-idle animations) while keeping wake word detection active (it runs at
-a lower level in vic-engine).
-
-When Vector hears the wake word, vic-engine temporarily takes back control
-for the voice interaction, then returns control to the SDK afterward.
+Connects to Vector via SDK and holds behavior control indefinitely at
+OVERRIDE_BEHAVIORS_PRIORITY. When vic-engine takes control for a wake
+word interaction, this script re-requests control as soon as it's
+released, keeping Vector quiet between interactions.
 
 Usage:
     python3 scripts/vector-quiet-mode.py
@@ -20,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 import signal
+import threading
 import time
 
 logging.basicConfig(
@@ -33,36 +31,46 @@ SERIAL = os.environ.get("VECTOR_SERIAL", "0dd1cdcf")
 
 def main():
     import anki_vector
-    from anki_vector.util import degrees
-
     from anki_vector.connection import ControlPriorityLevel
+    from anki_vector.util import degrees
 
     logger.info("Connecting to Vector (serial=%s)...", SERIAL)
     robot = anki_vector.Robot(
         serial=SERIAL,
         default_logging=False,
-        behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+        behavior_control_level=None,  # manage control manually
     )
     robot.connect()
-    logger.info("Connected with OVERRIDE_BEHAVIORS_PRIORITY. Suppressing all autonomous behaviors.")
+    logger.info("Connected. Requesting OVERRIDE_BEHAVIORS_PRIORITY control...")
 
-    # Set neutral pose: head level, lift down, stop motors
+    # Track control state
+    has_control = threading.Event()
+
+    def _on_control_granted(event_type, event):
+        has_control.set()
+        logger.info("Behavior control granted — Vector is quiet.")
+
+    def _on_control_lost(event_type, event):
+        has_control.clear()
+        logger.info("Behavior control lost (wake word or other). Will re-request...")
+
+    # Subscribe to control events
+    robot.events.subscribe(_on_control_granted, anki_vector.events.Events.control_granted_response)
+    robot.events.subscribe(_on_control_lost, anki_vector.events.Events.control_lost_response)
+
+    # Initial control request
+    robot.conn.request_control(
+        behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+    )
+    has_control.wait(timeout=5.0)
+
+    # Set neutral pose
     try:
         robot.behavior.set_head_angle(degrees(0))
         robot.behavior.set_lift_height(0.0)
         robot.motors.set_wheel_motors(0, 0)
     except Exception as e:
         logger.warning("Could not set neutral pose: %s", e)
-
-    # Set volume to minimum to reduce noise
-    try:
-        from anki_vector.messaging import protocol
-        robot.conn.grpc_interface.SetMasterVolume(
-            protocol.MasterVolumeRequest(volume_level=protocol.Volume.Value("LOW"))
-        )
-        logger.info("Volume set to LOW")
-    except Exception as e:
-        logger.warning("Could not set volume: %s", e)
 
     logger.info(
         "Vector is still and quiet. Wake word still works.\n"
@@ -79,10 +87,24 @@ def main():
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
 
-    # Hold control forever — just keep the connection alive
+    # Main loop: hold control, re-request if lost
     while not stop:
         try:
-            time.sleep(1)
+            time.sleep(0.5)
+            if not has_control.is_set():
+                logger.info("Re-requesting behavior control...")
+                robot.conn.request_control(
+                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+                )
+                has_control.wait(timeout=5.0)
+                if has_control.is_set():
+                    # Reset neutral pose after regaining control
+                    try:
+                        robot.behavior.set_head_angle(degrees(0))
+                        robot.behavior.set_lift_height(0.0)
+                        robot.motors.set_wheel_motors(0, 0)
+                    except Exception:
+                        pass
         except KeyboardInterrupt:
             break
 
