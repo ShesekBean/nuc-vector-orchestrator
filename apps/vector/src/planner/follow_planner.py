@@ -79,7 +79,7 @@ class FollowConfig:
     # --- P gain for driving (distance control via bbox height) ---
     kp_drive: float = 0.5
     kd_drive: float = 0.08
-    target_height: float = 180.0  # target bbox height in pixels (~1.5m follow distance at 800x600)
+    target_height: float = 300.0  # target bbox height in pixels (~1m follow distance at 800x600)
     dead_zone_h: float = 20.0  # pixels — no drive if height error < this
 
     # --- P gain for head pitch (vertical tracking) ---
@@ -97,7 +97,7 @@ class FollowConfig:
 
     # --- Tracking thresholds ---
     min_hits_for_following: int = 3  # Kalman hits before TRACKING → FOLLOWING (faster lock)
-    target_lost_frames: int = 20  # frames without detection → SEARCHING (more patient)
+    target_lost_frames: int = 40  # control-loop ticks without detection → SEARCHING (~4s at 10Hz)
 
     # --- Search behaviour ---
     search_head_angles: tuple[float, ...] = (10.0, 30.0, -10.0, 0.0)
@@ -194,6 +194,12 @@ class PDController:
         if abs(error_h) < cfg.dead_zone_h:
             drive_speed = 0.0
 
+        # Asymmetric speed: limit backward drive to 40% of max
+        # (Vector should approach eagerly but retreat gently)
+        if drive_speed < 0:
+            max_reverse = cfg.max_wheel_speed * 0.4
+            drive_speed = max(-max_reverse, drive_speed)
+
         # Differential drive: turn adds to one side, subtracts from the other
         raw_left = drive_speed + turn_speed
         raw_right = drive_speed - turn_speed
@@ -246,6 +252,7 @@ class FollowPlanner:
         nuc_bus: NucEventBus,
         config: FollowConfig | None = None,
         obstacle_detector: ObstacleDetector | None = None,
+        say_func: Any | None = None,
     ) -> None:
         self._motor = motor_controller
         self._head = head_controller
@@ -253,6 +260,7 @@ class FollowPlanner:
         self._cfg = config or FollowConfig()
         self._pd = PDController(self._cfg)
         self._obstacle = obstacle_detector
+        self._say = say_func  # optional callable(text) for speech feedback
 
         # Head tracker — delegates vertical pitch control
         head_cfg = HeadTrackerConfig(
@@ -359,12 +367,23 @@ class FollowPlanner:
     def _on_tracked_person(self, event: TrackedPersonEvent) -> None:
         """Receive smoothed track from Kalman tracker.
 
-        If a track ID is locked, only accept events matching that ID.
+        If a track ID is locked, prefer events matching that ID.
+        If the locked track hasn't been seen for a while, accept the
+        new track (the Kalman tracker may have re-created it with a new ID
+        after a brief detection gap).
         """
         with self._track_lock:
             if self._locked_track_id is not None:
                 if event.track_id != self._locked_track_id:
-                    return  # ignore tracks from other people
+                    # Accept new track if we haven't seen the locked one recently
+                    if self._frames_without_track < 10:
+                        return  # still expecting locked track
+                    # Locked track is gone — accept new one and re-lock
+                    logger.info(
+                        "Re-locking from track_id=%d to %d (old track lost)",
+                        self._locked_track_id, event.track_id,
+                    )
+                    self._locked_track_id = event.track_id
             self._latest_track = event
             self._frames_without_track = 0
 
@@ -400,6 +419,20 @@ class FollowPlanner:
         if new_state == State.SEARCHING:
             self._locked_track_id = None
 
+        # Voice feedback on state transitions
+        if self._say is not None:
+            try:
+                if new_state == State.SEARCHING:
+                    threading.Thread(
+                        target=self._say, args=("searching",), daemon=True
+                    ).start()
+                elif new_state == State.FOLLOWING and old != State.FOLLOWING:
+                    threading.Thread(
+                        target=self._say, args=("I see you",), daemon=True
+                    ).start()
+            except Exception:
+                pass  # don't let TTS errors affect control loop
+
     # -- Control loop --------------------------------------------------------
 
     def _control_loop(self) -> None:
@@ -430,80 +463,20 @@ class FollowPlanner:
     # -- State tick handlers -------------------------------------------------
 
     def _tick_searching(self) -> None:
-        """SEARCHING: velocity-biased look → head sweep → multi-cycle body scan."""
+        """SEARCHING: head sweep (no movement) → velocity-biased turn → body scan.
+
+        Strategy: look before you move. Head sweep is instant and catches
+        nearby targets. Only then rotate the body.
+        """
         # Check if Kalman tracker already has a target
         track = self._consume_track()
         if track is not None:
             self._transition(State.TRACKING)
             return
 
-        # --- Velocity-biased quick look ---
-        # If we know the person was moving in a direction, check there first
-        if abs(self._last_vx) > 5.0:
-            bias_angle = -90.0 if self._last_vx > 0 else 90.0  # person right → turn right (negative angle in SDK)
-            logger.info(
-                "Search: velocity-biased look (vx=%.0f → turn %.0f°)",
-                self._last_vx, bias_angle,
-            )
-            try:
-                self._motor.turn_in_place(
-                    bias_angle, speed_dps=self._cfg.search_turn_speed_dps * 1.5
-                )
-            except Exception:
-                logger.exception("Velocity-biased turn failed")
-
-            try:
-                self._head.set_angle(10.0)
-            except Exception:
-                pass
-            time.sleep(self._cfg.search_body_dwell_s)
-
-            track = self._consume_track()
-            if track is not None:
-                self._transition(State.TRACKING)
-                return
-
-            # Turn back to original facing before starting normal search
-            try:
-                self._motor.turn_in_place(
-                    -bias_angle, speed_dps=self._cfg.search_turn_speed_dps * 1.5
-                )
-            except Exception:
-                pass
-
-        # --- "Walked past" 180° check ---
-        # Common scenario: person walked behind Vector
-        if not self._running:
-            return
-        logger.info("Search: checking 180° behind")
-        try:
-            self._motor.turn_in_place(
-                180.0, speed_dps=self._cfg.search_turn_speed_dps * 1.2
-            )
-        except Exception:
-            logger.exception("180° turn failed during search")
-
-        try:
-            self._head.set_angle(10.0)
-        except Exception:
-            pass
-        time.sleep(self._cfg.search_body_dwell_s)
-
-        track = self._consume_track()
-        if track is not None:
-            self._transition(State.TRACKING)
-            return
-
-        # Turn back
-        try:
-            self._motor.turn_in_place(
-                -180.0, speed_dps=self._cfg.search_turn_speed_dps * 1.2
-            )
-        except Exception:
-            pass
-
-        # --- Head sweep ---
-        self._search_found = False
+        # --- Phase 1: Head sweep (no body movement) ---
+        # Fast check without spinning — person may still be in view
+        logger.info("Search: head sweep")
         for angle in self._cfg.search_head_angles:
             if not self._running:
                 return
@@ -518,14 +491,43 @@ class FollowPlanner:
                 self._transition(State.TRACKING)
                 return
 
-        # --- Multi-cycle body rotation scan ---
+        # Reset head to neutral for body scan
+        try:
+            self._head.set_angle(10.0)
+        except Exception:
+            pass
+
+        # --- Phase 2: Velocity-biased quick look ---
+        # If we know the person was moving in a direction, check there first
+        if abs(self._last_vx) > 5.0:
+            bias_angle = -60.0 if self._last_vx > 0 else 60.0
+            logger.info(
+                "Search: velocity-biased look (vx=%.0f → turn %.0f°)",
+                self._last_vx, bias_angle,
+            )
+            try:
+                self._motor.turn_in_place(
+                    bias_angle, speed_dps=self._cfg.search_turn_speed_dps
+                )
+            except Exception:
+                logger.exception("Velocity-biased turn failed")
+
+            time.sleep(self._cfg.search_body_dwell_s)
+
+            track = self._consume_track()
+            if track is not None:
+                self._transition(State.TRACKING)
+                return
+
+        # --- Phase 3: Gradual body rotation scan ---
+        # Rotate in steps, checking for target at each position
         step_deg = self._cfg.search_step_deg
         steps_per_cycle = max(1, int(360.0 / step_deg))
 
         for cycle in range(self._cfg.search_max_cycles):
             logger.info("Search: body scan cycle %d/%d", cycle + 1, self._cfg.search_max_cycles)
 
-            for _step in range(steps_per_cycle):
+            for step in range(steps_per_cycle):
                 if not self._running:
                     return
                 try:
@@ -534,14 +536,8 @@ class FollowPlanner:
                     )
                 except Exception:
                     logger.exception("Turn failed during search scan")
-                    # Cliff or e-stop — abort search
                     return
 
-                # Reset head to neutral for detection
-                try:
-                    self._head.set_angle(10.0)
-                except Exception:
-                    pass
                 time.sleep(self._cfg.search_body_dwell_s)
 
                 track = self._consume_track()

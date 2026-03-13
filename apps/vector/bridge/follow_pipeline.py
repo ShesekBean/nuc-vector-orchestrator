@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from apps.vector.src.detector.kalman_tracker import KalmanTracker
 from apps.vector.src.detector.person_detector import PersonDetector
@@ -53,18 +53,32 @@ class FollowPipeline:
         motor_controller: MotorController,
         head_controller: HeadController,
         nuc_bus: NucEventBus,
+        robot: Any = None,
     ) -> None:
         self._camera = camera_client
         self._motor = motor_controller
         self._head = head_controller
         self._bus = nuc_bus
+        self._robot = robot
 
         self._detector = PersonDetector(event_bus=nuc_bus)
         self._tracker = KalmanTracker()
         self._obstacle = ObstacleDetector(motor_controller, nuc_bus)
+
+        # Build say_func for voice feedback if robot is available
+        say_func = None
+        if robot is not None:
+            def _say(text: str) -> None:
+                try:
+                    robot.behavior.say_text(text)
+                except Exception:
+                    logger.warning("say_text failed: %s", text)
+            say_func = _say
+
         self._planner = FollowPlanner(
             motor_controller, head_controller, nuc_bus,
             obstacle_detector=self._obstacle,
+            say_func=say_func,
         )
 
         self._running = False
@@ -169,9 +183,10 @@ class FollowPipeline:
                 detections = self._detector.detect(frame)
 
                 if detections:
+                    best = max(detections, key=lambda d: d.confidence)
                     logger.debug(
-                        "YOLO: %d person(s), best conf=%.2f",
-                        len(detections), max(d.confidence for d in detections),
+                        "YOLO: %d person(s), best conf=%.2f cx=%.0f cy=%.0f w=%.0f h=%.0f",
+                        len(detections), best.confidence, best.cx, best.cy, best.width, best.height,
                     )
 
                 # Feed into Kalman tracker
@@ -181,8 +196,8 @@ class FollowPipeline:
                     primary = self._tracker.get_primary_track()
                     if primary:
                         logger.debug(
-                            "Kalman: track_id=%d hits=%d cx=%.0f cy=%.0f h=%.0f",
-                            primary.track_id, primary.hits, primary.cx, primary.cy, primary.height,
+                            "Kalman: track_id=%d hits=%d cx=%.0f cy=%.0f h=%.0f conf=%.2f",
+                            primary.track_id, primary.hits, primary.cx, primary.cy, primary.height, primary.confidence,
                         )
 
                 # Emit TrackedPersonEvent for the primary (best) track

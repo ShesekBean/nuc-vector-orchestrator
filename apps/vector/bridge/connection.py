@@ -161,6 +161,7 @@ class ConnectionManager:
             motor_controller=self._motor_controller,
             head_controller=self._head_controller,
             nuc_bus=self._nuc_bus,
+            robot=self._robot,
         )
 
         self._connected = True

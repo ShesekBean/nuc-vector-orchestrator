@@ -94,6 +94,16 @@ class KalmanTrack:
         self._x = self._F @ self._x
         self._P = self._F @ self._P @ self._F.T + self._Q * dt
 
+        # Decay velocity when no measurement — prevents runaway extrapolation.
+        # After 3 frames without update, velocity decays by 30% per prediction.
+        if self.time_since_update >= 3:
+            self._x[2] *= 0.7  # vx decay
+            self._x[3] *= 0.7  # vy decay
+
+        # Clamp position to reasonable frame bounds (with margin for edge cases)
+        self._x[0] = max(-200.0, min(1000.0, self._x[0]))  # cx
+        self._x[1] = max(-200.0, min(800.0, self._x[1]))   # cy
+
         self.age += 1
         self.time_since_update += 1
 
@@ -199,9 +209,9 @@ class KalmanTracker:
 
     def __init__(
         self,
-        max_age: int = 30,
+        max_age: int = 15,  # frames without measurement before track is deleted
         min_hits: int = 3,
-        iou_threshold: float = 0.2,
+        iou_threshold: float = 0.1,  # lowered from 0.2 — Vector's turning causes large shifts
         prediction_rate_hz: float = 10.0,
     ) -> None:
         self.max_age = max_age
@@ -313,9 +323,11 @@ class KalmanTracker:
             return self._prune_and_return()
 
     def get_primary_track(self) -> KalmanTrack | None:
-        """Return the longest-lived confirmed track (best follow target).
+        """Return the best confirmed track for following.
 
-        Prefers tracks with more hits (more YOLO measurements received).
+        Prefers tracks that are recently updated (low time_since_update)
+        and have many hits. Stale tracks (high time_since_update) are
+        deprioritized even if they have more total hits.
         """
         with self._lock:
             confirmed = [
@@ -324,7 +336,12 @@ class KalmanTracker:
             ]
             if not confirmed:
                 return None
-            return max(confirmed, key=lambda t: t.hits)
+            # Score: prefer fresh tracks (low time_since_update) with many hits
+            # A track not updated for 5+ frames is heavily penalized
+            return max(
+                confirmed,
+                key=lambda t: t.hits - t.time_since_update * 3,
+            )
 
     def clear(self) -> None:
         """Remove all tracks."""
