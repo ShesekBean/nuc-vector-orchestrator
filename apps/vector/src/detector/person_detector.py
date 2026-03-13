@@ -101,11 +101,11 @@ class PersonDetector:
         if self._model is None:
             self.load_model()
 
+        # Compute adaptive threshold on ORIGINAL frame (before CLAHE modifies brightness)
+        conf = self._adaptive_threshold(frame, self._confidence_threshold)
+
         # Multi-stage low-light preprocessing for Vector's dark OV7251 camera
         enhanced = self._enhance_low_light(frame)
-
-        # Adaptive confidence: lower threshold in dark frames for more detections
-        conf = self._adaptive_confidence(frame)
 
         t0 = time.perf_counter()
         results = self._model(
@@ -159,6 +159,12 @@ class PersonDetector:
     # Internal
     # ------------------------------------------------------------------
 
+    # Brightness breakpoints for adaptive confidence scaling
+    _DARK_BRIGHTNESS = 60
+    _BRIGHT_BRIGHTNESS = 150
+    _DARK_CONF_SCALE = 0.6  # multiply base threshold (e.g. 0.25 * 0.6 = 0.15)
+    _BRIGHT_CONF_SCALE = 1.4  # multiply base threshold (e.g. 0.25 * 1.4 = 0.35)
+
     @staticmethod
     def _enhance_low_light(frame: np.ndarray) -> np.ndarray:
         """Multi-stage low-light enhancement for Vector's dark OV7251 camera.
@@ -207,38 +213,49 @@ class PersonDetector:
         # Only apply when we did aggressive brightening (noise is amplified)
         if mean_brightness < 50:
             result = cv2.fastNlMeansDenoisingColored(
-                result, None, h=6, hForColorComponents=6,
+                result, None, h=6, hColor=6,
                 templateWindowSize=7, searchWindowSize=21,
             )
 
         return result
 
-    def _adaptive_confidence(self, frame: np.ndarray) -> float:
-        """Compute adaptive confidence threshold based on frame brightness.
+    @staticmethod
+    def _adaptive_threshold(
+        frame: np.ndarray, base_threshold: float
+    ) -> float:
+        """Scale confidence threshold based on frame mean brightness.
 
-        Dark frames get a lower threshold (more permissive) because
-        person features are harder to distinguish. Bright frames get
-        a higher threshold to reduce false positives.
+        Computes mean brightness from the grayscale frame (fast O(n) op,
+        ~0.1ms for 800x600).  Linearly interpolates a scale factor:
+
+        - Dark frames (mean < 60): scale = 0.6  -> 0.25 * 0.6 = 0.15
+        - Normal frames (60-150): linearly interpolate from 0.6 to 1.4
+        - Bright frames (mean > 150): scale = 1.4 -> 0.25 * 1.4 = 0.35
+
+        This complements CLAHE -- dark frames get more permissive detection
+        (CLAHE amplifies noise, but real detections still come through),
+        while bright frames get stricter thresholds to reduce false positives.
         """
         import cv2
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        mean_brightness = gray.mean()
+        mean_brightness = float(gray.mean())
 
-        base = self._confidence_threshold
+        dark = PersonDetector._DARK_BRIGHTNESS
+        bright = PersonDetector._BRIGHT_BRIGHTNESS
+        dark_scale = PersonDetector._DARK_CONF_SCALE
+        bright_scale = PersonDetector._BRIGHT_CONF_SCALE
 
-        if mean_brightness < 30:
-            # Extremely dark — be very permissive
-            return max(0.12, base - 0.12)
-        elif mean_brightness < 60:
-            # Dark — moderately permissive
-            return max(0.15, base - 0.08)
-        elif mean_brightness < 120:
-            # Normal — use default
-            return base
+        if mean_brightness <= dark:
+            scale = dark_scale
+        elif mean_brightness >= bright:
+            scale = bright_scale
         else:
-            # Bright — be stricter
-            return min(0.5, base + 0.10)
+            # Linear interpolation between dark and bright breakpoints
+            t = (mean_brightness - dark) / (bright - dark)
+            scale = dark_scale + t * (bright_scale - dark_scale)
+
+        return max(0.01, min(0.99, base_threshold * scale))
 
     def _parse_results(
         self, results: list, frame_shape: tuple[int, ...]

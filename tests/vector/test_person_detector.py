@@ -307,6 +307,67 @@ class TestMetrics:
 
 
 # ---------------------------------------------------------------------------
+# Tests — adaptive threshold
+# ---------------------------------------------------------------------------
+
+class TestAdaptiveThreshold:
+    def test_dark_frame_lowers_threshold(self):
+        from apps.vector.src.detector.person_detector import PersonDetector
+        # Dark frame (mean brightness ~20)
+        dark_frame = np.full((360, 640, 3), 20, dtype=np.uint8)
+        result = PersonDetector._adaptive_threshold(dark_frame, 0.25)
+        assert result == pytest.approx(0.25 * 0.6, abs=0.01)
+
+    def test_bright_frame_raises_threshold(self):
+        from apps.vector.src.detector.person_detector import PersonDetector
+        # Bright frame (mean brightness ~200)
+        bright_frame = np.full((360, 640, 3), 200, dtype=np.uint8)
+        result = PersonDetector._adaptive_threshold(bright_frame, 0.25)
+        assert result == pytest.approx(0.25 * 1.4, abs=0.01)
+
+    def test_normal_frame_near_default(self):
+        from apps.vector.src.detector.person_detector import PersonDetector
+        # Normal frame (mean brightness ~105 = midpoint of 60-150)
+        normal_frame = np.full((360, 640, 3), 105, dtype=np.uint8)
+        result = PersonDetector._adaptive_threshold(normal_frame, 0.25)
+        # At midpoint, scale = 0.6 + 0.5*(1.4-0.6) = 1.0
+        assert result == pytest.approx(0.25, abs=0.01)
+
+    def test_monotonic_with_brightness(self):
+        from apps.vector.src.detector.person_detector import PersonDetector
+        # Threshold should increase monotonically with brightness
+        prev = 0.0
+        for brightness in [10, 40, 60, 90, 120, 150, 200]:
+            frame = np.full((360, 640, 3), brightness, dtype=np.uint8)
+            result = PersonDetector._adaptive_threshold(frame, 0.25)
+            assert result >= prev, f"Non-monotonic at brightness {brightness}"
+            prev = result
+
+    def test_zero_base_threshold_clamped(self):
+        from apps.vector.src.detector.person_detector import PersonDetector
+        dark_frame = np.full((360, 640, 3), 20, dtype=np.uint8)
+        result = PersonDetector._adaptive_threshold(dark_frame, 0.0)
+        assert result == 0.01  # clamped to minimum
+
+    def test_detect_uses_adaptive_threshold(self, dummy_frame, mock_yolo_class):
+        from apps.vector.src.detector.person_detector import PersonDetector
+
+        mock_model_instance = MagicMock()
+        mock_model_instance.return_value = _make_results([])
+        mock_yolo_class.return_value = mock_model_instance
+
+        det = PersonDetector(model_path="/tmp", confidence_threshold=0.25)
+        det._model = mock_model_instance
+
+        det.detect(dummy_frame)  # black frame → dark → lower threshold
+
+        # Verify the model was called with a lower conf than default
+        call_kwargs = mock_model_instance.call_args
+        conf_used = call_kwargs.kwargs.get("conf") or call_kwargs[1].get("conf")
+        assert conf_used < 0.25  # dark frame should lower threshold
+
+
+# ---------------------------------------------------------------------------
 # Tests — KalmanTracker integration (data format compatibility)
 # ---------------------------------------------------------------------------
 
