@@ -1,45 +1,69 @@
-# DisplayFaceImageRGB Crash — Root Cause & Fix
+# DisplayFaceImageRGB — Root Cause, Fix & Xray Screen Discovery
 
 ## Problem
 
-`DisplayFaceImageRGB` gRPC call crashed **vic-engine** on Vector 2.0 OSKR firmware (both WireOS 3.0.1.32 and DDL 2.0.1.6091). After 2-3 images, vic-engine crashed with heap corruption. Error 914/915 (NO_ENGINE_PROCESS / NO_ENGINE_COMMS).
+`DisplayFaceImageRGB` gRPC call on Vector 2.0 OSKR firmware had **two** issues:
+1. **Heap corruption crash** after 2-3 images (Error 914/915)
+2. **Wrong screen resolution** — SDK assumes 184×96 but Vector 2.0 (Xray) has 160×80
 
 **GitHub Issue:** #129
 **Status:** FIXED (2026-03-13)
 
 ---
 
-## Root Cause
+## Root Cause 1: Heap Corruption
 
-**Heap corruption in vic-engine** caused by the `AnimationComponent::HandleMessage(DisplayFaceImageRGBChunk)` code path. The handler:
+The `AnimationComponent::HandleMessage(DisplayFaceImageRGBChunk)` handler:
 
 1. Assembled 30 incoming chunks into an `ImageRGB565` (backed by `cv::Mat` — heap allocation)
 2. Re-chunked the image into 30 `RobotInterface::DisplayFaceImageRGBChunk` messages
-3. Sent each via `_robot->SendMessage()` (which allocates `std::vector<uint8_t>` per message)
+3. Sent each via `_robot->SendMessage()` (allocates `std::vector<uint8_t>` per message)
 4. Destroyed the `ImageRGB565` (heap deallocation)
 
-After 2-3 cycles of this assemble→re-chunk→destroy pattern, glibc detected heap corruption:
-- `double free or corruption (out)`
-- `malloc(): corrupted top size`
-- `malloc(): invalid size (unsorted)`
+After 2-3 cycles: `double free or corruption`, `malloc(): corrupted top size`.
+
+## Root Cause 2: Xray Screen Resolution
+
+Vector 2.0 is hardware revision "Xray" (`HW_VER >= 0x20`). Confirmed via `emr-cat v` → `00000020`.
+
+| | Vector 1.0 (Victor) | Vector 2.0 (Xray) |
+|---|---|---|
+| Screen | 184×96 | **160×80** |
+| Pixels | 17,664 | **12,800** |
+| Chunks | 30 | **22** |
+| `IsXray()` | false | **true** |
+| Gamma | 1.0 | 2.1 |
+
+The Go gateway (`vic-cloud`) **hardcodes** `totalPixels = 17664` and always sends 30 chunks. On Xray:
+- vic-anim expects 22 chunks (mask `0x3FFFFF`)
+- After chunk 21, image triggers — but with stride-184 data interpreted as stride-160 (garbled)
+- Chunks 22-29 **overflow** vic-anim's 12800-pixel buffer (writes past end!)
+- Extra chunks **pollute the chunk mask**, preventing ALL subsequent images from ever completing
+
+The SDK also validates `image_width == 184` and `image_height == 96`, enforcing the wrong resolution.
+
+### Why Mirror Mode Works
+
+Mirror mode creates images at the correct 160×80 resolution INSIDE vic-engine (using `_screenImg` member variable sized to `FACE_DISPLAY_HEIGHT × FACE_DISPLAY_WIDTH`). It never goes through the Go gateway. It sends 22 chunks directly to vic-anim via `DisplayFaceImageHelper`, which calls `EnableKeepFaceAlive(false, duration_ms)` to suppress eye animations.
 
 ### Why Everything Else Worked
 
-| Method | Path | Heap Allocs | Works? |
-|--------|------|-------------|--------|
-| **Mirror Mode** | `_screenImg` member variable (allocated once in constructor) | 0 per frame | YES |
-| **DisplayFaceImage(ImageRGB)** | `static ImageRGB565 img565` (Anki's own comment: "static to avoid repeatedly allocating") | 0 per call | YES |
-| **DisplayFaceImageBinaryChunk** | Direct forward to vic-anim (no reassembly) | 1 per chunk | YES |
-| **DisplayFaceImageRGBChunk** | Assemble→cv::Mat alloc→re-chunk 30 msgs→dealloc | 31+ per image | **CRASH** |
+| Method | Path | Heap Allocs | Stride | Works? |
+|--------|------|-------------|--------|--------|
+| **Mirror Mode** | `_screenImg` member (160×80, allocated once) | 0 per frame | Correct | YES |
+| **DisplayFaceImage(ImageRGB)** | `static ImageRGB565` (Anki comment: "static to avoid repeatedly allocating") | 0 per call | Correct | YES |
+| **DisplayFaceImageBinaryChunk** | Direct forward to vic-anim | 1 per chunk | N/A | YES |
+| **DisplayFaceImageRGBChunk (original)** | Assemble→cv::Mat alloc→re-chunk→dealloc | 31+ per image | Wrong (184) | **CRASH** |
+| **DisplayFaceImageRGBChunk (v2 direct-forward)** | Forward chunks directly to vic-anim | 0 | Wrong (184) | **GARBLED + mask corruption** |
 
 ---
 
-## Fix
+## Fix (v3) — Static Buffer + Stride Conversion
 
-**Direct-forward chunks to vic-anim** instead of reassembling. Changed `engine/components/animationComponent.cpp`:
+Changed `engine/components/animationComponent.cpp`:
 
 ```cpp
-// BEFORE (buggy): assemble all chunks, create ImageRGB565, re-chunk, send 30 messages
+// BEFORE (original — crashes):
 template<>
 void AnimationComponent::HandleMessage(const ExternalInterface::DisplayFaceImageRGBChunk& msg)
 {
@@ -50,19 +74,65 @@ void AnimationComponent::HandleMessage(const ExternalInterface::DisplayFaceImage
   _oledImageBuilder->Clear();
 }
 
-// AFTER (fixed): forward each chunk directly, like DisplayFaceImageBinaryChunk does
+// AFTER (v3 — fixed):
 template<>
 void AnimationComponent::HandleMessage(const ExternalInterface::DisplayFaceImageRGBChunk& msg)
 {
   if (!_isInitialized) { return; }
-  _robot->SendRobotMessage<RobotInterface::DisplayFaceImageRGBChunk>(
-      msg.duration_ms, msg.faceData, msg.numPixels, 0, msg.chunkIndex);
+
+  // Collect all chunks from the Go gateway (always 30 chunks, stride 184).
+  _oledImageBuilder->AddDataChunk(msg.faceData, msg.chunkIndex, msg.numPixels);
+
+  u32 fullMask = 0;
+  for( int i=0; i<msg.numChunks; ++i ) {
+    fullMask |= (1L << i);
+  }
+
+  if( (_oledImageBuilder->GetRecievedChunkMask() ^ fullMask) == 0 )
+  {
+    // Static buffer avoids heap corruption (original non-static crashed after 2-3 images).
+    static Vision::ImageRGB565 img565(FACE_DISPLAY_HEIGHT, FACE_DISPLAY_WIDTH);
+
+    const auto& srcData = _oledImageBuilder->GetAllData();
+    u16* dst = img565.GetRawDataPointer();
+
+    // Stride conversion: Go gateway sends data with stride 184 (SDK resolution),
+    // but Xray (Vector 2.0) has 160x80 screen. Copy with correct stride.
+    // For Vector 1.0 (184x96), srcStride == FACE_DISPLAY_WIDTH — simple linear copy.
+    const int srcStride = 184;
+    for (int row = 0; row < FACE_DISPLAY_HEIGHT; ++row) {
+      const int srcOffset = row * srcStride;
+      const int dstOffset = row * FACE_DISPLAY_WIDTH;
+      for (int col = 0; col < FACE_DISPLAY_WIDTH; ++col) {
+        dst[dstOffset + col] = srcData[srcOffset + col];
+      }
+    }
+
+    DisplayFaceImage(img565, msg.duration_ms, msg.interruptRunning);
+    _oledImageBuilder->Clear();
+  }
 }
 ```
 
-This eliminates ALL intermediate heap allocations (cv::Mat, ImageRGB565, 30× vector serialization buffers). vic-anim already has chunk reassembly logic and handles it correctly.
+### Why This Works
 
-### Deployment
+1. **Static `ImageRGB565`** — allocated once, reused forever. No heap alloc/dealloc cycle.
+2. **Stride conversion** — copies 160 pixels per row from 184-wide source data, producing correct 160×80 image.
+3. **Goes through `DisplayFaceImage()`** — which calls `DisplayFaceImageHelper` → sends 22 correct chunks → vic-anim calls `EnableKeepFaceAlive(false, duration_ms)` to suppress eyes.
+4. **`_oledImageBuilder` buffer is 17664** (hardcoded in `RGB565ImageBuilder`, NOT Xray-dependent) — safely holds all 30 incoming chunks.
+5. **Re-chunks into 22** — `DisplayFaceImageHelper` uses `FACE_DISPLAY_NUM_PIXELS` (12800 for Xray), producing exactly 22 chunks that fit vic-anim's buffer.
+
+### Patch History
+
+| Version | Approach | Result |
+|---------|----------|--------|
+| v1 (static only) | Static ImageRGB565, assemble + re-chunk | Deployed wrong binary (`vic-engine` launcher, not `libcozmo_engine.so`) |
+| v2 (direct-forward) | Forward chunks directly to vic-anim | No crash, but garbled image + mask corruption on Xray |
+| **v3 (static + stride)** | Static buffer + stride 184→160 conversion + re-chunk | **WORKS** — correct image, no crash, eyes suppressed |
+
+---
+
+## Deployment
 
 The fix is in `libcozmo_engine.so` (22MB shared library), NOT `vic-engine` (260KB launcher).
 
@@ -70,24 +140,26 @@ The fix is in `libcozmo_engine.so` (22MB shared library), NOT `vic-engine` (260K
 # Build on Jetson (192.168.1.70)
 cd /tmp/victor-build/victor/_build/vicos/Release && ninja vic-engine
 
-# Deploy to Vector
+# Deploy to Vector (remount RW first!)
+ssh vector 'mount -o remount,rw /'
 scp lib/libcozmo_engine.so root@192.168.1.73:/anki/lib/libcozmo_engine.so
 ssh root@192.168.1.73 "systemctl restart vic-robot"
 ```
 
 ### Binary Hashes
 
-| File | Original (WireOS 3.0.1.32) | Patched |
-|------|---------------------------|---------|
-| `/anki/lib/libcozmo_engine.so` | `1fc05d379eaa9efb657ea1367ce7a510` | `347151a029312e3cb8a2e543f65ffc05` |
-| `/anki/lib/libcozmo_engine.so.orig` | (backup of original) | — |
-| `/anki/bin/vic-engine` | `bf64c36e0d4a8a5b392d391d56ed77f4` | unchanged (just a launcher) |
-| `/anki/bin/vic-anim` | `e0bd56133b4b1f71c586cf05a80a6a10` | unchanged |
+| File | Original (WireOS 3.0.1.32) | v2 (direct-forward) | v3 (static+stride) |
+|------|---------------------------|---------------------|---------------------|
+| `/anki/lib/libcozmo_engine.so` | `1fc05d379eaa9efb657ea1367ce7a510` | `347151a029312e3cb8a2e543f65ffc05` | `2a0aabd3fd4d1eb160efc719ddafe86b` |
+| `/anki/lib/libcozmo_engine.so.orig` | (backup of original) | — | — |
+| `/anki/bin/vic-engine` | `bf64c36e0d4a8a5b392d391d56ed77f4` | unchanged (launcher) | unchanged (launcher) |
+| `/anki/bin/vic-anim` | `e0bd56133b4b1f71c586cf05a80a6a10` | unchanged | unchanged |
 
 ### Test Results
 
-- **Before fix:** 2/6 images, crash at image 3 (100% reproducible)
-- **After fix:** 12/12 images across 2 consecutive runs, zero crashes
+- **Original code:** 2/6 images, crash at image 3 (100% reproducible)
+- **v2 (direct-forward):** No crash, but garbled green image, eyes not suppressed
+- **v3 (static+stride):** Full-color images display correctly, eyes suppressed, continuous operation
 
 ---
 
@@ -98,17 +170,31 @@ ssh root@192.168.1.73 "systemctl restart vic-robot"
 - Location on Jetson (192.168.1.70): `/tmp/victor-build/victor/`
 - Toolchain: vicos-sdk 5.3.0-r07 Clang (ARM32 cross-compile on aarch64 Jetson)
 - Build: `cd _build/vicos/Release && ninja vic-engine`
+- Clear ccache before rebuilding: `ccache -C`
 
 ### Key Source Files
 
 | File | Component | Role |
 |------|-----------|------|
-| `engine/components/animationComponent.cpp` | vic-engine (libcozmo_engine.so) | **PATCHED** — face image chunk handler |
-| `animProcess/src/cozmoAnim/animation/animationStreamer.cpp` | vic-anim | Chunk reassembly + display |
+| `engine/components/animationComponent.cpp` | vic-engine (libcozmo_engine.so) | **PATCHED (v3)** — face image chunk handler |
+| `animProcess/src/cozmoAnim/animation/animationStreamer.cpp` | vic-anim | Chunk reassembly + display + `EnableKeepFaceAlive` |
 | `engine/vision/mirrorModeManager.cpp` | vic-engine | Mirror mode (reference: correct pattern) |
-| `cloud/cloud/message_handler.go` | vic-cloud | gRPC→CLAD chunking (Go) |
+| `cloud/cloud/message_handler.go` | vic-cloud | gRPC→CLAD chunking (Go, hardcodes 184×96) |
+| `robot/include/anki/cozmo/shared/cozmoConfig.h` | shared | `FACE_DISPLAY_WIDTH/HEIGHT` (160×80 for Xray) |
+| `robot/include/anki/cozmo/shared/factory/emrHelper_vicos.h` | shared | `IsXray()` = `HW_VER >= 0x20` |
+| `coretech/vision/shared/rgb565Image/rgb565ImageBuilder.h` | shared | `PIXEL_COUNT = 17664` (hardcoded, NOT Xray-dependent) |
 
 ---
+
+## Vector 2.0 (Xray) Display Notes
+
+- **Screen resolution:** 160×80 (NOT 184×96 as SDK assumes)
+- **SDK validation:** Enforces 184×96 — send 184×96 images, vic-engine handles stride conversion
+- **Pixel format:** RGB565 (2 bytes/pixel, 25600 bytes for 160×80)
+- **Eye suppression:** `EnableKeepFaceAlive(false, duration_ms)` in vic-anim — must go through `DisplayFaceImage()` path, not direct chunk forwarding
+- **Chunk count:** vic-anim expects 22 chunks on Xray (mask `0x3FFFFF`)
+- **HW_VER:** `0x20` (confirmed via `emr-cat v` on robot)
+- **Gamma:** 2.1 (vs 1.0 on Vector 1.0)
 
 ## Vector SSH Access
 
@@ -120,7 +206,7 @@ ssh -i ~/.ssh/wireos_ssh_key -o PubkeyAcceptedAlgorithms=+ssh-rsa root@192.168.1
 
 | Path | Contents |
 |------|----------|
-| `/anki/lib/libcozmo_engine.so` | Engine shared library (22MB, ARM) — **PATCHED** |
+| `/anki/lib/libcozmo_engine.so` | Engine shared library (22MB, ARM) — **PATCHED v3** |
 | `/anki/lib/libcozmo_engine.so.orig` | Original engine library (backup) |
 | `/anki/bin/vic-engine` | Engine launcher (260KB, ARM) |
 | `/anki/bin/vic-anim` | Animation process binary (3.9MB, ARM) |
