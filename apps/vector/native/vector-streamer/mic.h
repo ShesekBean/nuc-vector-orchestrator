@@ -1,8 +1,9 @@
 /*
- * mic.h — Mic audio tap via mic_sock Unix socket.
+ * mic.h -- DGRAM proxy for Vector mic audio.
  *
- * Reads CLAD CloudMic::Message frames from vic-anim's mic_sock,
- * extracts AudioData PCM, and passes it to the caller.
+ * Intercepts mic_sock_cp_mic by acting as a proxy between vic-anim
+ * and vic-cloud. Extracts AudioData PCM and passes to caller via
+ * callback while forwarding all packets transparently.
  */
 
 #ifndef MIC_H
@@ -17,16 +18,24 @@
  */
 typedef void (*mic_audio_cb)(const int16_t *pcm_data, size_t num_samples, void *user_data);
 
-/* Initialize mic tap. Returns 0 on success, -1 on error. */
+/* Initialize the DGRAM proxy.
+ * socket_path: path to the mic socket (e.g., /dev/socket/mic_sock_cp_mic)
+ *   - Renames existing socket to socket_path + "_orig"
+ *   - Creates new DGRAM socket at socket_path
+ * Returns 0 on success, -1 on error.
+ */
 int mic_init(const char *socket_path, mic_audio_cb callback, void *user_data);
 
-/* Run the mic read loop (blocks). Returns on error or when mic_stop() is called. */
+/* Run the DGRAM proxy loop (blocks).
+ * Receives packets from vic-anim, forwards to vic-cloud, extracts audio.
+ * Returns on error or when mic_stop() is called.
+ */
 int mic_run(void);
 
-/* Signal the mic loop to stop. Thread-safe. */
+/* Signal the proxy loop to stop. Thread-safe. */
 void mic_stop(void);
 
-/* Clean up mic resources. */
+/* Clean up resources and restore original socket path. */
 void mic_cleanup(void);
 
 #endif /* MIC_H */

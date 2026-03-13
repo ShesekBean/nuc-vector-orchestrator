@@ -43,6 +43,7 @@ class ConnectionManager:
         self._camera_client: Any | None = None
         self._audio_client: Any | None = None
         self._livekit_bridge: Any | None = None
+        self._media_service: Any | None = None
         self._nuc_bus: Any | None = None
         self._follow_pipeline: Any | None = None
 
@@ -99,6 +100,11 @@ class ConnectionManager:
         return self._audio_client
 
     @property
+    def media_service(self) -> Any:
+        """MediaService instance, or None if not initialised."""
+        return self._media_service
+
+    @property
     def follow_pipeline(self) -> Any:
         """FollowPipeline instance, or None if not initialised."""
         return self._follow_pipeline
@@ -122,6 +128,7 @@ class ConnectionManager:
         from apps.vector.src.led_controller import LedController
         from apps.vector.src.livekit_bridge import LiveKitBridge
         from apps.vector.src.lift_controller import LiftController
+        from apps.vector.src.media.service import MediaService
         from apps.vector.src.motor_controller import MotorController
         from apps.vector.src.voice.audio_client import AudioClient
 
@@ -150,15 +157,21 @@ class ConnectionManager:
         self._camera_client = CameraClient(self._robot)
         self._camera_client.start()
         self._audio_client = AudioClient(self._robot)
-        # NOTE: AudioFeed NOT started — SDK only provides signal_power
+        # NOTE: AudioFeed NOT started -- SDK only provides signal_power
         # (980Hz calibration tone), not real mic PCM.  The stall-reconnect
         # loop starves the camera feed of SDK event-loop time.
         # self._audio_client.start()
+
+        # Start MediaService (vector-streamer mic channel)
+        self._media_service = MediaService()
+        self._media_service.start()
+
         self._livekit_bridge = LiveKitBridge(
             camera_client=self._camera_client,
             audio_client=self._audio_client,
             robot=self._robot,
             event_bus=self._nuc_bus,
+            media_service=self._media_service,
         )
 
         from apps.vector.bridge.follow_pipeline import FollowPipeline
@@ -195,6 +208,8 @@ class ConnectionManager:
                 self._camera_client.stop()
             if self._audio_client:
                 self._audio_client.stop()
+            if self._media_service:
+                self._media_service.stop()
         except Exception:
             logger.exception("Error stopping controllers")
 
@@ -214,6 +229,7 @@ class ConnectionManager:
         self._camera_client = None
         self._audio_client = None
         self._livekit_bridge = None
+        self._media_service = None
         self._follow_pipeline = None
         self._nuc_bus = None
         logger.info("Disconnected from Vector")

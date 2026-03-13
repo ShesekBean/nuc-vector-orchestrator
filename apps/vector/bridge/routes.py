@@ -951,6 +951,77 @@ async def call_status(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "CALL_STATUS_FAILED")
 
 
+async def media_status(request: web.Request) -> web.Response:
+    """GET /media/status -- all media channel statuses."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    media = conn.media_service
+    if media is None:
+        return web.json_response({"started": False, "channels": {}})
+
+    return web.json_response(media.get_status())
+
+
+async def media_mic_start(request: web.Request) -> web.Response:
+    """POST /media/mic/start -- start mic audio channel."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    media = conn.media_service
+    if media is None:
+        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
+
+    if media.mic.is_running:
+        return web.json_response({
+            "status": "ok",
+            "message": "Mic channel already running",
+            **media.mic.get_status(),
+        })
+
+    try:
+        media.mic.start()
+        return web.json_response({
+            "status": "ok",
+            **media.mic.get_status(),
+        })
+    except Exception as exc:
+        logger.exception("Failed to start mic channel")
+        return _json_error(500, str(exc), "MIC_START_FAILED")
+
+
+async def media_mic_stop(request: web.Request) -> web.Response:
+    """POST /media/mic/stop -- stop mic audio channel."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    media = conn.media_service
+    if media is None:
+        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
+
+    if not media.mic.is_running:
+        return web.json_response({
+            "status": "ok",
+            "message": "Mic channel not running",
+        })
+
+    try:
+        media.mic.stop()
+        return web.json_response({
+            "status": "ok",
+            "message": "Mic channel stopped",
+        })
+    except Exception as exc:
+        logger.exception("Failed to stop mic channel")
+        return _json_error(500, str(exc), "MIC_STOP_FAILED")
+
+
 async def mode_get(request: web.Request) -> web.Response:
     """GET /mode — get current behavior mode."""
     conn: ConnectionManager = request.app["conn"]
@@ -1008,5 +1079,8 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/call/stop", call_stop)
     app.router.add_get("/call/join-url", call_join_url)
     app.router.add_get("/call/status", call_status)
+    app.router.add_get("/media/status", media_status)
+    app.router.add_post("/media/mic/start", media_mic_start)
+    app.router.add_post("/media/mic/stop", media_mic_stop)
     app.router.add_get("/mode", mode_get)
     app.router.add_post("/mode", mode_set)

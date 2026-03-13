@@ -1,5 +1,5 @@
 /*
- * main.c — vector-streamer entry point.
+ * main.c -- vector-streamer entry point.
  *
  * Native binary that runs on Vector to stream mic audio (and eventually
  * H264-encoded camera video) to the NUC over TCP. Also receives PCM
@@ -7,9 +7,9 @@
  *
  * Architecture:
  *   Main thread:  TCP server accept loop
- *   Mic thread:   mic_sock read → Opus encode → TCP send
- *   Camera thread: (future) camera_client → H264 encode → TCP send
- *   Speaker:      TCP recv callback → tinyalsa playback
+ *   Mic thread:   DGRAM proxy (vic-anim -> vic-cloud) + Opus encode -> TCP send
+ *   Camera thread: (future) camera_client -> H264 encode -> TCP send
+ *   Speaker:      TCP recv callback -> tinyalsa playback
  *
  * Usage:
  *   vector-streamer [-p PORT] [-m MIC_SOCK_PATH] [-v]
@@ -40,7 +40,7 @@
 
 /* Configuration */
 static int         g_port = DEFAULT_TCP_PORT;
-static const char *g_mic_path = "/dev/socket/mic_sock";
+static const char *g_mic_path = "/dev/socket/mic_sock_cp_mic";
 static int         g_verbose = 0;
 static int         g_enable_camera = 0;  /* Camera disabled by default (NUC handles it) */
 
@@ -161,12 +161,11 @@ static void on_tcp_recv(uint8_t type, const uint8_t *data, uint32_t length,
 static void *mic_thread_func(void *arg)
 {
     (void)arg;
-    LOG("Mic thread started");
+    LOG("Mic thread started (DGRAM proxy mode)");
 
     if (mic_init(g_mic_path, on_mic_audio, NULL) < 0) {
         LOG("Mic init failed — mic audio will not be available");
-        LOG("Hint: mic_sock may be exclusive to vic-cloud.");
-        LOG("Alternative: use wire-pod NUC-side audio tap");
+        LOG("Hint: ensure vic-anim is running and %s exists", g_mic_path);
         return NULL;
     }
 
@@ -201,7 +200,7 @@ static void usage(const char *prog)
     fprintf(stderr,
         "Usage: %s [OPTIONS]\n"
         "\n"
-        "Stream mic audio (Opus) and camera (H264/JPEG) to NUC over TCP.\n"
+        "DGRAM proxy for mic audio + TCP streamer to NUC.\n"
         "\n"
         "Options:\n"
         "  -p PORT    TCP port (default: %d)\n"

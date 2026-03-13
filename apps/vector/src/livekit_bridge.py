@@ -7,14 +7,15 @@ through Vector's speaker, enabling bidirectional communication.
 
 Two-way streaming architecture::
 
-    Camera OUT: Vector camera → CameraClient → JPEG → RGBA VideoFrame → LiveKit
-    Mic OUT:    wire-pod chipper → AudioTap TCP (localhost:5556) → raw PCM → LiveKit
-    Audio IN:   LiveKit remote audio → PCM → Vector stream_wav_file()
-    Video IN:   LiveKit remote video → downscale 160x80 → DisplayFaceImageRGB → Vector OLED
+    Camera OUT: Vector camera -> CameraClient -> JPEG -> RGBA VideoFrame -> LiveKit
+    Mic OUT:    vector-streamer DGRAM proxy -> Opus -> TCP:5555 -> MicChannel -> PCM -> LiveKit
+    Audio IN:   LiveKit remote audio -> PCM -> Vector stream_wav_file()
+    Video IN:   LiveKit remote video -> downscale 160x80 -> DisplayFaceImageRGB -> Vector OLED
 
-Wire-pod's chipper taps decoded mic audio (16kHz S16LE mono PCM) during
-voice sessions and streams it over TCP on localhost:5556. Note: mic audio
-only flows after "Hey Vector" wake word triggers a voice session.
+The mic audio pipeline uses vector-streamer (native binary on Vector) which
+acts as a DGRAM proxy on mic_sock_cp_mic, intercepts audio from vic-anim,
+Opus-encodes it, and streams via TCP to the NUC where MicChannel decodes
+it back to PCM for LiveKit publishing.
 
 Usage::
 
@@ -23,6 +24,7 @@ Usage::
         audio_client=mic,
         robot=robot,
         event_bus=bus,
+        media_service=media,
     )
     await bridge.start(room="robot-cam")
     ...
@@ -46,6 +48,7 @@ from apps.vector.src.events.event_types import LIVEKIT_SESSION, LiveKitSessionEv
 if TYPE_CHECKING:
     from apps.vector.src.camera.camera_client import CameraClient
     from apps.vector.src.events.nuc_event_bus import NucEventBus
+    from apps.vector.src.media.service import MediaService
     from apps.vector.src.voice.audio_client import AudioClient
 
 logger = logging.getLogger(__name__)
@@ -73,12 +76,7 @@ INITIAL_RECONNECT_DELAY = 1.0
 # Auto-disconnect when no remote participants for this long (seconds)
 EMPTY_ROOM_TIMEOUT = 3 * 60  # 3 minutes
 
-# Wire-pod chipper audio tap (mic audio via localhost TCP)
-CHIPPER_TAP_PORT = 5556
-CHIPPER_TAP_HOST = "127.0.0.1"
-CHIPPER_TAP_RECONNECT_DELAY = 5.0  # seconds between reconnect attempts
-
-# Video-in display settings (remote video → Vector OLED)
+# Video-in display settings (remote video -> Vector OLED)
 DISPLAY_WIDTH = 160
 DISPLAY_HEIGHT = 80
 SDK_WIDTH = 184
@@ -94,6 +92,7 @@ class LiveKitBridge:
         audio_client: AudioClient for mic PCM chunks.
         robot: Connected ``anki_vector.Robot`` for speaker playback.
         event_bus: NUC event bus for ``LIVEKIT_SESSION`` events.
+        media_service: MediaService providing mic audio channel.
         livekit_url: LiveKit Cloud server URL.
         api_key: LiveKit API key (or ``LIVEKIT_API_KEY`` env var).
         api_secret: LiveKit API secret (or ``LIVEKIT_API_SECRET`` env var).
@@ -105,6 +104,7 @@ class LiveKitBridge:
         audio_client: AudioClient,
         robot: Any,
         event_bus: NucEventBus | None = None,
+        media_service: MediaService | None = None,
         *,
         livekit_url: str = DEFAULT_LIVEKIT_URL,
         api_key: str | None = None,
@@ -115,6 +115,7 @@ class LiveKitBridge:
         self._audio = audio_client
         self._robot = robot
         self._bus = event_bus
+        self._media_service = media_service
         self._livekit_url = livekit_url
 
         import os
@@ -135,12 +136,11 @@ class LiveKitBridge:
         self._playing_audio = False  # guard against overlapping playback
         self._empty_room_timer: asyncio.TimerHandle | None = None
 
-        # Wire-pod chipper audio tap (mic PCM from localhost)
-        self._tcp_reader: asyncio.StreamReader | None = None
-        self._tcp_writer: asyncio.StreamWriter | None = None
-        self._tcp_task: asyncio.Task | None = None
+        # Mic audio subscription (from MediaService mic channel)
+        self._mic_sub = None
+        self._mic_task: asyncio.Task | None = None
 
-        # Video-in: remote video → Vector OLED display
+        # Video-in: remote video -> Vector OLED display
         self._enable_video_in = enable_video_in
         self._video_in_task: asyncio.Task | None = None
         self._video_in_active = False
@@ -182,11 +182,15 @@ class LiveKitBridge:
 
     async def get_status(self) -> dict:
         """Return current session status as a dict."""
+        mic_status = {}
+        if self._media_service:
+            mic_status = self._media_service.mic.get_status()
         return {
             "active": self._active,
             "room": self._room_name,
             "livekit_url": self._livekit_url,
-            "chipper_tap_connected": self._tcp_writer is not None and not self._tcp_writer.is_closing(),
+            "mic_channel": mic_status,
+            "mic_subscribed": self._mic_sub is not None and not self._mic_sub.closed,
             "video_in_active": self._video_in_active,
         }
 
@@ -231,6 +235,11 @@ class LiveKitBridge:
         self._room.on("participant_connected", self._on_participant_connected)
         self._room.on("participant_disconnected", self._on_participant_disconnected)
 
+        # Set active before connecting so track_subscribed callbacks
+        # (which fire during connect for existing participants) don't
+        # see _active=False and exit their loops immediately.
+        self._active = True
+
         logger.info("Connecting to LiveKit room %r at %s", room, self._livekit_url)
         await self._room.connect(self._livekit_url, token)
         logger.info("Connected to LiveKit room %r", room)
@@ -256,10 +265,14 @@ class LiveKitBridge:
         # Start publishing loops
         self._video_task = asyncio.create_task(self._video_publish_loop())
 
-        # Start wire-pod chipper audio tap for mic audio
-        self._tcp_task = asyncio.create_task(self._chipper_tap_loop())
+        # Start mic audio from MediaService channel
+        if self._media_service and self._media_service.mic.is_running:
+            self._mic_sub = self._media_service.mic.subscribe()
+            self._mic_task = asyncio.create_task(self._mic_publish_loop())
+            logger.info("Mic audio publishing via MediaService mic channel")
+        else:
+            logger.warning("MediaService mic channel not available -- no mic audio")
 
-        self._active = True
         self._emit_session_event(active=True, room=room)
 
         # Start empty-room timer if nobody else is in the room yet
@@ -276,7 +289,7 @@ class LiveKitBridge:
         # Cancel all tasks
         all_tasks = (
             self._video_task, self._audio_pub_task, self._audio_sub_task,
-            self._tcp_task, self._video_in_task,
+            self._mic_task, self._video_in_task,
         )
         for task in all_tasks:
             if task and not task.done():
@@ -289,18 +302,13 @@ class LiveKitBridge:
         self._video_task = None
         self._audio_pub_task = None
         self._audio_sub_task = None
-        self._tcp_task = None
+        self._mic_task = None
         self._video_in_task = None
 
-        # Close TCP connection to chipper audio tap
-        if self._tcp_writer:
-            try:
-                self._tcp_writer.close()
-                await self._tcp_writer.wait_closed()
-            except Exception:
-                pass
-            self._tcp_writer = None
-            self._tcp_reader = None
+        # Close mic subscription
+        if self._mic_sub:
+            self._mic_sub.close()
+            self._mic_sub = None
 
         # Disconnect from room
         if self._room:
@@ -638,87 +646,63 @@ class LiveKitBridge:
                 delay = min(delay * 2, MAX_RECONNECT_DELAY)
 
     # ------------------------------------------------------------------
-    # Wire-pod chipper audio tap (mic PCM from localhost:5556)
+    # Mic audio from MediaService (vector-streamer -> MicChannel -> PCM)
     # ------------------------------------------------------------------
 
-    async def _chipper_tap_loop(self) -> None:
-        """Connect to wire-pod chipper audio tap and receive raw PCM.
+    async def _mic_publish_loop(self) -> None:
+        """Read PCM from MediaService mic channel and publish to LiveKit.
 
-        The chipper tap streams decoded 16kHz S16LE mono PCM during
-        voice sessions (after "Hey Vector" wake word). Reconnects
-        automatically if connection drops.
+        The mic channel receives Opus-encoded audio from vector-streamer
+        on Vector, decodes to 16kHz S16LE mono PCM, and delivers via
+        a threading.Queue subscription.
         """
-        logger.info(
-            "Starting chipper audio tap client → %s:%d",
-            CHIPPER_TAP_HOST, CHIPPER_TAP_PORT,
-        )
+        import queue as _queue
 
+        if not self._mic_sub:
+            logger.warning("No mic subscription -- mic publish loop exiting")
+            return
+
+        logger.info("Mic publish loop started (MediaService mic channel)")
         published_count = 0
-        # 20ms of 16kHz mono int16 = 320 samples = 640 bytes
-        CHUNK_SIZE = 640
+        q = self._mic_sub.queue
 
-        while self._active:
-            try:
-                reader, writer = await asyncio.open_connection(
-                    CHIPPER_TAP_HOST, CHIPPER_TAP_PORT
-                )
-                self._tcp_reader = reader
-                self._tcp_writer = writer
-                logger.info("Connected to chipper audio tap at %s:%d",
-                            CHIPPER_TAP_HOST, CHIPPER_TAP_PORT)
+        try:
+            while self._active and not self._mic_sub.closed:
+                # Read PCM chunk from subscriber queue (non-blocking)
+                chunk: bytes | None = None
+                try:
+                    chunk = q.get_nowait()
+                except _queue.Empty:
+                    await asyncio.sleep(AUDIO_PUBLISH_INTERVAL)
+                    continue
 
-                while self._active:
-                    # Read raw PCM in 20ms chunks (no framing — just raw bytes)
-                    pcm_data = await reader.read(CHUNK_SIZE)
-                    if not pcm_data:
-                        logger.debug("Chipper tap: connection closed (EOF)")
-                        break
+                if not chunk or len(chunk) < 2:
+                    continue
 
-                    if len(pcm_data) < 2:
-                        continue
-
-                    # Publish raw PCM directly as LiveKit audio frame
-                    samples_per_channel = len(pcm_data) // 2  # int16 = 2 bytes
-                    try:
-                        frame = rtc.AudioFrame(
-                            data=pcm_data,
-                            sample_rate=AUDIO_SAMPLE_RATE,
-                            num_channels=AUDIO_CHANNELS,
-                            samples_per_channel=samples_per_channel,
+                samples_per_channel = len(chunk) // 2
+                try:
+                    frame = rtc.AudioFrame(
+                        data=chunk,
+                        sample_rate=AUDIO_SAMPLE_RATE,
+                        num_channels=AUDIO_CHANNELS,
+                        samples_per_channel=samples_per_channel,
+                    )
+                    await self._audio_source.capture_frame(frame)
+                    published_count += 1
+                    if published_count <= 3 or published_count % 500 == 0:
+                        logger.info(
+                            "Mic frame #%d (%d bytes PCM, %d samples)",
+                            published_count, len(chunk), samples_per_channel,
                         )
-                        await self._audio_source.capture_frame(frame)
-                        published_count += 1
-                        if published_count <= 3 or published_count % 500 == 0:
-                            logger.info(
-                                "Chipper tap mic frame #%d (%d bytes PCM, %d samples)",
-                                published_count, len(pcm_data), samples_per_channel,
-                            )
-                    except Exception:
-                        logger.debug("Failed to publish chipper tap audio", exc_info=True)
+                except Exception:
+                    logger.debug("Failed to publish mic audio", exc_info=True)
 
-            except asyncio.CancelledError:
-                raise
-            except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
-                logger.debug("Chipper tap connection failed: %s", e)
-            except Exception:
-                logger.warning("Chipper tap TCP error", exc_info=True)
-            finally:
-                if self._tcp_writer:
-                    try:
-                        self._tcp_writer.close()
-                    except Exception:
-                        pass
-                self._tcp_writer = None
-                self._tcp_reader = None
-
-            if self._active:
-                logger.info(
-                    "Reconnecting to chipper tap in %.0fs...",
-                    CHIPPER_TAP_RECONNECT_DELAY,
-                )
-                await asyncio.sleep(CHIPPER_TAP_RECONNECT_DELAY)
-
-        logger.info("Chipper tap loop ended (published %d mic frames)", published_count)
+        except asyncio.CancelledError:
+            logger.debug("Mic publish loop cancelled")
+        except Exception:
+            logger.exception("Mic publish loop error")
+        finally:
+            logger.info("Mic publish loop ended (published %d frames)", published_count)
 
     # ------------------------------------------------------------------
     # Video-in: remote video → Vector OLED display
@@ -734,7 +718,7 @@ class LiveKitBridge:
         """
         logger.info("Video-in display loop started for %s", participant_id)
         self._video_in_active = True
-        video_stream = rtc.VideoStream(track)
+        video_stream = rtc.VideoStream(track, format=rtc.VideoBufferType.RGBA)
         frame_count = 0
         min_interval = 1.0 / VIDEO_IN_FPS
         last_display_time = 0.0
