@@ -10,6 +10,7 @@ WorkingDirectory=%h/Documents/claude/nuc-vector-orchestrator
 ExecStart=/usr/bin/python3 -m apps.vector.bridge.server --port 8081 --host 127.0.0.1
 Restart=on-failure
 RestartSec=10
+TimeoutStopSec=10
 Environment=PYTHONPATH=%h/Documents/claude/nuc-vector-orchestrator
 Environment=VECTOR_SERIAL=0dd1cdcf
 Environment=VECTOR_BRIDGE_PORT=8081

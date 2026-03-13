@@ -123,6 +123,13 @@ async def stop(request: web.Request) -> web.Response:
         return err
 
     try:
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        if body.get("clear"):
+            await _run_sync(conn.motor_controller.clear_stop)
+            return web.json_response({"status": "ok", "cleared": True})
         await _run_sync(conn.motor_controller.emergency_stop)
         return web.json_response({"status": "ok"})
     except Exception as exc:
