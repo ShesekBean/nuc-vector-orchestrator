@@ -347,13 +347,67 @@ async def status(request: web.Request) -> web.Response:
 
 
 async def follow_start(request: web.Request) -> web.Response:
-    """POST /follow/start — start person following (stub)."""
-    return _json_error(501, "Follow planner not yet implemented", "NOT_IMPLEMENTED")
+    """POST /follow/start — start person following.
+
+    Starts the full pipeline: YOLO detection → Kalman tracking → PD follow.
+    First call loads the YOLO model (may take a few seconds).
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    pipeline = conn.follow_pipeline
+    if pipeline is None:
+        return _json_error(503, "Follow pipeline not initialised", "PIPELINE_UNAVAILABLE")
+
+    if pipeline.is_active:
+        return web.json_response({
+            "status": "ok",
+            "active": True,
+            "state": pipeline.state,
+            "message": "Already following",
+        })
+
+    try:
+        await _run_sync(pipeline.start)
+        return web.json_response({
+            "status": "ok",
+            "active": True,
+            "state": pipeline.state,
+        })
+    except Exception as exc:
+        logger.exception("Failed to start follow pipeline")
+        return _json_error(500, str(exc), "FOLLOW_START_FAILED")
 
 
 async def follow_stop(request: web.Request) -> web.Response:
-    """POST /follow/stop — stop person following (stub)."""
-    return _json_error(501, "Follow planner not yet implemented", "NOT_IMPLEMENTED")
+    """POST /follow/stop — stop person following."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    pipeline = conn.follow_pipeline
+    if pipeline is None:
+        return _json_error(503, "Follow pipeline not initialised", "PIPELINE_UNAVAILABLE")
+
+    if not pipeline.is_active:
+        return web.json_response({
+            "status": "ok",
+            "active": False,
+            "message": "Not currently following",
+        })
+
+    try:
+        await _run_sync(pipeline.stop)
+        return web.json_response({
+            "status": "ok",
+            "active": False,
+        })
+    except Exception as exc:
+        logger.exception("Failed to stop follow pipeline")
+        return _json_error(500, str(exc), "FOLLOW_STOP_FAILED")
 
 
 async def audio_play(request: web.Request) -> web.Response:
