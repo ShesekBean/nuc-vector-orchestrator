@@ -620,7 +620,7 @@ class LiveKitBridge:
         try:
             subprocess.Popen(
                 ["bash", "scripts/pgm-signal-gate.sh", "board-status", "0",
-                 "🤖 Orchestrator: Video call closed — no participants for 3 minutes."],
+                 "📹 Video call ended — no participants."],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
