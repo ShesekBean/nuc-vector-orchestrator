@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FRAME_H = 600
+FRAME_H_DEFAULT = 360  # default; overridden by event.frame_height when available
 
 
 @dataclass
@@ -217,7 +217,8 @@ class HeadTracker:
         Error: positive = person is below center → need to look down
         (decrease angle). Slew-rate limited for smooth motion.
         """
-        error_y = track.cy - (FRAME_H / 2)
+        fh = getattr(track, 'frame_height', FRAME_H_DEFAULT) or FRAME_H_DEFAULT
+        error_y = track.cy - (fh / 2)
 
         # Dead zone
         if abs(error_y) < self._cfg.dead_zone_px:

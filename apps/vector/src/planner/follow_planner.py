@@ -1,11 +1,13 @@
 """Person-following planner for Vector's differential drive.
 
-State machine:  IDLE → SEARCHING → TRACKING → FOLLOWING → SEARCHING
-PD controller:  camera detection → Kalman smoothing → EMA motor commands
+State machine:  IDLE → SEARCHING → FOLLOWING → SEARCHING
+P controller:   camera detection → proportional motor commands
 Head tracking:  vertical P-controller on person center-y
-Body rotation:  horizontal PD on person center-x (differential drive)
-Search:         velocity-biased direction → multi-cycle scan → IDLE
-Track lock:     locks to a specific track_id to prevent target switching
+Body rotation:  horizontal P on person center-x (turn-first-then-drive)
+Search:         head sweep → velocity-biased turn → body scan → IDLE
+
+Key design: TURN FIRST, THEN DRIVE. Never mix turning and driving —
+mixing them on differential drive causes arcs and circles.
 
 Usage::
 
@@ -13,7 +15,7 @@ Usage::
 
     planner = FollowPlanner(motor_controller, head_controller, nuc_bus)
     planner.start()   # begins SEARCHING state
-    # ... planner subscribes to TRACKED_PERSON events from Kalman tracker
+    # ... planner subscribes to TRACKED_PERSON events
     planner.stop()    # returns to IDLE, stops motors
 """
 
@@ -41,17 +43,8 @@ if TYPE_CHECKING:
     from apps.vector.src.events.nuc_event_bus import NucEventBus
     from apps.vector.src.head_controller import HeadController
     from apps.vector.src.motor_controller import MotorController
-    from apps.vector.src.planner.obstacle_detector import ObstacleDetector
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-FRAME_W = 800
-FRAME_H = 600
 
 
 class State(enum.Enum):
@@ -59,197 +52,61 @@ class State(enum.Enum):
 
     IDLE = "idle"
     SEARCHING = "searching"
-    TRACKING = "tracking"
     FOLLOWING = "following"
 
 
 @dataclass
 class FollowConfig:
-    """Tunable follow parameters.
+    """Tunable follow parameters."""
 
-    All PD gains, dead zones, speed limits, and search parameters live here
-    so they can be adjusted without touching planner logic.
-    """
-
-    # --- PD gains for turning (horizontal centering) ---
-    kp_turn: float = 0.55
-    kd_turn: float = 0.08
-    dead_zone_x: float = 40.0  # pixels — no turn if error < this
+    # --- P gain for turning (horizontal centering) ---
+    kp_turn: float = 0.4
+    turn_dead_zone_frac: float = 0.08  # fraction of frame width — no turn if error < this
 
     # --- P gain for driving (distance control via bbox height) ---
-    kp_drive: float = 0.5
-    kd_drive: float = 0.08
-    target_height: float = 300.0  # target bbox height in pixels (~1m follow distance at 800x600)
-    dead_zone_h: float = 20.0  # pixels — no drive if height error < this
+    kp_drive: float = 0.4
+    target_height_frac: float = 0.35  # target bbox height as fraction of frame height (~1.5m)
+    drive_dead_zone_frac: float = 0.05  # fraction of frame height — no drive if error < this
+    too_close_frac: float = 0.55  # bbox height > this fraction → stop (don't reverse)
 
     # --- P gain for head pitch (vertical tracking) ---
-    kp_head: float = 0.10  # degrees per pixel of vertical offset (gentler for 600px frame)
+    kp_head: float = 0.10
 
     # --- Speed limits ---
-    max_wheel_speed: float = 160.0  # mm/s (Vector max ~200, leave headroom)
-    min_tracking_confidence: float = 0.08  # accept weak detections in dark conditions
+    max_wheel_speed: float = 140.0  # mm/s (conservative — Vector max ~200)
+    max_turn_speed: float = 120.0  # mm/s for turning
+    min_tracking_confidence: float = 0.10
 
-    # --- EMA smoothing on motor output (0.0=raw, 1.0=frozen) ---
-    ema_alpha: float = 0.6  # higher = more responsive (was 0.3, too sluggish)
-
-    # --- Derivative low-pass filter ---
-    derivative_filter_alpha: float = 0.5  # EMA on d_error to reject spikes
+    # --- Turn-first threshold ---
+    # If horizontal error exceeds this fraction of frame width, ONLY turn (no drive)
+    turn_first_threshold_frac: float = 0.12
 
     # --- Tracking thresholds ---
-    min_hits_for_following: int = 1  # react immediately — no Kalman confirmation delay
-    target_lost_frames: int = 60  # control-loop ticks without detection → SEARCHING (~4s at 15Hz)
+    target_lost_frames: int = 30  # ticks without detection → SEARCHING (~2s at 15Hz)
 
     # --- Search behaviour ---
     search_head_angles: tuple[float, ...] = (10.0, 30.0, -10.0, 0.0)
-    search_head_dwell_s: float = 0.8  # seconds to wait at each head angle
+    search_head_dwell_s: float = 0.8
     search_body_dwell_s: float = 1.0
     search_turn_speed_dps: float = 80.0
-    search_max_cycles: int = 2  # how many full 360° scans before giving up
-    search_step_deg: float = 60.0  # degrees per search rotation step (6 steps = 360°)
+    search_max_cycles: int = 2
+    search_step_deg: float = 60.0
 
     # --- Control loop ---
-    loop_hz: float = 15.0  # target control loop rate (higher = more responsive)
-
-
-# ---------------------------------------------------------------------------
-# PD Controller with EMA smoothing and derivative filtering
-# ---------------------------------------------------------------------------
-
-
-class PDController:
-    """PD controller for differential-drive person following.
-
-    Computes (left_speed, right_speed) from tracked person position.
-    Turn: PD on horizontal offset from image center.
-    Drive: PD on bbox height error (target height = follow distance proxy).
-    Includes EMA smoothing on output and low-pass filter on derivative.
-    """
-
-    def __init__(self, config: FollowConfig) -> None:
-        self._cfg = config
-        self._prev_error_x: float = 0.0
-        self._prev_error_h: float = 0.0
-        self._prev_time: float = 0.0
-        # Filtered derivatives
-        self._filtered_d_error_x: float = 0.0
-        self._filtered_d_error_h: float = 0.0
-        # EMA output state
-        self._ema_left: float = 0.0
-        self._ema_right: float = 0.0
-
-    def reset(self) -> None:
-        """Reset derivative state (call on state transitions)."""
-        self._prev_error_x = 0.0
-        self._prev_error_h = 0.0
-        self._prev_time = 0.0
-        self._filtered_d_error_x = 0.0
-        self._filtered_d_error_h = 0.0
-        self._ema_left = 0.0
-        self._ema_right = 0.0
-
-    def compute(
-        self, center_x: float, bbox_height: float
-    ) -> tuple[float, float]:
-        """Compute wheel speeds from detection position.
-
-        Args:
-            center_x: X-center of detected person (0=left, FRAME_W=right).
-            bbox_height: Height of bounding box in pixels.
-
-        Returns:
-            (left_speed_mmps, right_speed_mmps) clamped to max_wheel_speed.
-        """
-        now = time.monotonic()
-        dt = now - self._prev_time if self._prev_time > 0 else 0.1
-        if dt <= 0:
-            dt = 0.1
-        self._prev_time = now
-
-        cfg = self._cfg
-
-        # --- Turn error: offset from image center (positive = person right) ---
-        error_x = center_x - (FRAME_W / 2)
-        raw_d_error_x = (error_x - self._prev_error_x) / dt
-
-        # --- Drive error: height difference (positive = too far away) ---
-        error_h = cfg.target_height - bbox_height
-        raw_d_error_h = (error_h - self._prev_error_h) / dt
-
-        # Low-pass filter on derivatives to reject spikes
-        d_alpha = cfg.derivative_filter_alpha
-        self._filtered_d_error_x = (
-            d_alpha * raw_d_error_x + (1.0 - d_alpha) * self._filtered_d_error_x
-        )
-        self._filtered_d_error_h = (
-            d_alpha * raw_d_error_h + (1.0 - d_alpha) * self._filtered_d_error_h
-        )
-
-        # PD outputs with filtered derivatives
-        turn_speed = cfg.kp_turn * error_x + cfg.kd_turn * self._filtered_d_error_x
-        drive_speed = cfg.kp_drive * error_h + cfg.kd_drive * self._filtered_d_error_h
-
-        # Dead zones
-        if abs(error_x) < cfg.dead_zone_x:
-            turn_speed = 0.0
-        if abs(error_h) < cfg.dead_zone_h:
-            drive_speed = 0.0
-
-        # Asymmetric speed: limit backward drive to 40% of max
-        # (Vector should approach eagerly but retreat gently)
-        if drive_speed < 0:
-            max_reverse = cfg.max_wheel_speed * 0.4
-            drive_speed = max(-max_reverse, drive_speed)
-
-        # Differential drive: turn adds to one side, subtracts from the other
-        raw_left = drive_speed + turn_speed
-        raw_right = drive_speed - turn_speed
-
-        # Clamp
-        max_spd = cfg.max_wheel_speed
-        raw_left = max(-max_spd, min(max_spd, raw_left))
-        raw_right = max(-max_spd, min(max_spd, raw_right))
-
-        # EMA smoothing — prevents jerky motor commands
-        # Reset EMA when direction reverses to avoid stale-state lag
-        alpha = cfg.ema_alpha
-        if (raw_left > 0) != (self._ema_left > 0) and abs(raw_left) > 10:
-            self._ema_left = raw_left  # instant reset on direction change
-        else:
-            self._ema_left = alpha * raw_left + (1.0 - alpha) * self._ema_left
-        if (raw_right > 0) != (self._ema_right > 0) and abs(raw_right) > 10:
-            self._ema_right = raw_right
-        else:
-            self._ema_right = alpha * raw_right + (1.0 - alpha) * self._ema_right
-
-        # Save state for derivative
-        self._prev_error_x = error_x
-        self._prev_error_h = error_h
-
-        return self._ema_left, self._ema_right
-
-
-# ---------------------------------------------------------------------------
-# Follow Planner
-# ---------------------------------------------------------------------------
+    loop_hz: float = 15.0
 
 
 class FollowPlanner:
-    """Person-following planner with state machine and event-bus integration.
+    """Person-following planner with turn-first-then-drive control.
 
-    Subscribes to ``TRACKED_PERSON`` events (from Kalman tracker) and emits
-    ``FOLLOW_STATE_CHANGED`` + ``MOTOR_COMMAND`` events.
+    Subscribes to ``TRACKED_PERSON`` events and drives motors using simple
+    proportional control with a turn-first-then-drive strategy:
 
-    Features:
-    - Track ID lock: locks to a specific track_id once following begins,
-      preventing target switching in multi-person scenarios.
-    - Velocity-biased search: when target is lost, first checks the
-      direction the person was last moving before doing a full scan.
-    - Multi-cycle search: does search_max_cycles full rotations before
-      giving up (default 2).
-    - EMA motor smoothing: prevents jerky commands.
+    - If person is off-center: TURN ONLY (no forward drive)
+    - If person is centered: DRIVE ONLY (no turning)
 
-    Thread-safe: the control loop runs in a daemon thread; start/stop can
-    be called from any thread.
+    This prevents the arcs/circles caused by mixing turn+drive on
+    differential drive.
     """
 
     def __init__(
@@ -258,21 +115,18 @@ class FollowPlanner:
         head_controller: HeadController,
         nuc_bus: NucEventBus,
         config: FollowConfig | None = None,
-        obstacle_detector: ObstacleDetector | None = None,
+        obstacle_detector: Any | None = None,
         say_func: Any | None = None,
     ) -> None:
         self._motor = motor_controller
         self._head = head_controller
         self._bus = nuc_bus
         self._cfg = config or FollowConfig()
-        self._pd = PDController(self._cfg)
         self._obstacle = obstacle_detector
-        self._say = say_func  # optional callable(text) for speech feedback
+        self._say = say_func
 
-        # Head tracker — delegates vertical pitch control
-        head_cfg = HeadTrackerConfig(
-            kp=self._cfg.kp_head,
-        )
+        # Head tracker
+        head_cfg = HeadTrackerConfig(kp=self._cfg.kp_head)
         self._head_tracker = HeadTracker(head_controller, nuc_bus, head_cfg)
 
         # State
@@ -290,14 +144,8 @@ class FollowPlanner:
         self._locked_track_id: int | None = None
 
         # Last known velocity for search direction bias
-        self._last_vx: float = 0.0  # positive = moving right in frame
-
-        # Track movement for stuck detection
+        self._last_vx: float = 0.0
         self._prev_track_cx: float | None = None
-        self._prev_track_cy: float | None = None
-
-        # Search state
-        self._search_found = False
 
     # -- Properties ----------------------------------------------------------
 
@@ -312,12 +160,10 @@ class FollowPlanner:
 
     @property
     def head_tracker(self) -> HeadTracker:
-        """Access the underlying head tracker for direct configuration."""
         return self._head_tracker
 
     @property
     def locked_track_id(self) -> int | None:
-        """Currently locked track ID, or None if not locked."""
         return self._locked_track_id
 
     # -- Lifecycle -----------------------------------------------------------
@@ -332,6 +178,7 @@ class FollowPlanner:
 
         self._locked_track_id = None
         self._last_vx = 0.0
+        self._prev_track_cx = None
 
         self._bus.on(TRACKED_PERSON, self._on_tracked_person)
         self._bus.on(EMERGENCY_STOP, self._on_emergency_stop)
@@ -354,7 +201,6 @@ class FollowPlanner:
         self._bus.off(TRACKED_PERSON, self._on_tracked_person)
         self._bus.off(EMERGENCY_STOP, self._on_emergency_stop)
 
-        # Stop motors
         try:
             self._motor.drive_wheels(0, 0)
         except Exception:
@@ -372,22 +218,16 @@ class FollowPlanner:
     # -- Event callbacks -----------------------------------------------------
 
     def _on_tracked_person(self, event: TrackedPersonEvent) -> None:
-        """Receive smoothed track from Kalman tracker.
+        """Receive detection from pipeline.
 
         If a track ID is locked, prefer events matching that ID.
-        If the locked track hasn't been seen for a while, accept the
-        new track (the Kalman tracker may have re-created it with a new ID
-        after a brief detection gap).
+        Accept new track after 2 missed frames.
         """
         with self._track_lock:
             if self._locked_track_id is not None:
                 if event.track_id != self._locked_track_id:
-                    # Accept new track after just 2 missed frames (~130ms at 15Hz).
-                    # The old threshold of 10 caused stale-track lag when the person
-                    # made sudden position changes (Kalman creates new track ID).
                     if self._frames_without_track < 2:
-                        return  # still expecting locked track
-                    # Locked track is gone — accept new one and re-lock
+                        return
                     logger.info(
                         "Re-locking from track_id=%d to %d (old track lost)",
                         self._locked_track_id, event.track_id,
@@ -397,7 +237,6 @@ class FollowPlanner:
             self._frames_without_track = 0
 
     def _on_emergency_stop(self, _event: Any) -> None:
-        """Emergency stop — return to IDLE."""
         logger.warning("Emergency stop received — halting follow planner")
         with self._state_lock:
             self._running = False
@@ -406,7 +245,6 @@ class FollowPlanner:
     # -- State transitions ---------------------------------------------------
 
     def _transition(self, new_state: State) -> None:
-        """Transition to a new state with logging and event emission."""
         with self._state_lock:
             old = self._state
             if old == new_state:
@@ -420,15 +258,12 @@ class FollowPlanner:
             FollowStateChangedEvent(state=new_state.value),
         )
 
-        # Reset PD on state change to avoid derivative kick
-        self._pd.reset()
         self._frames_without_track = 0
 
-        # Release track lock when going to SEARCHING
         if new_state == State.SEARCHING:
             self._locked_track_id = None
 
-        # Voice feedback on state transitions
+        # Voice feedback
         if self._say is not None:
             try:
                 if new_state == State.SEARCHING:
@@ -440,12 +275,11 @@ class FollowPlanner:
                         target=self._say, args=("I see you",), daemon=True
                     ).start()
             except Exception:
-                pass  # don't let TTS errors affect control loop
+                pass
 
     # -- Control loop --------------------------------------------------------
 
     def _control_loop(self) -> None:
-        """Main control loop — runs at config.loop_hz in daemon thread."""
         period = 1.0 / self._cfg.loop_hz
 
         while self._running:
@@ -455,15 +289,11 @@ class FollowPlanner:
                 state = self.state
                 if state == State.SEARCHING:
                     self._tick_searching()
-                elif state == State.TRACKING:
-                    self._tick_tracking()
                 elif state == State.FOLLOWING:
                     self._tick_following()
-                # IDLE: do nothing
             except Exception:
                 logger.exception("Error in follow planner control loop")
 
-            # Rate limit
             elapsed = time.monotonic() - loop_start
             sleep_time = period - elapsed
             if sleep_time > 0:
@@ -472,19 +302,16 @@ class FollowPlanner:
     # -- State tick handlers -------------------------------------------------
 
     def _tick_searching(self) -> None:
-        """SEARCHING: head sweep (no movement) → velocity-biased turn → body scan.
-
-        Strategy: look before you move. Head sweep is instant and catches
-        nearby targets. Only then rotate the body.
-        """
-        # Check if Kalman tracker already has a target
+        """SEARCHING: head sweep → velocity-biased turn → body scan."""
         track = self._consume_track()
         if track is not None:
-            self._transition(State.TRACKING)
+            self._locked_track_id = track.track_id
+            logger.info("Locked to track_id=%d", track.track_id)
+            self._transition(State.FOLLOWING)
+            self._apply_tracking(track)
             return
 
         # --- Phase 1: Head sweep (no body movement) ---
-        # Fast check without spinning — person may still be in view
         logger.info("Search: head sweep")
         for angle in self._cfg.search_head_angles:
             if not self._running:
@@ -497,23 +324,21 @@ class FollowPlanner:
 
             track = self._consume_track()
             if track is not None:
-                self._transition(State.TRACKING)
+                self._locked_track_id = track.track_id
+                self._transition(State.FOLLOWING)
                 return
 
-        # Reset head to neutral for body scan
+        # Reset head to neutral
         try:
             self._head.set_angle(10.0)
         except Exception:
             pass
 
         # --- Phase 2: Velocity-biased quick look ---
-        # If we know the person was moving in a direction, check there first
         if abs(self._last_vx) > 5.0:
             bias_angle = -60.0 if self._last_vx > 0 else 60.0
-            logger.info(
-                "Search: velocity-biased look (vx=%.0f → turn %.0f°)",
-                self._last_vx, bias_angle,
-            )
+            logger.info("Search: velocity-biased look (vx=%.0f → turn %.0f°)",
+                        self._last_vx, bias_angle)
             try:
                 self._motor.turn_in_place(
                     bias_angle, speed_dps=self._cfg.search_turn_speed_dps
@@ -525,18 +350,19 @@ class FollowPlanner:
 
             track = self._consume_track()
             if track is not None:
-                self._transition(State.TRACKING)
+                self._locked_track_id = track.track_id
+                self._transition(State.FOLLOWING)
                 return
 
-        # --- Phase 3: Gradual body rotation scan ---
-        # Rotate in steps, checking for target at each position
+        # --- Phase 3: Body rotation scan ---
         step_deg = self._cfg.search_step_deg
         steps_per_cycle = max(1, int(360.0 / step_deg))
 
         for cycle in range(self._cfg.search_max_cycles):
-            logger.info("Search: body scan cycle %d/%d", cycle + 1, self._cfg.search_max_cycles)
+            logger.info("Search: body scan cycle %d/%d",
+                        cycle + 1, self._cfg.search_max_cycles)
 
-            for step in range(steps_per_cycle):
+            for _step in range(steps_per_cycle):
                 if not self._running:
                     return
                 try:
@@ -551,45 +377,19 @@ class FollowPlanner:
 
                 track = self._consume_track()
                 if track is not None:
-                    self._transition(State.TRACKING)
+                    self._locked_track_id = track.track_id
+                    self._transition(State.FOLLOWING)
                     return
 
-        # All cycles exhausted — no target found
-        logger.info(
-            "Search complete — no target found after %d cycle(s), returning to IDLE",
-            self._cfg.search_max_cycles,
-        )
+        logger.info("Search complete — no target found, returning to IDLE")
         self._transition(State.IDLE)
 
-    def _tick_tracking(self) -> None:
-        """TRACKING: target acquired but not yet confirmed for following."""
-        track = self._consume_track()
-        if track is None:
-            self._frames_without_track += 1
-            if self._frames_without_track >= self._cfg.target_lost_frames:
-                self._transition(State.SEARCHING)
-            return
-
-        # Check if track is confirmed enough for following
-        if track.hits >= self._cfg.min_hits_for_following:
-            # Lock to this track ID
-            self._locked_track_id = track.track_id
-            logger.info("Locked to track_id=%d", track.track_id)
-            self._transition(State.FOLLOWING)
-            # Process this track in FOLLOWING mode immediately
-            self._apply_tracking(track)
-            return
-
-        # Not enough hits yet — just track with head
-        self._apply_head_tracking(track)
-
     def _tick_following(self) -> None:
-        """FOLLOWING: active person following with motor commands."""
+        """FOLLOWING: turn-first-then-drive person following."""
         track = self._consume_track()
         if track is None:
             self._frames_without_track += 1
             if self._frames_without_track >= self._cfg.target_lost_frames:
-                # Lost target — stop motors, search
                 try:
                     self._motor.drive_wheels(0, 0)
                 except Exception:
@@ -602,52 +402,94 @@ class FollowPlanner:
     # -- Tracking helpers ----------------------------------------------------
 
     def _apply_tracking(self, track: TrackedPersonEvent) -> None:
-        """Apply full tracking: head pitch + motor commands."""
-        self._apply_head_tracking(track)
-        self._apply_motor_commands(track)
-
-        # Store velocity for search bias (vx from Kalman tracker)
-        # TrackedPersonEvent doesn't have vx directly, but we can
-        # estimate from consecutive cx values
-        if self._prev_track_cx is not None:
-            self._last_vx = track.cx - self._prev_track_cx
-
-    def _apply_head_tracking(self, track: TrackedPersonEvent) -> None:
-        """Adjust head pitch to keep person vertically centered.
-
-        Delegates to the HeadTracker module for P-controller logic,
-        slew-rate limiting, and neutral return.
-        """
+        """Apply turn-first-then-drive control."""
+        # Head pitch tracking
         self._head_tracker.update(track)
 
-    def _apply_motor_commands(self, track: TrackedPersonEvent) -> None:
-        """Compute and send motor commands for following."""
+        # Motor control
         if track.confidence < self._cfg.min_tracking_confidence:
             return
 
-        left, right = self._pd.compute(track.cx, track.height)
+        cfg = self._cfg
+        fw = float(track.frame_width)
+        fh = float(track.frame_height)
 
-        # Scale by obstacle proximity (camera-based soft slowdown)
-        if self._obstacle is not None:
-            scale = self._obstacle.speed_scale
-            left *= scale
-            right *= scale
+        # Horizontal error: positive = person is right of center
+        error_x = track.cx - (fw / 2.0)
+        # Normalize to fraction of frame width
+        error_x_frac = error_x / fw
 
-            # Reset stuck timer when track position changes significantly
-            self._check_track_movement(track)
+        # Distance error: positive = person is too far
+        target_h = cfg.target_height_frac * fh
+        error_h = target_h - track.height
+        error_h_frac = error_h / fh
 
-            # Check for stuck condition and trigger escape if needed
-            self._obstacle.check_stuck()
+        # Store velocity for search bias
+        if self._prev_track_cx is not None:
+            self._last_vx = track.cx - self._prev_track_cx
+        self._prev_track_cx = track.cx
+
+        # --- Turn-first-then-drive ---
+        turn_dead = cfg.turn_dead_zone_frac
+        drive_dead = cfg.drive_dead_zone_frac
+
+        if abs(error_x_frac) > cfg.turn_first_threshold_frac:
+            # Person is significantly off-center → TURN ONLY
+            turn_speed = cfg.kp_turn * error_x * (cfg.max_turn_speed / (fw / 2.0))
+            turn_speed = max(-cfg.max_turn_speed, min(cfg.max_turn_speed, turn_speed))
+            left = turn_speed
+            right = -turn_speed
+            logger.debug("TURN: error_x=%.0f (%.1f%%) → L=%.0f R=%.0f",
+                         error_x, error_x_frac * 100, left, right)
+
+        elif abs(error_x_frac) > turn_dead:
+            # Person is slightly off-center → gentle turn + gentle drive
+            turn_speed = cfg.kp_turn * error_x * (cfg.max_turn_speed / (fw / 2.0))
+            turn_speed = max(-cfg.max_turn_speed * 0.5, min(cfg.max_turn_speed * 0.5, turn_speed))
+
+            # Only add drive if not too close
+            drive_speed = 0.0
+            if track.height < cfg.too_close_frac * fh and abs(error_h_frac) > drive_dead:
+                drive_speed = cfg.kp_drive * error_h * (cfg.max_wheel_speed / (fh / 2.0))
+                drive_speed = max(0.0, min(cfg.max_wheel_speed * 0.5, drive_speed))  # forward only when turning
+
+            left = drive_speed + turn_speed
+            right = drive_speed - turn_speed
+            left = max(-cfg.max_wheel_speed, min(cfg.max_wheel_speed, left))
+            right = max(-cfg.max_wheel_speed, min(cfg.max_wheel_speed, right))
+            logger.debug("TURN+DRIVE: err_x=%.0f err_h=%.0f → L=%.0f R=%.0f",
+                         error_x, error_h, left, right)
+
+        elif track.height > cfg.too_close_frac * fh:
+            # Person is too close → STOP (don't reverse — reversing while
+            # turning is a known cause of circles on diff drive)
+            left = 0.0
+            right = 0.0
+            logger.debug("TOO CLOSE: h=%.0f (%.0f%% of frame) → STOP",
+                         track.height, (track.height / fh) * 100)
+
+        elif abs(error_h_frac) > drive_dead:
+            # Person is centered horizontally → DRIVE ONLY
+            drive_speed = cfg.kp_drive * error_h * (cfg.max_wheel_speed / (fh / 2.0))
+            # Limit reverse to 30% of max
+            if drive_speed < 0:
+                drive_speed = max(-cfg.max_wheel_speed * 0.3, drive_speed)
+            else:
+                drive_speed = min(cfg.max_wheel_speed, drive_speed)
+            left = drive_speed
+            right = drive_speed
+            logger.debug("DRIVE: error_h=%.0f (%.1f%%) → L=%.0f R=%.0f",
+                         error_h, error_h_frac * 100, left, right)
+
+        else:
+            # Person is centered and at target distance → stop
+            left = 0.0
+            right = 0.0
 
         # Emit event
         self._bus.emit(
             MOTOR_COMMAND,
             MotorCommandEvent(left_speed_mmps=left, right_speed_mmps=right),
-        )
-
-        logger.debug(
-            "Motor: L=%.0f R=%.0f (cx=%.0f h=%.0f conf=%.2f)",
-            left, right, track.cx, track.height, track.confidence,
         )
 
         # Send to motors
@@ -658,23 +500,7 @@ class FollowPlanner:
 
     # -- Helpers -------------------------------------------------------------
 
-    def _check_track_movement(self, track: TrackedPersonEvent) -> None:
-        """Reset obstacle stuck timer when track position changes."""
-        if self._obstacle is None:
-            return
-        moved = False
-        if self._prev_track_cx is not None:
-            dx = abs(track.cx - self._prev_track_cx)
-            dy = abs(track.cy - self._prev_track_cy)
-            if dx > 10.0 or dy > 10.0:
-                moved = True
-        self._prev_track_cx = track.cx
-        self._prev_track_cy = track.cy
-        if moved:
-            self._obstacle.reset_stuck()
-
     def _consume_track(self) -> TrackedPersonEvent | None:
-        """Get and clear the latest tracked person event."""
         with self._track_lock:
             track = self._latest_track
             self._latest_track = None

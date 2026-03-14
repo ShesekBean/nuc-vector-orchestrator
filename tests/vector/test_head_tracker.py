@@ -16,7 +16,7 @@ from apps.vector.src.events.event_types import (
 from apps.vector.src.events.nuc_event_bus import NucEventBus
 from apps.vector.src.head_controller import NEUTRAL_ANGLE
 from apps.vector.src.planner.head_tracker import (
-    FRAME_H,
+    FRAME_H_DEFAULT as FRAME_H,
     HeadTracker,
     HeadTrackerConfig,
 )
@@ -347,9 +347,9 @@ class TestHeadTrackerFollowPlannerIntegration:
         planner = FollowPlanner(motor, head, bus)
 
         track = _make_track(cy=FRAME_H / 2 + 50)
-        planner._apply_head_tracking(track)
+        planner._apply_tracking(track)
 
         # HeadTracker should have called head.set_angle
-        head.set_angle.assert_called_once()
+        assert head.set_angle.call_count >= 1
         angle = head.set_angle.call_args[0][0]
         assert angle < NEUTRAL_ANGLE

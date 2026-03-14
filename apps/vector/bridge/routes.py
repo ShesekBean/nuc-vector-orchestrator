@@ -351,7 +351,7 @@ async def status(request: web.Request) -> web.Response:
 async def follow_start(request: web.Request) -> web.Response:
     """POST /follow/start — start person following.
 
-    Starts the full pipeline: YOLO detection → Kalman tracking → PD follow.
+    Starts the full pipeline: YOLO detection → person following.
     First call loads the YOLO model (may take a few seconds).
     """
     conn: ConnectionManager = request.app["conn"]

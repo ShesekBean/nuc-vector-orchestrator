@@ -55,8 +55,8 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-FRAME_W = 800
-FRAME_H = 600
+FRAME_W = 640
+FRAME_H = 360
 FRAME_AREA = FRAME_W * FRAME_H
 
 # Forward cone: only count obstacles whose center-x falls within this
