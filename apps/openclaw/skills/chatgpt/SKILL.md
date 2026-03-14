@@ -14,17 +14,19 @@ Ophir's ChatGPT session is connected to his business tools: **Outlook email, Out
 
 ## How It Works
 
-A ChatGPT API server runs on the NUC host. Query it via curl:
+A ChatGPT API server runs on the NUC host. Query it via curl.
+
+**CRITICAL: This request takes 15-60 seconds because ChatGPT uses browser tools. You MUST use `--max-time 90` to avoid timeout. Use the `process` tool (background exec) if `exec` would timeout.**
 
 ```bash
-curl -sf -X POST http://172.17.0.1:18792/query \
+curl -sf --max-time 90 -X POST http://172.17.0.1:18792/query \
   -H 'Content-Type: application/json' \
   -d '{"message": "<the user question>"}'
 ```
 
 The response is JSON: `{"response": "ChatGPT's answer here"}`
 
-If the server returns an error, tell the user the ChatGPT proxy is temporarily unavailable.
+If the server returns an error or times out, tell the user: "ChatGPT proxy is taking longer than usual, trying again..." and retry once.
 
 ## Usage
 

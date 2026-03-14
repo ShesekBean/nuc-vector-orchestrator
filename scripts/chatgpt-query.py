@@ -49,7 +49,7 @@ def login_flow():
             PROFILE_DIR,
             headless=False,
             viewport={"width": 1280, "height": 900},
-            args=["--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled", "--ozone-platform=x11"],
         )
         page = context.pages[0] if context.pages else context.new_page()
         page.goto(CHATGPT_URL, wait_until="domcontentloaded")
@@ -79,6 +79,7 @@ def send_message(message, headless=True):
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
+                "--ozone-platform=x11",
             ],
         )
 

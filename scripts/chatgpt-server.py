@@ -66,6 +66,7 @@ def _ensure_browser():
         args=[
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox",
+            "--ozone-platform=x11",
         ],
     )
     _page = _context.pages[0] if _context.pages else _context.new_page()
@@ -101,26 +102,25 @@ def _shutdown_browser():
 def _start_new_chat(page):
     """Click 'New chat' to start a fresh conversation."""
     try:
-        # Look for the new chat button (various selectors ChatGPT has used)
         new_chat = page.query_selector(
             'a[href="/"], button[data-testid="create-new-chat-button"], '
             'a[data-testid="create-new-chat-button"]'
         )
         if new_chat:
             new_chat.click()
-            page.wait_for_timeout(1500)
+            page.wait_for_selector(
+                '#prompt-textarea, .ProseMirror[contenteditable="true"]',
+                timeout=5_000,
+            )
             return
-
-        # Fallback: just navigate to root
-        page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=15_000)
+        page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=10_000)
         page.wait_for_selector(
             '#prompt-textarea, .ProseMirror[contenteditable="true"]',
-            timeout=10_000,
+            timeout=5_000,
         )
     except Exception:
-        # Last resort: navigate
-        page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=15_000)
-        page.wait_for_timeout(3000)
+        page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=10_000)
+        page.wait_for_timeout(2000)
 
 
 def send_message(message):
@@ -128,8 +128,15 @@ def send_message(message):
     with _browser_lock:
         page = _ensure_browser()
 
-        # Start a new chat for each query (no cross-contamination)
-        _start_new_chat(page)
+        # Navigate to new chat (skip if input is already visible and empty)
+        input_el = page.query_selector('#prompt-textarea, .ProseMirror[contenteditable="true"]')
+        if not input_el:
+            _start_new_chat(page)
+        else:
+            # Clear any leftover text in the input
+            input_el.click()
+            page.keyboard.press("Control+a")
+            page.keyboard.press("Backspace")
 
         # Find the input
         input_sel = '#prompt-textarea, .ProseMirror[contenteditable="true"]'
@@ -174,20 +181,19 @@ def _wait_for_response(page, pre_count):
             break
         page.wait_for_timeout(500)
 
-    # Wait for generation to finish
+    # Wait for generation to finish (stop button disappears when done)
     while time.time() - start < TIMEOUT_SECONDS:
         stop_btn = page.query_selector(
             'button[data-testid="stop-button"], button[aria-label="Stop generating"]'
         )
         if not stop_btn:
-            # Double-check after a short wait
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(500)
             stop_btn = page.query_selector(
                 'button[data-testid="stop-button"], button[aria-label="Stop generating"]'
             )
             if not stop_btn:
                 break
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(300)
 
     # Extract last assistant message
     msgs = page.query_selector_all('[data-message-author-role="assistant"]')
