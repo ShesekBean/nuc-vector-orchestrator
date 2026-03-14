@@ -310,7 +310,7 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
             "object": "chat.completion",
             "created": int(time.time()),
             "model": "openclaw",
-            "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}],
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": " "}, "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         })
 
