@@ -60,6 +60,8 @@ Pass the user's full question to the API. Strip trigger prefixes like "ask work"
 
 When the user says "daily brief", "daily prep", "work brief", or "brief for tomorrow", expand it into a comprehensive prompt before sending to ChatGPT. The user may specify a day (e.g. "daily brief for tomorrow", "brief for Monday"). Default to today if not specified.
 
+**Weekend rule:** If "tomorrow" falls on a Saturday or Sunday, use Monday instead. If "today" is Saturday or Sunday, use Monday.
+
 Send this expanded prompt to the ChatGPT proxy:
 
 > Give me my daily work prep briefing for [TARGET DAY]. Cover ALL of the following:
