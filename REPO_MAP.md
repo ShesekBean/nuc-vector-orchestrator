@@ -128,6 +128,7 @@ nuc-vector-orchestrator/
 │       │       ├── test_mic.py
 │       │       ├── test_sensors.py
 │       │       ├── test_detection.py
+│       │       ├── test_enroll_face.py  ← interactive face + body enrollment (captures from Vector camera)
 │       │       └── test_follow_standalone.py
 │       ├── native/                ← native C binaries (cross-compiled for Vector ARM)
 │       │   └── vector-streamer/   ← mic/engine DGRAM proxy + TCP bridge to NUC
@@ -142,6 +143,7 @@ nuc-vector-orchestrator/
 │       │       ├── CMakeLists.txt ← cross-compile config
 │       │       └── vicos-toolchain.cmake ← vicos-sdk toolchain
 │       ├── config/                ← Vector connection config
+│       ├── data/                  ← runtime data (face_database.json, reference_images/<name>/)
 │       └── models/                ← ML models (YOLO, face)
 ├── config/                        ← shared cross-component configuration
 │   └── llm-provider.yaml         ← LLM provider + model selection

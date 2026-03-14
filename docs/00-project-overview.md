@@ -34,7 +34,8 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   └── 16 ordered components (see Component Inventory below)
 │
 ├── Bridge Server (localhost:8081, 172.17.0.1:8081 for Docker)
-│   └── HTTP REST → Vector SDK/gRPC translation (aiohttp)
+│   ├── HTTP REST → Vector SDK/gRPC translation (aiohttp)
+│   └── Face enrollment API: /face/enroll, /face/list, /face/remove, /face/recognize
 │
 ├── Agent Loop (nuc-agent-loop.service)
 │   ├── Issue Workers (up to 4 parallel: 2 Vector + 2 NUC slots)
@@ -54,7 +55,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Inference Pipeline (ALL on NUC, OpenVINO)
 │   ├── YOLO11n person detection (~15fps, OpenVINO IR)
 │   ├── KalmanTracker (position-only [cx,cy,vx,vy], frozen bbox, 10Hz)
-│   ├── Face recognition (YuNet detection + SFace embeddings, ONNX, 0.363 threshold)
+│   ├── Face recognition (YuNet + SFace, enrollment via bridge API or standalone script)
 │   ├── Scene description (camera + Claude Vision API)
 │   ├── Wake word (Porcupine PV, two-process architecture)
 │   ├── STT (wire-pod Vosk, routed to OpenClaw)
@@ -166,7 +167,7 @@ CameraClient (800×600 BGR, ring buffer, 15fps)
 - **CameraClient** (`src/camera/camera_client.py`): 800x600 BGR frames from Vector gRPC `CameraFeed`. Ring buffer, polling fallback for SDK quirks. Configurable FPS.
 - **PersonDetector** (`src/detector/person_detector.py`): YOLO11n nano model in OpenVINO IR format. COCO class 0 (person). ~47ms inference on NUC (vs 97ms for YOLO11s). Adaptive confidence threshold. Multi-stage low-light preprocessing for Vector's inherently dark camera.
 - **KalmanTracker** (`src/detector/kalman_tracker.py`): State vector `[cx, cy, vx, vy]`. Bbox dimensions frozen at last measurement (not predicted — R3 lesson: predicting bbox size caused wild oscillation). IoU-based assignment. 10Hz prediction rate.
-- **FaceRecognizer** (`src/face_recognition/face_recognizer.py`): YuNet face detection + SFace embedding extraction (ONNX models). Cosine similarity matching, 0.363 threshold. JSON enrollment database on disk.
+- **FaceRecognizer** (`src/face_recognition/face_recognizer.py`): YuNet face detection + SFace embedding extraction (ONNX models). Cosine similarity matching, 0.363 threshold. JSON enrollment database on disk (`apps/vector/data/face_database.json`). Enrollment via standalone script (`test_enroll_face.py`) or bridge API (`POST /face/enroll`). Body reference crops stored in `apps/vector/data/reference_images/<name>/`.
 - **SceneDescriber** (`src/camera/scene_describer.py`): Sends camera frame + YOLO detections to Claude Vision API for natural language scene description.
 
 ---

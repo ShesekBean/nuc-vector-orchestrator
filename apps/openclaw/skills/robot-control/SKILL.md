@@ -9,7 +9,7 @@ metadata: {"openclaw": {"emoji": "🤖"}}
 ## Overview
 You have DIRECT CONTROL of a physical robot (Anki/DDL Vector 2.0) via HTTP bridge on the NUC. When the user says "robot <command>", you MUST immediately execute the corresponding curl command — do not ask for clarification, do not explain, just DO IT and report the result.
 
-The robot has differential drive (tank treads, NO strafing), a 640x360 camera (120° FOV), eye color LEDs (hue/saturation), a 160x80 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
+The robot has differential drive (tank treads, NO strafing), an 800x600 camera (120° FOV), eye color LEDs (hue/saturation), a 160x80 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
 
 ## Bridge API Endpoints
 
@@ -157,10 +157,26 @@ Room name is optional (defaults to "robot-cam").
 POST /call/stop
 → {"status": "ok", "active": false}
 ```
-Publishes Vector camera (640x360 ~15fps) as a LiveKit video track.
+Publishes Vector camera (800x600 ~15fps) as a LiveKit video track.
 Audio is ONE-WAY: user speaks → LiveKit → Vector speaker (20x amplified, downsampled 48kHz→16kHz).
 Vector mic audio is NOT published (SDK AudioFeed only provides signal_power calibration tone, not real PCM).
 Returns 503 if LiveKit bridge not initialised.
+
+### Face Recognition & Enrollment
+```
+POST /face/enroll {"name": "ophir"}
+→ {"status": "ok", "name": "ophir", "face_embeddings": 3, "face_confidence": 0.87, "body_saved": true, "body_confidence": 0.92}
+
+GET /face/list
+→ {"status": "ok", "enrolled": {"ophir": {"face_embeddings": 5, "body_references": 5}}}
+
+GET /face/recognize
+→ {"status": "ok", "faces": [{"name": "ophir", "confidence": 0.89, "x": 200, "y": 150, "width": 80, "height": 100}], "persons": [{"cx": 400, "cy": 300, "width": 200, "height": 400, "confidence": 0.95}]}
+
+POST /face/remove {"name": "ophir"}
+→ {"status": "ok", "removed": "ophir"}
+```
+Enroll captures a live frame from Vector's camera, detects face (YuNet) + body (YOLO), stores face embedding and body reference crop. Call multiple times from different angles for better recognition (up to 5 embeddings per person).
 
 ## Trigger Word: "robot"
 
@@ -215,6 +231,12 @@ When the user's message starts with or contains the word **"robot"**, activate t
 ### Video Call
 - "robot call" or "robot call me" or "robot video call" → GET /call/join-url → extract join_url from JSON, send it to the user
 - "robot hangup" or "robot hang up" → POST /call/stop
+
+### Face Recognition
+- "robot who am I" or "robot who is this" → GET /face/recognize → report who's in view
+- "robot remember me" or "robot learn my face" → POST /face/enroll {"name": "ophir"} → enroll face + body from live camera
+- "robot who do you know" → GET /face/list → list enrolled people
+- "robot forget <name>" → POST /face/remove {"name": "<name>"} → remove enrollment
 
 ### Status & Diagnostics
 - "robot battery" → GET /health → report voltage and level
@@ -281,6 +303,7 @@ Do NOT ask the user what they mean. Do NOT explain the API. Just run curl and te
 - Status: "battery", "health", "status", "how are you"
 - Control: "stop", "freeze", "follow me", "stop following"
 - Calls: "call me", "hang up"
+- Face: "who am I", "who is this", "remember me", "learn my face", "who do you know", "forget <name>"
 
 ## Safety Rules
 - ALWAYS check /health first if you haven't recently
