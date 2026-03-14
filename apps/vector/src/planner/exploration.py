@@ -96,7 +96,7 @@ class ExploreConfig:
     min_prompt_interval_s: float = 30.0
 
     # Exploration step size (mm) — drive this far toward frontier
-    step_distance_mm: float = 300.0
+    step_distance_mm: float = 400.0
 
     # Maximum exploration time (seconds) before auto-stop
     max_explore_time_s: float = 1800.0  # 30 minutes
@@ -392,6 +392,11 @@ class AutonomousExplorer:
 
                 # Drive toward frontier
                 self._state = ExploreState.NAVIGATING_TO_FRONTIER
+                logger.info(
+                    "Driving toward frontier (%.0f, %.0f) from pose (%.0f, %.0f)",
+                    frontier[0], frontier[1],
+                    self._slam.get_pose().x, self._slam.get_pose().y,
+                )
                 self._drive_toward(frontier[0], frontier[1])
 
                 # Brief pause to let SLAM process
@@ -403,6 +408,23 @@ class AutonomousExplorer:
 
         self._running = False
         self._state = ExploreState.IDLE
+
+    def _mark_area_free(self) -> None:
+        """Mark a small area around the current robot position as FREE.
+
+        This supplements the SLAM mark_line_free with a radius around the
+        robot, ensuring frontiers advance as the robot moves.
+        """
+        from apps.vector.src.planner.visual_slam import CellState
+
+        grid = self._slam.get_grid()
+        pose = self._slam.get_pose()
+
+        # Mark 150mm radius around robot as free (robot is ~100mm wide)
+        for dx in range(-150, 151, 50):
+            for dy in range(-150, 151, 50):
+                if math.hypot(dx, dy) <= 150:
+                    grid.set_cell(int(pose.x + dx), int(pose.y + dy), CellState.FREE)
 
     def _seed_start_area(self) -> None:
         """Mark the area around the starting position as FREE.
@@ -599,6 +621,10 @@ class AutonomousExplorer:
         turn_angle = _normalise_angle(bearing - pose.theta)
         turn_deg = math.degrees(turn_angle)
 
+        logger.info(
+            "turn_then_drive: turn=%.1f° dist=%.0fmm bearing=%.1f°",
+            turn_deg, distance, math.degrees(bearing),
+        )
         try:
             self._motor.turn_then_drive(
                 angle_deg=turn_deg,
@@ -606,6 +632,7 @@ class AutonomousExplorer:
                 drive_speed_mmps=self._cfg.drive_speed_mmps,
                 turn_speed_dps=self._cfg.turn_speed_dps,
             )
+            logger.info("Drive command completed successfully")
             # Dead-reckoning: update SLAM pose with commanded movement
             # Visual SLAM only tracks rotation — we need to manually
             # update position so the map builds and frontiers advance.
@@ -613,6 +640,8 @@ class AutonomousExplorer:
                 delta_x=distance * math.cos(bearing),
                 delta_y=distance * math.sin(bearing),
             )
+            # Mark area around new position as free (robot clearance)
+            self._mark_area_free()
         except CliffSafetyError:
             logger.warning("Cliff detected during exploration — turning away")
             try:
