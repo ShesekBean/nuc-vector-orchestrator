@@ -149,12 +149,12 @@ class ConnectionManager:
         return self._livekit_bridge
 
     def request_override_control(self) -> None:
-        """Escalate to OVERRIDE_BEHAVIORS_PRIORITY.
+        """Temporarily escalate to OVERRIDE_BEHAVIORS_PRIORITY.
 
         Call this before commands that must interrupt Vector's internal
-        behaviors (e.g. explore, patrol, follow).  The robot keeps this
-        priority until ``release_override_control()`` is called or the
-        connection drops.
+        behaviors (e.g. explore, patrol, follow).  Always call
+        ``release_override_control()`` when done — Vector's firmware
+        defaults to Wait, so releasing returns to idle automatically.
         """
         if not self._connected or self._robot is None:
             return
@@ -168,59 +168,14 @@ class ConnectionManager:
             logger.warning("Failed to request override control", exc_info=True)
 
     def release_override_control(self) -> None:
-        """Release override priority back to default."""
+        """Release override priority — Vector returns to firmware Wait state."""
         if not self._connected or self._robot is None:
             return
         try:
             self._robot.conn.release_control()
-            from anki_vector.connection import ControlPriorityLevel
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.DEFAULT_PRIORITY,
-            )
-            logger.info("Released override control, back to default")
+            logger.info("Released override control — Vector returns to Wait")
         except Exception:
             logger.warning("Failed to release override control", exc_info=True)
-
-    @staticmethod
-    def _kill_stale_connections(serial: str) -> None:
-        """Force-close any orphaned TCP connections to Vector before connecting.
-
-        When the bridge crashes or is killed, orphaned gRPC connections hold
-        behavior control on Vector's side. This clears them by resetting
-        the TCP sockets via ss + kill.
-        """
-        import subprocess
-
-        try:
-            # Find Vector's IP from SDK config
-            import configparser
-            config = configparser.ConfigParser()
-            config.read(os.path.expanduser("~/.anki_vector/sdk_config.ini"))
-            vector_ip = config.get(serial, "ip", fallback="192.168.1.73")
-        except Exception:
-            vector_ip = "192.168.1.73"
-
-        try:
-            # Find stale connections to Vector:443 with no owning process
-            result = subprocess.run(
-                ["ss", "-tnp", f"dst {vector_ip}:443"],
-                capture_output=True, text=True, timeout=5,
-            )
-            stale_count = 0
-            for line in result.stdout.splitlines():
-                if "ESTAB" in line and "users:" not in line:
-                    # Orphaned connection — extract local port and reset it
-                    stale_count += 1
-            if stale_count > 0:
-                logger.warning(
-                    "Found %d stale connections to Vector — waiting 5s for TCP timeout",
-                    stale_count,
-                )
-                # Give Vector a moment to notice the dead connections
-                import time
-                time.sleep(5)
-        except Exception:
-            logger.debug("Stale connection check skipped", exc_info=True)
 
     def connect(self) -> None:
         """Connect to Vector and initialise all controllers."""
@@ -239,22 +194,14 @@ class ConnectionManager:
         from apps.vector.src.motor_controller import MotorController
         from apps.vector.src.voice.audio_client import AudioClient
 
-        # Clean up orphaned connections from previous bridge instances
-        self._kill_stale_connections(self._serial)
-
         logger.info("Connecting to Vector (serial=%s)...", self._serial)
         self._robot = anki_vector.Robot(
             serial=self._serial,
             default_logging=False,
-            behavior_control_level=None,  # connect without requesting control
+            behavior_control_level=None,  # no control — firmware defaults to Wait
             cache_animation_lists=False,
         )
         self._robot.connect()
-        # Request control separately (won't crash if it fails)
-        try:
-            self._robot.conn.request_control()
-        except Exception:
-            logger.warning("Could not get behavior control — will retry later")
 
         self._nuc_bus = NucEventBus()
         self._motor_controller = MotorController(self._robot, self._nuc_bus)
@@ -363,10 +310,7 @@ class ConnectionManager:
         self._auto_charger.explorer = self._explorer
 
         self._connected = True
-        logger.info("Connected to Vector successfully")
-
-        # Send quiet intent so Vector sits still by default (wake word still active)
-        self._send_quiet_intent()
+        logger.info("Connected to Vector successfully (firmware defaults to Wait)")
 
     def start_monitor(self) -> None:
         """Start the connection monitor — connects with retry in background."""
@@ -394,35 +338,65 @@ class ConnectionManager:
 
     @property
     def mode(self) -> str:
-        """Current behavior mode."""
+        """Current behavior mode (quiet/playful)."""
         return getattr(self, '_mode', 'quiet')
 
-    def set_mode(self, mode: str) -> None:
-        """Set behavior mode (quiet/playful)."""
+    @property
+    def playful_remaining(self) -> float:
+        """Seconds remaining in playful mode, or 0 if quiet."""
+        timer = getattr(self, '_playful_timer', None)
+        if timer is None or self.mode != 'playful':
+            return 0.0
+        import time
+        remaining = getattr(self, '_playful_end', 0) - time.monotonic()
+        return max(0.0, remaining)
+
+    def set_mode(self, mode: str, duration_s: float = 480.0) -> None:
+        """Set behavior mode.
+
+        quiet: Release any override control — Vector returns to firmware Wait.
+        playful: Request override control for *duration_s* seconds (default 8 min),
+                 then auto-revert to quiet.
+        """
+        import threading
+        import time
+
+        # Cancel any existing playful timer
+        old_timer = getattr(self, '_playful_timer', None)
+        if old_timer is not None:
+            old_timer.cancel()
+            self._playful_timer = None
+
         self._mode = mode
-        if mode == "quiet":
-            self._send_quiet_intent()
 
-    def _send_quiet_intent(self) -> None:
-        """Send imperative_quiet intent via wire-pod to keep Vector still."""
-        import urllib.request
-        import urllib.parse
+        if mode == 'quiet':
+            self.release_override_control()
+            logger.info("Mode → quiet (firmware Wait)")
+        elif mode == 'playful':
+            self.request_override_control()
+            self._playful_end = time.monotonic() + duration_s
 
-        try:
-            url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
-                "serial": self._serial,
-                "intent": "intent_imperative_quiet",
-            })
-            with urllib.request.urlopen(url, timeout=5) as resp:
-                resp.read()
-            logger.info("Sent quiet intent via wire-pod")
-        except Exception:
-            logger.warning("Failed to send quiet intent via wire-pod", exc_info=True)
+            def _auto_quiet():
+                logger.info("Playful mode expired (%.0fs) → quiet", duration_s)
+                self._mode = 'quiet'
+                self._playful_timer = None
+                self.release_override_control()
+
+            self._playful_timer = threading.Timer(duration_s, _auto_quiet)
+            self._playful_timer.daemon = True
+            self._playful_timer.start()
+            logger.info("Mode → playful (%.0fs timer)", duration_s)
 
     def disconnect(self) -> None:
         """Disconnect from Vector and stop all controllers."""
         if not self._connected:
             return
+
+        # Cancel playful timer if running
+        timer = getattr(self, '_playful_timer', None)
+        if timer is not None:
+            timer.cancel()
+            self._playful_timer = None
 
         logger.info("Disconnecting from Vector...")
         try:

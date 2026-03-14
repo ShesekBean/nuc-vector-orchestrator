@@ -673,22 +673,22 @@ def _restore_face_animation(robot: "Any") -> None:
 
     DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
     Playing an animation re-enables KeepFaceAlive and restores the eyes.
-    We release control briefly so vic-engine can process the animation,
-    then re-acquire OVERRIDE_BEHAVIORS to keep Vector in sit mode.
+    We temporarily request control, play an animation, then release — Vector
+    returns to firmware Wait state with normal eye animations.
     """
     from anki_vector.connection import ControlPriorityLevel
 
     try:
-        logger.info("Restoring face: releasing control + playing animation...")
-        robot.conn.release_control()
-        time.sleep(0.5)
-        robot.anim.play_animation("anim_neutral_eyes_01")
-        time.sleep(2.0)
+        logger.info("Restoring face: request control + play animation...")
         robot.conn.request_control(
             behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
         )
-        time.sleep(0.5)
-        logger.info("Face animation restored via control cycle")
+        time.sleep(0.3)
+        robot.anim.play_animation("anim_neutral_eyes_01")
+        time.sleep(2.0)
+        robot.conn.release_control()
+        time.sleep(0.3)
+        logger.info("Face animation restored, control released")
     except Exception:
         logger.exception("Could not restore face animation")
 
@@ -1593,11 +1593,18 @@ async def mode_get(request: web.Request) -> web.Response:
     err = _require_connected(conn)
     if err:
         return err
-    return web.json_response({"mode": conn.mode})
+    return web.json_response({
+        "mode": conn.mode,
+        "playful_remaining_s": round(conn.playful_remaining, 1),
+    })
 
 
 async def mode_set(request: web.Request) -> web.Response:
-    """POST /mode — set behavior mode. Body: {"mode": "quiet"|"playful"}."""
+    """POST /mode — set behavior mode.
+
+    Body: {"mode": "quiet"|"playful", "duration_s": 480}
+    Playful mode auto-reverts to quiet after duration_s (default 480 = 8 min, max 480).
+    """
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
@@ -1609,8 +1616,12 @@ async def mode_set(request: web.Request) -> web.Response:
     mode = body.get("mode")
     if mode not in ("quiet", "playful"):
         return _json_error(400, "mode must be 'quiet' or 'playful'", "BAD_REQUEST")
-    await _run_sync(conn.set_mode, mode)
-    return web.json_response({"mode": conn.mode})
+    duration_s = min(float(body.get("duration_s", 480)), 480.0)
+    await _run_sync(conn.set_mode, mode, duration_s)
+    return web.json_response({
+        "mode": conn.mode,
+        "playful_remaining_s": round(conn.playful_remaining, 1),
+    })
 
 
 # ---------------------------------------------------------------------------

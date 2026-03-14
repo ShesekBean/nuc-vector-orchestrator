@@ -18,7 +18,6 @@ Usage::
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -258,33 +257,14 @@ class FollowPipeline:
             logger.exception("Failed to request behavior control")
 
     def _release_control(self) -> None:
-        """Release SDK behavior control and re-send quiet intent."""
+        """Release SDK behavior control — Vector returns to firmware Wait."""
         if self._robot is None:
             return
         try:
             self._robot.conn.release_control()
-            logger.info("Behavior control released after follow pipeline")
+            logger.info("Behavior control released — Vector returns to Wait")
         except Exception:
             logger.exception("Failed to release behavior control")
-        # Re-send quiet intent so Vector sits still after follow
-        self._send_quiet_intent()
-
-    def _send_quiet_intent(self) -> None:
-        """Send imperative_quiet intent via wire-pod."""
-        import urllib.request
-        import urllib.parse
-
-        serial = os.environ.get("VECTOR_SERIAL", "0dd1cdcf")
-        try:
-            url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
-                "serial": serial,
-                "intent": "intent_imperative_quiet",
-            })
-            with urllib.request.urlopen(url, timeout=5) as resp:
-                resp.read()
-            logger.info("Sent quiet intent after follow stop")
-        except Exception:
-            logger.warning("Failed to send quiet intent", exc_info=True)
 
     def _boost_camera_exposure(self) -> None:
         """Ensure camera auto-exposure is enabled for best low-light performance.

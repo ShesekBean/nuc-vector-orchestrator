@@ -1,0 +1,10 @@
+{
+  "behaviorID": "HighLevelAI",
+  "behaviorClass": "HighLevelAI",
+  "initialState": "Waiting",
+  "states": [
+    {"name": "Waiting", "behavior": "Wait"}
+  ],
+  "stateTimerConditions": [],
+  "transitionDefinitions": []
+}
