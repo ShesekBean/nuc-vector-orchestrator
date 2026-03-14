@@ -960,221 +960,268 @@ async def call_status(request: web.Request) -> web.Response:
 
 
 async def media_status(request: web.Request) -> web.Response:
-    """GET /media/status -- all media channel statuses."""
+    """GET /media/status — status of all media channels."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
-
-    media = conn.media_service
-    if media is None:
-        return web.json_response({"started": False, "channels": {}})
-
-    return web.json_response(media.get_status())
+    ms = conn.media_service
+    if ms is None:
+        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
+    return web.json_response(ms.get_status())
 
 
-async def media_mic_start(request: web.Request) -> web.Response:
-    """POST /media/mic/start -- start mic audio channel."""
+async def media_channels(request: web.Request) -> web.Response:
+    """POST /media/channels — start/stop media channels on demand.
+
+    Body (JSON)::
+
+        {
+            "action": "start" | "stop",
+            "video_in": true,     // camera channel
+            "audio_in": true,     // mic channel
+            "audio_out": true,    // speaker channel
+            "video_out": true     // display channel
+        }
+
+    Omitted fields default to false.  Specify ``"action": "start"`` to
+    start or ``"action": "stop"`` to stop the listed channels.
+
+    Returns status of all channels after the operation.
+    """
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
-
-    media = conn.media_service
-    if media is None:
+    ms = conn.media_service
+    if ms is None:
         return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
 
-    if media.mic.is_running:
-        return web.json_response({
-            "status": "ok",
-            "message": "Mic channel already running",
-            **media.mic.get_status(),
-        })
+    body = await request.json()
+    action = body.get("action", "start")
 
-    try:
-        media.mic.start()
-        return web.json_response({
-            "status": "ok",
-            **media.mic.get_status(),
-        })
-    except Exception as exc:
-        logger.exception("Failed to start mic channel")
-        return _json_error(500, str(exc), "MIC_START_FAILED")
+    # Map user-facing names to internal channel names
+    channel_map = {
+        "video_in": "camera",
+        "audio_in": "mic",
+        "audio_out": "speaker",
+        "video_out": "display",
+    }
 
+    started = []
+    stopped = []
+    errors = []
 
-async def media_mic_stop(request: web.Request) -> web.Response:
-    """POST /media/mic/stop -- stop mic audio channel."""
-    conn: ConnectionManager = request.app["conn"]
-    err = _require_connected(conn)
-    if err:
-        return err
+    for key, channel_name in channel_map.items():
+        if not body.get(key, False):
+            continue
+        try:
+            if action == "start":
+                ms.start_channel(channel_name)
+                started.append(channel_name)
+            elif action == "stop":
+                ms.stop_channel(channel_name)
+                stopped.append(channel_name)
+            else:
+                errors.append(f"unknown action: {action}")
+        except (RuntimeError, ValueError) as exc:
+            errors.append(f"{channel_name}: {exc}")
 
-    media = conn.media_service
-    if media is None:
-        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
-
-    if not media.mic.is_running:
-        return web.json_response({
-            "status": "ok",
-            "message": "Mic channel not running",
-        })
-
-    try:
-        media.mic.stop()
-        return web.json_response({
-            "status": "ok",
-            "message": "Mic channel stopped",
-        })
-    except Exception as exc:
-        logger.exception("Failed to stop mic channel")
-        return _json_error(500, str(exc), "MIC_STOP_FAILED")
+    result = {
+        "started": started,
+        "stopped": stopped,
+    }
+    if errors:
+        result["errors"] = errors
+    result["status"] = ms.get_status()
+    return web.json_response(result)
 
 
-async def mode_get(request: web.Request) -> web.Response:
-    """GET /mode — get current behavior mode."""
-    conn: ConnectionManager = request.app["conn"]
-    err = _require_connected(conn)
-    if err:
-        return err
-    return web.json_response({"mode": conn.mode})
-
-
-async def mode_set(request: web.Request) -> web.Response:
-    """POST /mode — set behavior mode. Body: {"mode": "quiet"|"playful"}."""
-    conn: ConnectionManager = request.app["conn"]
-    err = _require_connected(conn)
-    if err:
-        return err
-
-    try:
-        body = await request.json()
-    except Exception:
-        return _json_error(400, "Invalid JSON body", "BAD_REQUEST")
-
-    mode = body.get("mode")
-    if mode not in ("quiet", "playful"):
-        return _json_error(400, "mode must be 'quiet' or 'playful'", "BAD_REQUEST")
-
-    try:
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, conn.set_mode, mode)
-        return web.json_response({"mode": conn.mode})
-    except Exception as exc:
-        logger.exception("Mode switch failed")
-        return _json_error(500, str(exc), "MODE_SWITCH_FAILED")
 
 
 # ---------------------------------------------------------------------------
 # Navigation routes
 # ---------------------------------------------------------------------------
 
+
 async def nav_status(request: web.Request) -> web.Response:
-    """GET /nav/status — navigation controller status."""
+    """GET /nav/status — navigation controller status (pose, map, waypoints)."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-    return web.json_response(nav.get_status() if hasattr(nav, 'get_status') else {"state": nav.state.value})
+        return web.json_response({"active": False, "message": "Navigation not initialised"})
+
+    try:
+        status_data = await _run_sync(nav.get_status)
+        return web.json_response(status_data)
+    except Exception as exc:
+        logger.exception("Nav status check failed")
+        return _json_error(500, str(exc), "NAV_STATUS_FAILED")
 
 
 async def nav_start(request: web.Request) -> web.Response:
-    """POST /nav/start — start navigation controller."""
+    """POST /nav/start — start navigation controller (SLAM + mapping).
+
+    Body (optional): {"map": "home"}
+    """
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
     try:
         body = await request.json()
     except Exception:
         body = {}
+
     map_name = body.get("map", "default")
-    await _run_sync(nav.start, map_name)
-    return web.json_response({"status": "ok", "map": map_name})
+
+    try:
+        await _run_sync(nav.start, map_name)
+        return web.json_response({"status": "ok", "map": map_name})
+    except Exception as exc:
+        logger.exception("Failed to start navigation")
+        return _json_error(500, str(exc), "NAV_START_FAILED")
 
 
 async def nav_stop(request: web.Request) -> web.Response:
-    """POST /nav/stop — stop navigation controller."""
+    """POST /nav/stop — stop navigation controller (saves map)."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-    await _run_sync(nav.stop)
-    return web.json_response({"status": "ok"})
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        await _run_sync(nav.stop)
+        return web.json_response({"status": "ok"})
+    except Exception as exc:
+        logger.exception("Failed to stop navigation")
+        return _json_error(500, str(exc), "NAV_STOP_FAILED")
 
 
 async def nav_goto(request: web.Request) -> web.Response:
-    """POST /nav/goto — navigate to a waypoint. Body: {"waypoint": "kitchen"}."""
+    """POST /nav/goto — navigate to a named waypoint.
+
+    Body: {"waypoint": "kitchen"} or {"x": 1500, "y": 2000}
+    """
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-    body = await request.json()
-    name = body.get("waypoint")
-    if not name:
-        return _json_error(400, "Missing 'waypoint' field", "MISSING_PARAMS")
-    ok = await _run_sync(nav.navigate_to_waypoint, name)
-    if not ok:
-        return _json_error(404, f"Waypoint '{name}' not found or nav busy", "NAV_FAILED")
-    return web.json_response({"status": "ok", "target": name})
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
+    waypoint_name = body.get("waypoint")
+    if waypoint_name:
+        started = await _run_sync(nav.navigate_to_waypoint, waypoint_name)
+        if not started:
+            return _json_error(400, f"Cannot navigate to '{waypoint_name}' — not found or already navigating", "NAV_FAILED")
+        return web.json_response({"status": "ok", "target": waypoint_name})
+
+    x = body.get("x")
+    y = body.get("y")
+    if x is not None and y is not None:
+        started = await _run_sync(nav.navigate_to_position, float(x), float(y))
+        if not started:
+            return _json_error(400, "Cannot navigate — already navigating", "NAV_FAILED")
+        return web.json_response({"status": "ok", "target": f"({x}, {y})"})
+
+    return _json_error(400, "Provide 'waypoint' name or 'x'/'y' coordinates", "MISSING_PARAMS")
 
 
 async def nav_cancel(request: web.Request) -> web.Response:
-    """POST /nav/cancel — cancel active navigation."""
+    """POST /nav/cancel — cancel current navigation."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-    await _run_sync(nav.cancel)
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    await _run_sync(nav.cancel_navigation)
     return web.json_response({"status": "ok"})
 
 
 async def nav_waypoint_save(request: web.Request) -> web.Response:
-    """POST /nav/waypoint/save — save current position as waypoint. Body: {"name": "kitchen"}."""
+    """POST /nav/waypoint/save — save current position as a named waypoint.
+
+    Body: {"name": "kitchen", "description": "By the fridge"}
+    """
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-    body = await request.json()
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
     name = body.get("name")
     if not name:
         return _json_error(400, "Missing 'name' field", "MISSING_PARAMS")
-    await _run_sync(nav.save_current_position, name)
-    return web.json_response({"status": "ok", "waypoint": name})
+
+    description = body.get("description", "")
+    saved = await _run_sync(nav.save_current_position, name, description)
+
+    if saved:
+        return web.json_response({"status": "ok", "waypoint": name})
+    return _json_error(500, "Failed to save waypoint", "SAVE_FAILED")
 
 
 async def nav_waypoint_delete(request: web.Request) -> web.Response:
-    """POST /nav/waypoint/delete — delete a waypoint. Body: {"name": "kitchen"}."""
+    """POST /nav/waypoint/delete — delete a named waypoint.
+
+    Body: {"name": "kitchen"}
+    """
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-    body = await request.json()
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
     name = body.get("name")
     if not name:
         return _json_error(400, "Missing 'name' field", "MISSING_PARAMS")
-    await _run_sync(nav.delete_waypoint, name)
-    return web.json_response({"status": "ok", "deleted": name})
+
+    # Access waypoint manager through nav controller's internal reference
+    deleted = await _run_sync(nav._waypoint_mgr.delete, name)
+    if deleted:
+        return web.json_response({"status": "ok", "deleted": name})
+    return _json_error(404, f"Waypoint '{name}' not found", "NOT_FOUND")
 
 
 async def nav_waypoints(request: web.Request) -> web.Response:
@@ -1183,148 +1230,307 @@ async def nav_waypoints(request: web.Request) -> web.Response:
     err = _require_connected(conn)
     if err:
         return err
+
     nav = conn.nav_controller
     if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-    import math
-    wps = nav._waypoint_mgr.list_waypoints()
-    return web.json_response({"waypoints": [
-        {"name": w.name, "x": round(w.x, 1), "y": round(w.y, 1),
-         "theta_deg": round(math.degrees(w.theta), 1), "description": w.description}
-        for w in wps
-    ]})
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    waypoints = await _run_sync(nav._waypoint_mgr.list_waypoints)
+    return web.json_response({
+        "waypoints": [
+            {
+                "name": wp.name,
+                "x": round(wp.x, 1),
+                "y": round(wp.y, 1),
+                "theta_deg": round(wp.theta * 57.2958, 1),
+                "description": wp.description,
+            }
+            for wp in waypoints
+        ],
+    })
 
 
-# ---------------------------------------------------------------------------
-# Exploration routes
-# ---------------------------------------------------------------------------
-
-async def explore_start(request: web.Request) -> web.Response:
-    """POST /explore/start — start autonomous exploration."""
+async def nav_maps(request: web.Request) -> web.Response:
+    """GET /nav/maps — list all saved maps."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    maps = await _run_sync(nav._map_store.list_maps)
+    return web.json_response({"maps": maps})
+
+
+async def nav_mapping_start(request: web.Request) -> web.Response:
+    """POST /nav/mapping/start — start passive mapping mode."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    await _run_sync(nav.start_mapping)
+    return web.json_response({"status": "ok", "state": "mapping"})
+
+
+async def nav_mapping_stop(request: web.Request) -> web.Response:
+    """POST /nav/mapping/stop — stop mapping mode and save map."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    await _run_sync(nav.stop_mapping)
+    return web.json_response({"status": "ok", "state": "idle"})
+
+
+async def explore_start(request: web.Request) -> web.Response:
+    """POST /explore/start — start autonomous room exploration."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
     explorer = conn.explorer
     if explorer is None:
         return _json_error(503, "Explorer not initialised", "EXPLORER_UNAVAILABLE")
-    await _run_sync(explorer.start)
-    return web.json_response({"status": "ok", "state": explorer.state.name.lower()})
+
+    # Start nav controller first if not running
+    nav = conn.nav_controller
+    if nav and nav.state.value == "idle":
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        map_name = body.get("map", "home")
+        await _run_sync(nav.start, map_name)
+
+    try:
+        await _run_sync(explorer.start)
+        return web.json_response({"status": "ok", "state": "exploring"})
+    except Exception as exc:
+        logger.exception("Failed to start exploration")
+        return _json_error(500, str(exc), "EXPLORE_START_FAILED")
 
 
 async def explore_stop(request: web.Request) -> web.Response:
-    """POST /explore/stop — stop exploration."""
+    """POST /explore/stop — stop autonomous exploration."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     explorer = conn.explorer
     if explorer is None:
         return _json_error(503, "Explorer not initialised", "EXPLORER_UNAVAILABLE")
-    await _run_sync(explorer.stop)
-    return web.json_response({"status": "ok", "state": explorer.state.name.lower()})
+
+    try:
+        await _run_sync(explorer.stop)
+        return web.json_response({"status": "ok", "state": "idle"})
+    except Exception as exc:
+        logger.exception("Failed to stop exploration")
+        return _json_error(500, str(exc), "EXPLORE_STOP_FAILED")
 
 
 async def explore_status(request: web.Request) -> web.Response:
-    """GET /explore/status — exploration status."""
+    """GET /explore/status — exploration diagnostics."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     explorer = conn.explorer
     if explorer is None:
-        return web.json_response({"state": "unavailable"})
-    return web.json_response(explorer.get_status())
-
-
-# ---------------------------------------------------------------------------
-# Charger waypoint save maneuver
-# ---------------------------------------------------------------------------
-
-async def charger_save(request: web.Request) -> web.Response:
-    """POST /charger/save — drive off charger, turn 180, save charger waypoint.
-
-    Must be called while Vector is ON the charger. Performs the full sequence:
-    1. Request override control
-    2. Drive off charger
-    3. Turn 180° to face the charger
-    4. Save current position as "charger" waypoint
-    5. Release override control
-    """
-    conn: ConnectionManager = request.app["conn"]
-    err = _require_connected(conn)
-    if err:
-        return err
-    nav = conn.nav_controller
-    if nav is None:
-        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
-
-    def _charger_maneuver():
-        import anki_vector
-        from anki_vector.connection import ControlPriorityLevel
-
-        robot = conn.robot
-
-        # Check if on charger
-        batt = robot.get_battery_state()
-        if not batt.is_on_charger_platform:
-            raise RuntimeError("Vector is not on the charger — place it on the charger first")
-
-        # Override control to move off charger
-        robot.conn.request_control(
-            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-        )
-
-        try:
-            import time
-            # Drive off charger
-            robot.behavior.drive_off_charger()
-            time.sleep(2.0)
-
-            # Turn 180° to face the charger
-            robot.behavior.turn_in_place(anki_vector.util.degrees(180))
-            time.sleep(2.0)
-
-            # Save waypoint
-            nav.save_current_position("charger")
-        finally:
-            # Release override control
-            robot.conn.release_control()
+        return web.json_response({"active": False})
 
     try:
-        await _run_sync(_charger_maneuver)
-        return web.json_response({"status": "ok", "waypoint": "charger"})
-    except RuntimeError as exc:
-        return _json_error(400, str(exc), "NOT_ON_CHARGER")
+        status_data = await _run_sync(explorer.get_status)
+        return web.json_response(status_data)
     except Exception as exc:
-        logger.exception("Charger save maneuver failed")
-        return _json_error(500, str(exc), "CHARGER_SAVE_FAILED")
+        logger.exception("Explore status check failed")
+        return _json_error(500, str(exc), "EXPLORE_STATUS_FAILED")
 
 
 async def charger_start(request: web.Request) -> web.Response:
-    """POST /charger/start — start auto-charger monitoring."""
+    """POST /charger/start — start battery monitoring + auto-charge."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     charger = conn.auto_charger
     if charger is None:
         return _json_error(503, "AutoCharger not initialised", "CHARGER_UNAVAILABLE")
-    await _run_sync(charger.start)
-    return web.json_response({"status": "ok"})
+
+    # Make sure nav controller is started
+    nav = conn.nav_controller
+    if nav and nav.state.value == "idle":
+        await _run_sync(nav.start, "home")
+
+    try:
+        await _run_sync(charger.start)
+        return web.json_response({"status": "ok", "monitoring": True})
+    except Exception as exc:
+        logger.exception("Failed to start auto-charger")
+        return _json_error(500, str(exc), "CHARGER_START_FAILED")
 
 
 async def charger_stop(request: web.Request) -> web.Response:
-    """POST /charger/stop — stop auto-charger monitoring."""
+    """POST /charger/stop — stop battery monitoring."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
+
     charger = conn.auto_charger
     if charger is None:
         return _json_error(503, "AutoCharger not initialised", "CHARGER_UNAVAILABLE")
-    await _run_sync(charger.stop)
-    return web.json_response({"status": "ok"})
+
+    try:
+        await _run_sync(charger.stop)
+        return web.json_response({"status": "ok", "monitoring": False})
+    except Exception as exc:
+        logger.exception("Failed to stop auto-charger")
+        return _json_error(500, str(exc), "CHARGER_STOP_FAILED")
+
+
+# ---------------------------------------------------------------------------
+# Patrol / Home Guardian routes
+# ---------------------------------------------------------------------------
+
+
+async def patrol_start(request: web.Request) -> web.Response:
+    """POST /patrol/start — start patrol. Body: {"mode": "patrol"|"sentry", "waypoints": [...]}."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
+
+    if guardian.is_running:
+        return web.json_response({
+            "status": "ok",
+            "message": "Guardian already running",
+            **guardian.get_status(),
+        })
+
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass  # defaults are fine
+
+    mode = body.get("mode", "patrol")
+    waypoints = body.get("waypoints")
+
+    try:
+        await _run_sync(guardian.start, mode, waypoints)
+        return web.json_response({"status": "ok", **guardian.get_status()})
+    except Exception as exc:
+        logger.exception("Failed to start patrol")
+        return _json_error(500, str(exc), "PATROL_START_FAILED")
+
+
+async def patrol_stop(request: web.Request) -> web.Response:
+    """POST /patrol/stop — stop patrol."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
+
+    try:
+        await _run_sync(guardian.stop)
+        return web.json_response({"status": "ok", "running": False})
+    except Exception as exc:
+        logger.exception("Failed to stop patrol")
+        return _json_error(500, str(exc), "PATROL_STOP_FAILED")
+
+
+async def patrol_status(request: web.Request) -> web.Response:
+    """GET /patrol/status — patrol status and recent events."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return web.json_response({"running": False, "message": "HomeGuardian not initialised"})
+
+    return web.json_response(guardian.get_status())
+
+
+async def patrol_log(request: web.Request) -> web.Response:
+    """GET /patrol/log — full activity log. Query: ?limit=50."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return web.json_response({"events": []})
+
+    limit = int(request.query.get("limit", "50"))
+    return web.json_response({"events": guardian.get_activity_log(limit)})
+
+
+async def patrol_pause(request: web.Request) -> web.Response:
+    """POST /patrol/pause — pause patrol."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
+
+    guardian.pause()
+    return web.json_response({"status": "ok", "paused": True})
+
+
+async def patrol_resume(request: web.Request) -> web.Response:
+    """POST /patrol/resume — resume patrol."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
+
+    guardian.resume()
+    return web.json_response({"status": "ok", "paused": False})
+
+
+async def mode_get(request: web.Request) -> web.Response:
+    """GET /mode — get current behavior mode (stub — mode manager not wired)."""
+    return web.json_response({"mode": "quiet", "message": "Mode manager not yet initialised"})
+
+
+async def mode_set(request: web.Request) -> web.Response:
+    """POST /mode — set behavior mode (stub)."""
+    return _json_error(503, "Mode manager not yet initialised", "MODE_UNAVAILABLE")
 
 
 def setup_routes(app: web.Application) -> None:
@@ -1351,8 +1557,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/call/join-url", call_join_url)
     app.router.add_get("/call/status", call_status)
     app.router.add_get("/media/status", media_status)
-    app.router.add_post("/media/mic/start", media_mic_start)
-    app.router.add_post("/media/mic/stop", media_mic_stop)
+    app.router.add_post("/media/channels", media_channels)
     app.router.add_get("/mode", mode_get)
     app.router.add_post("/mode", mode_set)
     # Navigation routes
@@ -1364,11 +1569,20 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/nav/waypoint/save", nav_waypoint_save)
     app.router.add_post("/nav/waypoint/delete", nav_waypoint_delete)
     app.router.add_get("/nav/waypoints", nav_waypoints)
+    app.router.add_get("/nav/maps", nav_maps)
+    app.router.add_post("/nav/mapping/start", nav_mapping_start)
+    app.router.add_post("/nav/mapping/stop", nav_mapping_stop)
     # Exploration routes
     app.router.add_post("/explore/start", explore_start)
     app.router.add_post("/explore/stop", explore_stop)
     app.router.add_get("/explore/status", explore_status)
-    # Charger routes
-    app.router.add_post("/charger/save", charger_save)
+    # Auto-charger routes
     app.router.add_post("/charger/start", charger_start)
     app.router.add_post("/charger/stop", charger_stop)
+    # Patrol / Home Guardian routes
+    app.router.add_post("/patrol/start", patrol_start)
+    app.router.add_post("/patrol/stop", patrol_stop)
+    app.router.add_get("/patrol/status", patrol_status)
+    app.router.add_get("/patrol/log", patrol_log)
+    app.router.add_post("/patrol/pause", patrol_pause)
+    app.router.add_post("/patrol/resume", patrol_resume)

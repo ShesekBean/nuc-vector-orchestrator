@@ -54,6 +54,8 @@ nuc-vector-orchestrator/
 │   │   ├── skills/
 │   │   │   ├── robot-control/
 │   │   │   │   └── SKILL.md       ← Signal → robot commands
+│   │   │   ├── companion/
+│   │   │   │   └── SKILL.md       ← Companion personality (presence signals → speech/expression/movement)
 │   │   │   ├── fitness/
 │   │   │   │   └── SKILL.md       ← Fitness tracking skill
 │   │   │   └── monarch-money/
@@ -95,6 +97,18 @@ nuc-vector-orchestrator/
 │       │   ├── led_controller.py   ← eye color + animated LED patterns (priority-based state manager)
 │       │   ├── lift_controller.py  ← forklift height control with named presets
 │       │   ├── motor_controller.py ← cliff-safe differential drive (turn-then-drive planner)
+│       │   ├── companion/           ← companion behavior system (presence → OpenClaw personality)
+│       │   │   ├── __init__.py      ← CompanionSystem lifecycle manager
+│       │   │   ├── presence_tracker.py ← state machine: detection events → arrival/departure/check-in
+│       │   │   ├── dispatcher.py    ← engagement-adaptive throttling + OpenClaw signal formatting
+│       │   │   └── openclaw_client.py ← WebSocket chat.send client (companion session)
+│       │   ├── media/               ← on-demand media channels (camera, mic, speaker, display)
+│       │   │   ├── channel.py       ← base MediaChannel with fan-out pub/sub
+│       │   │   ├── camera_channel.py ← CameraClient wrapper with subscriber fan-out
+│       │   │   ├── mic_channel.py   ← vector-streamer Opus → PCM channel
+│       │   │   ├── speaker_channel.py ← TTS + PCM output to Vector speaker
+│       │   │   ├── display_channel.py ← PIL image → Vector 160x80 OLED
+│       │   │   └── service.py       ← MediaService lifecycle manager
 │       │   ├── expression_engine.py ← coordinated face + LED + sound expressions (emotion states)
 │       │   ├── intercom.py        ← Signal messaging client (photo + text to Ophir via intercom-server)
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
@@ -154,6 +168,9 @@ nuc-vector-orchestrator/
 │   ├── dns/                       ← NUC dnsmasq
 │   └── safety-cop/                ← NUC safety_cop.py
 ├── docs/                          ← documentation
+│   ├── 00-project-overview.md    ← definitive system overview (start here)
+│   ├── ROADMAP.md                ← issue tracking and project milestones
+│   ├── RETROSPECTIVE.md          ← what worked, what didn't, lessons learned
 │   ├── vector/                    ← Vector-specific docs
 │   │   └── oskr-research.md      ← OSKR SDK research & feature portability
 │   ├── architecture/              ← architecture docs

@@ -18,6 +18,7 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -98,6 +99,15 @@ class FollowPipeline:
         if self._running:
             logger.warning("FollowPipeline already running")
             return
+
+        # Request behavior control — needed for motors and say_text
+        self._request_control()
+
+        # Set head to neutral position
+        try:
+            self._head.set_angle(10.0)
+        except Exception:
+            logger.warning("Failed to set head to neutral on follow start")
 
         # Boost camera exposure for low-light following
         self._boost_camera_exposure()
@@ -233,6 +243,48 @@ class FollowPipeline:
             sleep_time = period - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
+
+    def _request_control(self) -> None:
+        """Request SDK behavior control for motor/speech access."""
+        if self._robot is None:
+            return
+        try:
+            from anki_vector.connection import ControlPriorityLevel
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
+            logger.info("Behavior control acquired for follow pipeline")
+        except Exception:
+            logger.exception("Failed to request behavior control")
+
+    def _release_control(self) -> None:
+        """Release SDK behavior control and re-send quiet intent."""
+        if self._robot is None:
+            return
+        try:
+            self._robot.conn.release_control()
+            logger.info("Behavior control released after follow pipeline")
+        except Exception:
+            logger.exception("Failed to release behavior control")
+        # Re-send quiet intent so Vector sits still after follow
+        self._send_quiet_intent()
+
+    def _send_quiet_intent(self) -> None:
+        """Send imperative_quiet intent via wire-pod."""
+        import urllib.request
+        import urllib.parse
+
+        serial = os.environ.get("VECTOR_SERIAL", "0dd1cdcf")
+        try:
+            url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
+                "serial": serial,
+                "intent": "intent_imperative_quiet",
+            })
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                resp.read()
+            logger.info("Sent quiet intent after follow stop")
+        except Exception:
+            logger.warning("Failed to send quiet intent", exc_info=True)
 
     def _boost_camera_exposure(self) -> None:
         """Ensure camera auto-exposure is enabled for best low-light performance.

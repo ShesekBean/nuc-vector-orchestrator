@@ -35,6 +35,12 @@ USER_INTENT = "user_intent"
 MESSAGE_RELAYED = "message_relayed"
 OBSTACLE_DETECTED = "obstacle_detected"
 HEAD_ANGLE_COMMAND = "head_angle_command"
+IMU_UPDATE = "imu_update"
+NAV_STATE_CHANGED = "nav_state_changed"
+NAV_RESULT = "nav_result"
+WAYPOINT_SAVED = "waypoint_saved"
+PATROL_EVENT = "patrol_event"
+PRESENCE_CHANGED = "presence_changed"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -261,9 +267,77 @@ class HeadAngleCommandEvent:
 
 
 @dataclass(frozen=True)
+class ImuUpdateEvent:
+    """Emitted by ImuPoller with raw IMU sensor data from Vector SDK."""
+
+    accel_x: float  # G
+    accel_y: float  # G
+    accel_z: float  # G
+    gyro_x: float  # deg/s
+    gyro_y: float  # deg/s
+    gyro_z: float  # deg/s
+
+
+@dataclass(frozen=True)
+class NavStateChangedEvent:
+    """Emitted by NavController when navigation state changes."""
+
+    state: str  # "idle", "planning", "navigating", "arrived", "blocked", "mapping"
+    previous_state: str | None = None
+    target_waypoint: str | None = None
+
+
+@dataclass(frozen=True)
+class NavResultEvent:
+    """Emitted by NavController when navigation completes or fails."""
+
+    success: bool
+    message: str
+    target_name: str = ""
+    final_x: float = 0.0
+    final_y: float = 0.0
+    final_theta: float = 0.0
+
+
+@dataclass(frozen=True)
+class WaypointSavedEvent:
+    """Emitted when a waypoint is saved."""
+
+    name: str
+    x: float
+    y: float
+    theta: float
+    is_update: bool = False
+
+
+@dataclass(frozen=True)
 class MessageRelayedEvent:
     """Emitted when a voice message is relayed to Ophir via Signal."""
 
     original_text: str  # full STT transcription
     extracted_message: str  # message body sent to Ophir
     success: bool  # whether Intercom delivery succeeded
+
+
+@dataclass(frozen=True)
+class PatrolEventPayload:
+    """Emitted by HomeGuardian during patrol for activity tracking."""
+
+    event_type: str  # "patrol_start", "waypoint_arrived", "person_detected", etc.
+    waypoint: str = ""
+    details: str = ""
+    person_name: str = ""
+
+
+@dataclass(frozen=True)
+class PresenceChangedEvent:
+    """Emitted by PresenceTracker when someone arrives, departs, or triggers a check-in."""
+
+    signal: str  # "arrival", "departure", "still_present", "touch", "goodnight"
+    person_name: str  # "ophir", "smadara", "unknown"
+    is_present: bool
+    first_today: bool = False
+    away_duration_s: float = 0.0
+    session_duration_s: float = 0.0
+    engagement_score: float = 0.0
+    interactions_today: int = 0
