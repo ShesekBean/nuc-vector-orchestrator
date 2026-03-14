@@ -101,6 +101,12 @@ class ExploreConfig:
     # Maximum exploration time (seconds) before auto-stop
     max_explore_time_s: float = 1800.0  # 30 minutes
 
+    # Auto-save map every N seconds during exploration
+    auto_save_interval_s: float = 60.0
+
+    # Map name for persistence
+    map_name: str = "exploration"
+
 
 class AutonomousExplorer:
     """Autonomous frontier-based exploration with Signal room naming.
@@ -129,6 +135,8 @@ class AutonomousExplorer:
         nav_controller: NavController,
         intercom: Intercom,
         robot: Any = None,
+        imu_poller: Any = None,
+        imu_fusion: Any = None,
         config: ExploreConfig | None = None,
     ) -> None:
         self._slam = slam
@@ -139,6 +147,8 @@ class AutonomousExplorer:
         self._nav = nav_controller
         self._intercom = intercom
         self._robot = robot
+        self._imu_poller = imu_poller
+        self._imu_fusion = imu_fusion
         self._cfg = config or ExploreConfig()
 
         self._state = ExploreState.IDLE
@@ -146,11 +156,15 @@ class AutonomousExplorer:
         self._explore_thread: threading.Thread | None = None
         self._slam_thread: threading.Thread | None = None
 
+        # Obstacle detector — lazy init
+        self._obstacle_detector: Any | None = None
+
         # Track distance since last room prompt
         self._last_room_x: float = 0.0
         self._last_room_y: float = 0.0
         self._last_prompt_time: float = 0.0
         self._rooms_discovered: int = 0
+        self._last_save_time: float = 0.0
 
     def _say(self, text: str) -> None:
         """Have Vector say something via built-in TTS (non-blocking)."""
@@ -236,8 +250,41 @@ class AutonomousExplorer:
         # Drive off charger if needed
         self._drive_off_charger()
 
+        # Start IMU poller + fusion for better heading estimation
+        if self._imu_poller is not None:
+            try:
+                self._imu_poller.start()
+                logger.info("IMU poller started for exploration")
+            except Exception:
+                logger.warning("Failed to start IMU poller", exc_info=True)
+        if self._imu_fusion is not None:
+            try:
+                self._imu_fusion.start()
+                logger.info("IMU fusion started for exploration")
+            except Exception:
+                logger.warning("Failed to start IMU fusion", exc_info=True)
+
+        # Start obstacle detector
+        try:
+            from apps.vector.src.planner.obstacle_detector import ObstacleDetector
+            self._obstacle_detector = ObstacleDetector(self._motor, self._bus)
+            self._obstacle_detector.start()
+            logger.info("ObstacleDetector started for exploration")
+        except Exception:
+            logger.warning("Failed to start ObstacleDetector", exc_info=True)
+
         # Start SLAM if not already running
         self._slam.start()
+
+        # Load existing map if available
+        try:
+            if self._nav._map_store.exists(self._cfg.map_name):
+                self._nav._load_map(self._cfg.map_name)
+                logger.info("Loaded existing map '%s'", self._cfg.map_name)
+            else:
+                logger.info("No existing map to load — starting fresh")
+        except Exception:
+            logger.info("Failed to load map — starting fresh", exc_info=True)
 
         # Start SLAM frame processing thread
         self._slam_thread = threading.Thread(
@@ -255,6 +302,14 @@ class AutonomousExplorer:
         pose = self._slam.get_pose()
         self._last_room_x = pose.x
         self._last_room_y = pose.y
+        self._last_save_time = time.monotonic()
+
+        # Check intercom health
+        if not self._intercom.health_check():
+            logger.warning(
+                "Intercom server not reachable — room naming via Signal will not work. "
+                "Start it with: python3 scripts/intercom-server.py"
+            )
 
         self._intercom.send_text(
             "Starting autonomous exploration! "
@@ -283,6 +338,17 @@ class AutonomousExplorer:
         if self._slam_thread:
             self._slam_thread.join(timeout=5.0)
             self._slam_thread = None
+
+        # Stop obstacle detector
+        if self._obstacle_detector:
+            self._obstacle_detector.stop()
+            self._obstacle_detector = None
+
+        # Stop IMU
+        if self._imu_fusion is not None:
+            self._imu_fusion.stop()
+        if self._imu_poller is not None:
+            self._imu_poller.stop()
 
         # Save map
         self._nav._save_map()
@@ -370,6 +436,21 @@ class AutonomousExplorer:
             try:
                 self._state = ExploreState.EXPLORING
 
+                # Sync SLAM pose with IMU-fused pose for better accuracy
+                self._sync_pose_from_imu()
+
+                # Auto-save map periodically
+                now = time.monotonic()
+                if now - self._last_save_time > self._cfg.auto_save_interval_s:
+                    self._auto_save_map()
+                    self._last_save_time = now
+
+                # Check obstacle detector for stuck condition
+                if self._obstacle_detector and self._obstacle_detector.check_stuck():
+                    logger.info("Obstacle detector triggered escape maneuver")
+                    time.sleep(1.0)
+                    continue
+
                 # Check if we've moved enough to potentially be in a new room
                 self._check_room_transition()
 
@@ -390,6 +471,20 @@ class AutonomousExplorer:
 
                 no_frontier_count = 0
 
+                # Check obstacle zone before driving
+                if self._obstacle_detector:
+                    zone = self._obstacle_detector.zone
+                    if zone == "danger":
+                        logger.info("Obstacle in danger zone — skipping frontier, turning")
+                        try:
+                            self._motor.turn_in_place(
+                                90.0, speed_dps=self._cfg.turn_speed_dps
+                            )
+                        except Exception:
+                            pass
+                        time.sleep(0.5)
+                        continue
+
                 # Drive toward frontier
                 self._state = ExploreState.NAVIGATING_TO_FRONTIER
                 logger.info(
@@ -408,6 +503,36 @@ class AutonomousExplorer:
 
         self._running = False
         self._state = ExploreState.IDLE
+
+    def _sync_pose_from_imu(self) -> None:
+        """Sync SLAM pose with IMU-fused heading for drift correction.
+
+        IMU fusion uses gyro (50Hz) + visual odometry complementary filter
+        for heading, which is much more accurate than pure dead reckoning.
+        """
+        if self._imu_fusion is None:
+            return
+        try:
+            fused = self._imu_fusion.get_fused_pose()
+            slam_pose = self._slam.get_pose()
+            # Correct SLAM heading with IMU-fused heading
+            heading_error = fused.theta - slam_pose.theta
+            if abs(heading_error) > 0.01:  # ~0.5°
+                self._slam.update_pose_dead_reckoning(delta_theta=heading_error)
+        except Exception:
+            logger.debug("IMU pose sync failed", exc_info=True)
+
+    def _auto_save_map(self) -> None:
+        """Save the current map to disk periodically."""
+        try:
+            self._nav._save_map()
+            grid = self._slam.get_grid()
+            logger.info(
+                "Auto-saved map: %d free cells, %d occupied",
+                grid.free_cell_count, grid.occupied_cell_count,
+            )
+        except Exception:
+            logger.warning("Auto-save map failed", exc_info=True)
 
     def _mark_area_free(self) -> None:
         """Mark a small area around the current robot position as FREE.
@@ -616,6 +741,16 @@ class AutonomousExplorer:
         # Limit step distance
         distance = min(distance, self._cfg.step_distance_mm)
 
+        # Apply obstacle detector speed scaling
+        if self._obstacle_detector:
+            scale = self._obstacle_detector.speed_scale
+            if scale <= 0.0:
+                logger.info("Obstacle detector says full stop — skipping drive")
+                return
+            if scale < 1.0:
+                distance *= scale
+                logger.info("Obstacle speed scale %.2f → distance %.0fmm", scale, distance)
+
         # Compute bearing
         bearing = math.atan2(dy, dx)
         turn_angle = _normalise_angle(bearing - pose.theta)
@@ -642,6 +777,9 @@ class AutonomousExplorer:
             )
             # Mark area around new position as free (robot clearance)
             self._mark_area_free()
+            # Reset stuck detection on successful movement
+            if self._obstacle_detector:
+                self._obstacle_detector.reset_stuck()
         except CliffSafetyError:
             logger.warning("Cliff detected during exploration — turning away")
             try:

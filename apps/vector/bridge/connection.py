@@ -282,6 +282,8 @@ class ConnectionManager:
             nav_controller=self._nav_controller,
             intercom=self._intercom,
             robot=self._robot,
+            imu_poller=self._imu_poller,
+            imu_fusion=self._imu_fusion,
         )
 
         # Home Guardian (patrol & security system)

@@ -134,6 +134,9 @@ class NavController:
         self._active_map_name: str = "default"
         self._last_save_time: float = 0.0
 
+        # Obstacle detector — lazy init on start()
+        self._obstacle_detector: Any | None = None
+
     # -- Properties ----------------------------------------------------------
 
     @property
@@ -187,6 +190,15 @@ class NavController:
         # Start SLAM
         self._slam.start()
 
+        # Start obstacle detector
+        try:
+            from apps.vector.src.planner.obstacle_detector import ObstacleDetector
+            self._obstacle_detector = ObstacleDetector(self._motor, self._bus)
+            self._obstacle_detector.start()
+            logger.info("ObstacleDetector started for navigation")
+        except Exception:
+            logger.warning("Failed to start ObstacleDetector", exc_info=True)
+
         # Try to load existing map
         if self._map_store.exists(map_name):
             self._load_map(map_name)
@@ -211,6 +223,11 @@ class NavController:
             self._motor.drive_wheels(0, 0)
         except Exception:
             pass
+
+        # Stop obstacle detector
+        if self._obstacle_detector:
+            self._obstacle_detector.stop()
+            self._obstacle_detector = None
 
         # Save map before stopping
         self._save_map()
@@ -393,6 +410,18 @@ class NavController:
             if distance < self._cfg.arrival_tolerance_mm:
                 continue  # Already close enough to this waypoint
 
+            # Check obstacle detector — if stuck, try escape
+            if self._obstacle_detector:
+                if self._obstacle_detector.check_stuck():
+                    logger.info("Stuck during navigation — escape triggered")
+                    return False  # trigger replan
+                scale = self._obstacle_detector.speed_scale
+                if scale <= 0.0:
+                    logger.warning("Obstacle in danger zone at segment %d — replanning", i)
+                    return False
+                if scale < 1.0:
+                    distance *= scale
+
             target_bearing = math.atan2(dy, dx)
             turn_angle = _normalise_angle(target_bearing - pose.theta)
             turn_angle_deg = math.degrees(turn_angle)
@@ -409,6 +438,9 @@ class NavController:
                     drive_speed_mmps=self._cfg.drive_speed_mmps,
                     turn_speed_dps=self._cfg.turn_speed_dps,
                 )
+                # Reset stuck detection on successful movement
+                if self._obstacle_detector:
+                    self._obstacle_detector.reset_stuck()
             except CliffSafetyError:
                 logger.warning("Navigation blocked by cliff at segment %d", i)
                 return False

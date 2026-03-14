@@ -451,6 +451,15 @@ class FollowPlanner:
             turn_speed = cfg.kp_turn * error_x * (cfg.max_turn_speed / (fw / 2.0))
             turn_speed = max(-cfg.max_turn_speed, min(cfg.max_turn_speed, turn_speed))
 
+        # Apply obstacle detector speed scaling
+        if self._obstacle is not None:
+            scale = self._obstacle.speed_scale
+            if scale <= 0.0:
+                drive_speed = 0.0
+                turn_speed = 0.0
+            elif scale < 1.0:
+                drive_speed *= scale
+
         left = drive_speed + turn_speed
         right = drive_speed - turn_speed
         left = max(-cfg.max_wheel_speed, min(cfg.max_wheel_speed, left))
