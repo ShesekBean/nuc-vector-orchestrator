@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import logging
 import os
-import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -33,10 +32,6 @@ class ConnectionManager:
         self._serial = serial
         self._robot: Any | None = None
         self._connected = False
-        self._mode: str = "quiet"  # "quiet" or "playful"
-        # Connection monitor — auto-reconnects when Vector reboots or connection drops
-        self._monitor_thread: threading.Thread | None = None
-        self._monitor_stop = threading.Event()
 
         # Controllers — created on connect
         self._motor_controller: Any | None = None
@@ -47,7 +42,6 @@ class ConnectionManager:
         self._camera_client: Any | None = None
         self._audio_client: Any | None = None
         self._livekit_bridge: Any | None = None
-        self._media_service: Any | None = None
         self._nuc_bus: Any | None = None
         self._follow_pipeline: Any | None = None
 
@@ -104,11 +98,6 @@ class ConnectionManager:
         return self._audio_client
 
     @property
-    def media_service(self) -> Any:
-        """MediaService instance, or None if not initialised."""
-        return self._media_service
-
-    @property
     def follow_pipeline(self) -> Any:
         """FollowPipeline instance, or None if not initialised."""
         return self._follow_pipeline
@@ -132,18 +121,11 @@ class ConnectionManager:
         from apps.vector.src.led_controller import LedController
         from apps.vector.src.livekit_bridge import LiveKitBridge
         from apps.vector.src.lift_controller import LiftController
-        from apps.vector.src.media.service import MediaService
         from apps.vector.src.motor_controller import MotorController
         from apps.vector.src.voice.audio_client import AudioClient
 
-        from anki_vector.connection import ControlPriorityLevel
-
-        logger.info("Connecting to Vector (serial=%s) with OVERRIDE_BEHAVIORS...", self._serial)
-        self._robot = anki_vector.Robot(
-            serial=self._serial,
-            default_logging=False,
-            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-        )
+        logger.info("Connecting to Vector (serial=%s)...", self._serial)
+        self._robot = anki_vector.Robot(serial=self._serial, default_logging=False)
         self._robot.connect()
 
         self._nuc_bus = NucEventBus()
@@ -161,21 +143,15 @@ class ConnectionManager:
         self._camera_client = CameraClient(self._robot)
         self._camera_client.start()
         self._audio_client = AudioClient(self._robot)
-        # NOTE: AudioFeed NOT started -- SDK only provides signal_power
+        # NOTE: AudioFeed NOT started — SDK only provides signal_power
         # (980Hz calibration tone), not real mic PCM.  The stall-reconnect
         # loop starves the camera feed of SDK event-loop time.
         # self._audio_client.start()
-
-        # Start MediaService (vector-streamer mic channel)
-        self._media_service = MediaService()
-        self._media_service.start()
-
         self._livekit_bridge = LiveKitBridge(
             camera_client=self._camera_client,
             audio_client=self._audio_client,
             robot=self._robot,
             event_bus=self._nuc_bus,
-            media_service=self._media_service,
         )
 
         from apps.vector.bridge.follow_pipeline import FollowPipeline
@@ -187,26 +163,15 @@ class ConnectionManager:
             nuc_bus=self._nuc_bus,
             robot=self._robot,
         )
-        self._follow_pipeline._conn_manager = self
 
         self._connected = True
         logger.info("Connected to Vector successfully")
 
-        # Release SDK behavior control so Vector's native behavior tree runs.
-        # This enables wake word detection and voice commands.
-        # For "quiet" mode, we then send the imperative_quiet intent which
-        # activates the built-in QuietMode behavior (sits still, wake word works).
-        logger.info("Releasing SDK behavior control")
-        self._robot.conn.release_control()
+        # Send quiet intent so Vector sits still by default (wake word still active)
+        self._send_quiet_intent()
 
-        if self._mode == "quiet":
-            self._activate_quiet_mode()
-
-    def _send_quiet_intent(self) -> bool:
-        """Send imperative_quiet intent via wire-pod's cloud_intent API.
-
-        Returns True on success, False on failure.
-        """
+    def _send_quiet_intent(self) -> None:
+        """Send imperative_quiet intent via wire-pod to keep Vector still."""
         import urllib.request
         import urllib.parse
 
@@ -217,131 +182,9 @@ class ConnectionManager:
             })
             with urllib.request.urlopen(url, timeout=5) as resp:
                 resp.read()
-            return True
+            logger.info("Sent quiet intent via wire-pod")
         except Exception:
-            logger.exception("Failed to send QuietMode intent via wire-pod")
-            return False
-
-    def _activate_quiet_mode(self) -> None:
-        """Activate Vector's built-in QuietMode and start keepalive.
-
-        QuietMode makes Vector sit still with head down, but keeps the
-        TriggerWordDetected behavior active so wake word detection works.
-        Voice interactions deactivate the imperative_quiet intent, so a
-        keepalive thread re-sends it every 15 seconds.
-        """
-        import time
-
-        # Small delay to let the behavior tree stabilize after release
-        time.sleep(2)
-        if self._send_quiet_intent():
-            logger.info("Activated built-in QuietMode via wire-pod")
-        self._start_quiet_keepalive()
-
-    def _start_quiet_keepalive(self) -> None:
-        """Start background thread that re-sends quiet intent every 15s."""
-        self._stop_quiet_keepalive()
-        self._quiet_keepalive_stop = threading.Event()
-        self._quiet_keepalive_thread = threading.Thread(
-            target=self._quiet_keepalive_loop,
-            daemon=True,
-            name="quiet-keepalive",
-        )
-        self._quiet_keepalive_thread.start()
-
-    def _stop_quiet_keepalive(self) -> None:
-        """Stop the quiet keepalive thread if running."""
-        stop_evt = getattr(self, "_quiet_keepalive_stop", None)
-        if stop_evt:
-            stop_evt.set()
-        thread = getattr(self, "_quiet_keepalive_thread", None)
-        if thread and thread.is_alive():
-            thread.join(timeout=3)
-        self._quiet_keepalive_thread = None
-        self._quiet_keepalive_stop = None
-
-    def _quiet_keepalive_loop(self) -> None:
-        """Re-send quiet intent every 15s while in quiet mode."""
-        while not self._quiet_keepalive_stop.is_set():
-            self._quiet_keepalive_stop.wait(15)
-            if self._quiet_keepalive_stop.is_set():
-                break
-            if self._mode == "quiet" and self._connected:
-                self._send_quiet_intent()
-
-    def start_monitor(self) -> None:
-        """Start the connection monitor thread.
-
-        Monitors the connection to Vector and auto-reconnects on failure.
-        connect() requests OVERRIDE_BEHAVIORS then releases control if in
-        playful mode (default), so wake word detection works after reconnect.
-        """
-        if self._monitor_thread and self._monitor_thread.is_alive():
-            return
-        self._monitor_stop.clear()
-        self._monitor_thread = threading.Thread(
-            target=self._connection_monitor,
-            daemon=True,
-            name="connection-monitor",
-        )
-        self._monitor_thread.start()
-        logger.info("Connection monitor started")
-
-    def stop_monitor(self) -> None:
-        """Stop the connection monitor thread."""
-        self._monitor_stop.set()
-        if self._monitor_thread and self._monitor_thread.is_alive():
-            self._monitor_thread.join(timeout=5)
-        self._monitor_thread = None
-
-    def _connection_monitor(self) -> None:
-        """Background thread: ensure Vector connection stays alive.
-
-        - If not connected, attempts to connect (with backoff)
-        - If connected, checks health every 10s via battery state query
-        - On failure, disconnects cleanly and reconnects
-        - Reconnecting always requests OVERRIDE_BEHAVIORS → auto sit mode
-        """
-        backoff = 5
-        while not self._monitor_stop.is_set():
-            try:
-                if not self._connected:
-                    logger.info("Connection monitor: attempting to connect to Vector...")
-                    try:
-                        self.connect()
-                        backoff = 5  # reset on success
-                        logger.info("Connection monitor: connected successfully")
-                    except Exception:
-                        logger.warning(
-                            "Connection monitor: connect failed, retrying in %ds...",
-                            backoff,
-                        )
-                        self._monitor_stop.wait(backoff)
-                        backoff = min(backoff * 2, 60)  # exponential backoff, max 60s
-                        continue
-
-                # Health check — lightweight gRPC call
-                try:
-                    self._robot.get_battery_state()
-                except Exception:
-                    logger.warning("Connection monitor: health check failed — reconnecting")
-                    try:
-                        self.disconnect()
-                    except Exception:
-                        logger.exception("Connection monitor: disconnect error during reconnect")
-                        # Force-clear state so connect() can proceed
-                        self._connected = False
-                        self._robot = None
-                    backoff = 5
-                    self._monitor_stop.wait(3)  # brief pause before reconnect
-                    continue
-
-                # All good — wait before next check
-                self._monitor_stop.wait(10)
-
-            except Exception:
-                logger.exception("Connection monitor: unexpected error")
-                self._monitor_stop.wait(10)
+            logger.warning("Failed to send quiet intent via wire-pod", exc_info=True)
 
     def disconnect(self) -> None:
         """Disconnect from Vector and stop all controllers."""
@@ -349,9 +192,6 @@ class ConnectionManager:
             return
 
         logger.info("Disconnecting from Vector...")
-
-        self._stop_quiet_keepalive()
-
         try:
             if self._follow_pipeline:
                 self._follow_pipeline.stop()
@@ -367,8 +207,6 @@ class ConnectionManager:
                 self._camera_client.stop()
             if self._audio_client:
                 self._audio_client.stop()
-            if self._media_service:
-                self._media_service.stop()
         except Exception:
             logger.exception("Error stopping controllers")
 
@@ -388,60 +226,15 @@ class ConnectionManager:
         self._camera_client = None
         self._audio_client = None
         self._livekit_bridge = None
-        self._media_service = None
         self._follow_pipeline = None
         self._nuc_bus = None
         logger.info("Disconnected from Vector")
 
-    @property
-    def mode(self) -> str:
-        """Current behavior mode: 'quiet' or 'playful'."""
-        return self._mode
-
-    def set_mode(self, mode: str) -> None:
-        """Switch between 'quiet' (still) and 'playful' (autonomous behaviors).
-
-        Both modes release SDK behavior control so the native behavior tree
-        runs (enabling wake word detection and voice commands).
-
-        In quiet mode, the imperative_quiet intent activates Vector's built-in
-        QuietMode behavior — Vector sits still with head down but responds to
-        wake word. In playful mode, the normal behavior tree runs (exploring,
-        looking around, reacting).
-        """
-        if mode not in ("quiet", "playful"):
-            raise ValueError(f"Unknown mode: {mode!r} (expected 'quiet' or 'playful')")
-        if not self._connected or self._robot is None:
-            raise ConnectionError("Not connected to Vector")
-
-        # Ensure control is released so behavior tree runs
-        try:
-            self._robot.conn.release_control()
-        except Exception:
-            pass  # may already be released
-
-        if mode == "quiet":
-            logger.info("Switching to quiet mode (built-in QuietMode behavior)")
-            self._activate_quiet_mode()
-        else:
-            logger.info("Switching to playful mode (normal behavior tree)")
-            self._stop_quiet_keepalive()
-
-        self._mode = mode
-
-    @staticmethod
-    def _voltage_to_percent(volts: float) -> int:
-        """Estimate battery percentage from LiPo voltage (3.4V–4.2V)."""
-        pct = (volts - 3.4) / (4.2 - 3.4) * 100
-        return max(0, min(100, int(round(pct))))
-
     def get_battery_state(self) -> dict:
         """Read battery state and return as dict."""
         batt = self.robot.get_battery_state()
-        volts = round(batt.battery_volts, 2)
         return {
-            "voltage": volts,
-            "percent": self._voltage_to_percent(volts),
+            "voltage": round(batt.battery_volts, 2),
             "level": batt.battery_level,
             "is_charging": batt.is_charging,
             "is_on_charger": batt.is_on_charger_platform,

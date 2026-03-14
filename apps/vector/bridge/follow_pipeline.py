@@ -1,13 +1,11 @@
-"""Follow pipeline — wires YOLO detection → FollowPlanner (no Kalman).
+"""Follow pipeline — wires YOLO detection → Kalman tracking → FollowPlanner.
 
 Runs a detection loop thread that:
 1. Grabs frames from CameraClient
 2. Runs YOLO person detection
-3. Picks the best detection and emits TrackedPersonEvent directly
-4. FollowPlanner subscribes and drives motors
-
-Simplified from the original Kalman-based pipeline. YOLO at ~15-20fps
-on NUC OpenVINO is fast enough — no need for Kalman smoothing.
+3. Feeds detections into KalmanTracker
+4. Emits TrackedPersonEvent on the NucEventBus
+5. FollowPlanner subscribes and drives motors
 
 Usage::
 
@@ -24,9 +22,11 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any
 
+from apps.vector.src.detector.kalman_tracker import KalmanTracker
 from apps.vector.src.detector.person_detector import PersonDetector
 from apps.vector.src.events.event_types import TRACKED_PERSON, TrackedPersonEvent
 from apps.vector.src.planner.follow_planner import FollowPlanner
+from apps.vector.src.planner.obstacle_detector import ObstacleDetector
 
 if TYPE_CHECKING:
     from apps.vector.src.camera.camera_client import CameraClient
@@ -37,18 +37,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Detection loop rate — YOLO11n runs at ~20fps on NUC with OpenVINO
+# Run as fast as possible; actual rate limited by inference time (~47ms)
 DETECTION_HZ = 20.0
-
-# Track ID counter — simple incrementing ID for each new detection
-_next_track_id = 0
 
 
 class FollowPipeline:
     """End-to-end person following pipeline.
 
-    Owns the PersonDetector and FollowPlanner instances.
-    Runs a detection loop that bridges camera frames → YOLO → planner.
-    No Kalman tracker — YOLO detections are passed directly to the planner.
+    Owns the PersonDetector, KalmanTracker, and FollowPlanner instances.
+    Runs a detection loop that bridges camera frames → YOLO → Kalman → planner.
     """
 
     def __init__(
@@ -66,6 +63,8 @@ class FollowPipeline:
         self._robot = robot
 
         self._detector = PersonDetector(event_bus=nuc_bus)
+        self._tracker = KalmanTracker()
+        self._obstacle = ObstacleDetector(motor_controller, nuc_bus)
 
         # Build say_func for voice feedback if robot is available
         say_func = None
@@ -77,20 +76,14 @@ class FollowPipeline:
                     logger.warning("say_text failed: %s", text)
             say_func = _say
 
-        self._conn_manager = None  # set externally if available
-
         self._planner = FollowPlanner(
             motor_controller, head_controller, nuc_bus,
+            obstacle_detector=self._obstacle,
             say_func=say_func,
         )
 
         self._running = False
         self._thread: threading.Thread | None = None
-
-        # Simple track ID — keeps same ID while continuously detecting,
-        # increments when detection gap > 5 frames
-        self._current_track_id = 0
-        self._frames_without_detection = 0
 
     @property
     def is_active(self) -> bool:
@@ -101,19 +94,10 @@ class FollowPipeline:
         return self._planner.state.value
 
     def start(self) -> None:
-        """Start the full follow pipeline (YOLO + planner)."""
+        """Start the full follow pipeline (YOLO + Kalman + planner)."""
         if self._running:
             logger.warning("FollowPipeline already running")
             return
-
-        # Request behavior control — needed for motors and say_text
-        self._request_control()
-
-        # Set head to natural position before starting
-        try:
-            self._head.set_angle(10.0)  # neutral angle
-        except Exception:
-            logger.warning("Failed to set head to neutral on follow start")
 
         # Boost camera exposure for low-light following
         self._boost_camera_exposure()
@@ -124,8 +108,10 @@ class FollowPipeline:
         logger.info("YOLO model loaded (avg inference: %.1fms)", self._detector.avg_inference_ms)
 
         self._running = True
-        self._frames_without_detection = 0
-        self._current_track_id = 0
+        self._tracker.clear()
+
+        # Start obstacle detector (listens for motor events)
+        self._obstacle.start()
 
         # Start detection loop thread
         self._thread = threading.Thread(
@@ -147,15 +133,20 @@ class FollowPipeline:
         # Stop planner first (stops motors)
         self._planner.stop()
 
+        # Stop obstacle detector
+        self._obstacle.stop()
+
         # Stop detection loop
         if self._thread is not None:
             self._thread.join(timeout=5.0)
             self._thread = None
 
+        self._tracker.clear()
+
         # Restore auto exposure
         self._restore_camera_exposure()
 
-        # Release behavior control and restore quiet mode
+        # Release behavior control and re-send quiet intent
         self._release_control()
 
         logger.info("FollowPipeline stopped")
@@ -174,11 +165,19 @@ class FollowPipeline:
                 "avg_inference_ms": round(self._detector.avg_inference_ms, 1),
                 "frame_count": self._detector.frame_count,
             },
+            "tracker": {
+                "track_count": self._tracker.track_count,
+                "confirmed_count": self._tracker.confirmed_count,
+            },
+            "obstacle": {
+                "zone": self._obstacle.zone,
+                "speed_scale": round(self._obstacle.speed_scale, 2),
+                "escape_count": self._obstacle.escape_count,
+            },
         }
 
     def _detection_loop(self) -> None:
-        """Grab frames, run YOLO, emit best detection as TrackedPersonEvent."""
-        global _next_track_id
+        """Grab frames, run YOLO, feed Kalman tracker, emit events."""
         period = 1.0 / DETECTION_HZ
 
         while self._running:
@@ -191,43 +190,40 @@ class FollowPipeline:
                     time.sleep(0.1)
                     continue
 
-                frame_h, frame_w = frame.shape[:2]
-
                 # Run YOLO detection
                 detections = self._detector.detect(frame)
 
                 if detections:
-                    # Pick the best detection (highest confidence)
                     best = max(detections, key=lambda d: d.confidence)
-
-                    # Reset gap counter
-                    if self._frames_without_detection > 5:
-                        # Gap was long enough — assign new track ID
-                        _next_track_id += 1
-                        self._current_track_id = _next_track_id
-                    self._frames_without_detection = 0
-
                     logger.debug(
                         "YOLO: %d person(s), best conf=%.2f cx=%.0f cy=%.0f w=%.0f h=%.0f",
                         len(detections), best.confidence, best.cx, best.cy, best.width, best.height,
                     )
 
-                    # Emit directly as TrackedPersonEvent (no Kalman)
-                    event = TrackedPersonEvent(
-                        track_id=self._current_track_id,
-                        cx=best.cx,
-                        cy=best.cy,
-                        width=best.width,
-                        height=best.height,
-                        age_frames=0,
-                        hits=1,
-                        confidence=best.confidence,
-                        frame_width=frame_w,
-                        frame_height=frame_h,
-                    )
-                    self._bus.emit(TRACKED_PERSON, event)
-                else:
-                    self._frames_without_detection += 1
+                # Feed into Kalman tracker
+                confirmed_tracks = self._tracker.update(detections)
+
+                # Only emit events when YOLO actually detected something.
+                # Kalman predictions without fresh YOLO data are stale —
+                # let the planner's lost-frames counter handle the gap.
+                if detections and confirmed_tracks:
+                    primary = self._tracker.get_primary_track()
+                    if primary:
+                        logger.debug(
+                            "Kalman: track_id=%d hits=%d cx=%.0f cy=%.0f h=%.0f conf=%.2f",
+                            primary.track_id, primary.hits, primary.cx, primary.cy, primary.height, primary.confidence,
+                        )
+                        event = TrackedPersonEvent(
+                            track_id=primary.track_id,
+                            cx=primary.cx,
+                            cy=primary.cy,
+                            width=primary.width,
+                            height=primary.height,
+                            age_frames=primary.age,
+                            hits=primary.hits,
+                            confidence=primary.confidence,
+                        )
+                        self._bus.emit(TRACKED_PERSON, event)
 
             except Exception:
                 logger.exception("Error in detection loop")
@@ -238,37 +234,13 @@ class FollowPipeline:
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-    def _request_control(self) -> None:
-        """Request SDK behavior control for motor/speech access."""
-        if self._robot is None:
-            return
-        try:
-            from anki_vector.connection import ControlPriorityLevel
-            # Stop quiet keepalive if ConnectionManager is available
-            if self._conn_manager is not None:
-                self._conn_manager._stop_quiet_keepalive()
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-            )
-            logger.info("Behavior control acquired for follow pipeline")
-        except Exception:
-            logger.exception("Failed to request behavior control")
-
-    def _release_control(self) -> None:
-        """Release SDK behavior control and restore quiet mode."""
-        if self._robot is None:
-            return
-        try:
-            self._robot.conn.release_control()
-            logger.info("Behavior control released after follow pipeline")
-            # Restore quiet mode if ConnectionManager is available
-            if self._conn_manager is not None:
-                self._conn_manager._activate_quiet_mode()
-        except Exception:
-            logger.exception("Failed to release behavior control")
-
     def _boost_camera_exposure(self) -> None:
-        """Ensure camera auto-exposure is enabled for best low-light performance."""
+        """Ensure camera auto-exposure is enabled for best low-light performance.
+
+        Testing showed Vector's auto-exposure (OV7251) already optimizes for
+        available light.  Manual exposure settings produced darker frames than
+        auto, so we just make sure auto-exposure is active.
+        """
         if self._robot is None:
             return
         try:
