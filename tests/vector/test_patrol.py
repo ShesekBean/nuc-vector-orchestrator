@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import tempfile
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from apps.vector.src.events.nuc_event_bus import NucEventBus
-from apps.vector.src.planner.map_store import MapStore, Waypoint
-from apps.vector.src.planner.nav_controller import NavController, NavConfig, NavState
+from apps.vector.src.planner.map_store import MapStore
+from apps.vector.src.planner.nav_controller import NavController, NavConfig
 from apps.vector.src.planner.patrol import (
     HomeGuardian,
     PatrolConfig,
@@ -251,7 +251,6 @@ class TestPatrolWaypoints:
 
     def test_charger_excluded_from_patrol(self, guardian, nav, tmp_dir):
         """The 'charger' waypoint should be excluded from default patrol."""
-        store = nav._map_store
         wp_mgr = nav._waypoint_mgr
         wp_mgr.save("kitchen", x=100, y=200, theta=0.0)
         wp_mgr.save("charger", x=0, y=0, theta=0.0)

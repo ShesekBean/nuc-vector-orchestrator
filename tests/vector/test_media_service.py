@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import queue
-import threading
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apps.vector.src.media.channel import MediaChannel, ChannelSubscription
+from apps.vector.src.media.channel import MediaChannel
 from apps.vector.src.media.camera_channel import CameraChannel
 from apps.vector.src.media.speaker_channel import SpeakerChannel
 from apps.vector.src.media.display_channel import DisplayChannel
@@ -65,7 +63,7 @@ class TestMediaChannel:
         ch = MediaChannel("test")
         ch.start()
 
-        with ch.subscribe() as sub:
+        with ch.subscribe() as _sub:
             assert ch.subscriber_count == 1
         assert ch.subscriber_count == 0
 

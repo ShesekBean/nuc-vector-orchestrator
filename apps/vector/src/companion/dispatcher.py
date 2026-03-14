@@ -14,7 +14,7 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -188,7 +188,7 @@ class CompanionDispatcher:
         # Try Oura sleep data from fitness log
         try:
             if FITNESS_LOG_PATH.exists():
-                data = json.loads(FITNESS_LOG_PATH.read_text())
+                json.loads(FITNESS_LOG_PATH.read_text())
                 # Look for a recent sleep entry indicating user is asleep
                 # The fitness skill doesn't store real-time sleep state,
                 # so we use time-based fallback

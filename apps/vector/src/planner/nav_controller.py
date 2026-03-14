@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from apps.vector.src.head_controller import HeadController
     from apps.vector.src.motor_controller import MotorController
     from apps.vector.src.planner.map_store import MapStore, Waypoint
-    from apps.vector.src.planner.path_planner import PathPlanner
     from apps.vector.src.planner.visual_slam import VisualSLAM
     from apps.vector.src.planner.waypoint_manager import WaypointManager
 
@@ -487,7 +486,6 @@ class NavController:
             grid_array, landmarks, waypoints, metadata = self._map_store.load(name)
 
             # Restore occupancy grid
-            import numpy as np
             slam_grid = self._slam.get_grid()
             if grid_array.shape == slam_grid.grid.shape:
                 slam_grid._grid = grid_array

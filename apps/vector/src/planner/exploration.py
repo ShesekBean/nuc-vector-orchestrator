@@ -35,7 +35,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import numpy as np
 
     from apps.vector.src.camera.camera_client import CameraClient
     from apps.vector.src.events.nuc_event_bus import NucEventBus

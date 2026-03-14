@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from apps.vector.src.events.nuc_event_bus import NucEventBus
-from apps.vector.src.planner.map_store import MapStore, Waypoint
+from apps.vector.src.planner.map_store import MapStore
 from apps.vector.src.planner.nav_controller import NavConfig, NavController, NavState
-from apps.vector.src.planner.visual_slam import OccupancyGrid, Pose2D, VisualSLAM
+from apps.vector.src.planner.visual_slam import VisualSLAM
 from apps.vector.src.planner.waypoint_manager import WaypointManager
 
 

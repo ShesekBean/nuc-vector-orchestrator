@@ -14,7 +14,7 @@ import logging
 import os
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
 

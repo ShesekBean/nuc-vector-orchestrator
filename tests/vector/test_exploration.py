@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -14,11 +14,10 @@ from apps.vector.src.planner.exploration import (
     AutonomousExplorer,
     ExploreConfig,
     ExploreState,
-    _get_inbox_size,
 )
 from apps.vector.src.planner.map_store import MapStore
 from apps.vector.src.planner.nav_controller import NavController, NavConfig
-from apps.vector.src.planner.visual_slam import CellState, OccupancyGrid, Pose2D, VisualSLAM
+from apps.vector.src.planner.visual_slam import CellState, VisualSLAM
 from apps.vector.src.planner.waypoint_manager import WaypointManager
 
 

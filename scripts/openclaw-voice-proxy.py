@@ -185,7 +185,6 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
                 # Step 4: Collect response
                 response_parts: list[str] = []
                 deadline = time.monotonic() + timeout_s
-                got_ack = False
 
                 while time.monotonic() < deadline:
                     remaining = deadline - time.monotonic()
@@ -204,7 +203,6 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
                     # Response to our chat.send request (ack)
                     if msg_type == "res" and msg.get("id") == run_id:
                         if msg.get("ok"):
-                            got_ack = True
                             payload = msg.get("payload", {})
                             logger.info(
                                 "chat.send ack: status=%s",
