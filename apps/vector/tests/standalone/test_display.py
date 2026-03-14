@@ -12,7 +12,7 @@ import sys
 import time
 
 import anki_vector
-from anki_vector.connection import ControlPriorityLevel
+from apps.vector.src.control_manager import ControlManager
 from anki_vector.screen import convert_image_to_screen_data
 
 try:
@@ -78,13 +78,15 @@ def main():
     robot = anki_vector.Robot(
         serial=SERIAL,
         default_logging=False,
-        behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+        behavior_control_level=None,
     )
     results = []
 
     try:
         robot.connect()
-        print("Connected to Vector (behavior override)\n")
+        ctrl = ControlManager(robot)
+        ctrl.acquire("test_display")
+        print("Connected to Vector (control via ControlManager)\n")
 
         # Sub-test 1: Solid white
         def test_solid_white():
@@ -153,6 +155,7 @@ def main():
         results.append(run_test("Text display", test_text))
 
     finally:
+        ctrl.release("test_display")
         robot.disconnect()
 
     passed = sum(results)

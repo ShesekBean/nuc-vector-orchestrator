@@ -40,7 +40,10 @@ class TestGRPCLatency:
 
 class TestControlHandoff:
     def test_request_release_cycle(self, robot_connected):
-        """1.4 — Request, release, and re-request control cleanly."""
-        robot_connected.conn.request_control()
-        robot_connected.conn.release_control()
-        robot_connected.conn.request_control()
+        """1.4 — Request, release, and re-request control cleanly via ControlManager."""
+        from apps.vector.src.control_manager import ControlManager
+        ctrl = ControlManager(robot_connected)
+        assert ctrl.acquire("test_control")
+        ctrl.release("test_control")
+        assert ctrl.acquire("test_control")
+        ctrl.release("test_control")

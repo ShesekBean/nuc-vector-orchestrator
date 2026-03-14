@@ -147,16 +147,19 @@ def robot_connected(robot_available: bool):
         pytest.skip("Robot not available — skipping robot-dependent test")
 
     import anki_vector
-    # OVERRIDE_BEHAVIORS_PRIORITY suppresses Vector's autonomous movement
-    # so he stays still between test commands
+    from apps.vector.src.control_manager import ControlManager
+    # Connect without control, then acquire via ControlManager
     robot = anki_vector.Robot(
         serial="0dd1cdcf",
         default_logging=False,
-        behavior_control_level=anki_vector.connection.ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+        behavior_control_level=None,
     )
     robot.connect()
+    ctrl = ControlManager(robot)
+    ctrl.acquire("golden_test")
     yield robot
     try:
+        ctrl.release("golden_test")
         robot.disconnect()
     except Exception:
         pass
