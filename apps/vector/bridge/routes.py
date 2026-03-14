@@ -1384,21 +1384,24 @@ async def charger_save(request: web.Request) -> web.Response:
         if not batt.is_on_charger_platform:
             raise RuntimeError("Vector is not on the charger")
 
-        # Override control suppresses idle animations during maneuver
+        # Override control to take over from charger-sit behavior
         robot.conn.request_control(
             behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
         )
         try:
             import time as _time
-            # Drive straight back off charger (no animation, just motors)
-            robot.motors.set_wheel_motors(-80, -80)
-            _time.sleep(1.5)
+            # drive_off_charger is the only SDK call that undocks
+            robot.behavior.drive_off_charger()
+            _time.sleep(3.0)
+            # Stop any residual movement
             robot.motors.set_wheel_motors(0, 0)
             _time.sleep(0.5)
             # Turn 180° to face the charger
             robot.behavior.turn_in_place(anki_vector.util.degrees(180))
-            _time.sleep(2.0)
-            # Save waypoint
+            _time.sleep(3.0)
+            robot.motors.set_wheel_motors(0, 0)
+            _time.sleep(0.5)
+            # Save waypoint facing the charger
             nav.save_current_position("charger")
         finally:
             robot.conn.release_control()
