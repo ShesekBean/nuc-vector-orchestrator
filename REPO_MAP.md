@@ -161,6 +161,9 @@ nuc-vector-orchestrator/
 │   ├── dns/                       ← NUC dnsmasq
 │   └── safety-cop/                ← NUC safety_cop.py
 ├── docs/                          ← documentation
+│   ├── 00-project-overview.md    ← definitive system overview (start here)
+│   ├── ROADMAP.md                ← issue tracking and project milestones
+│   ├── RETROSPECTIVE.md          ← what worked, what didn't, lessons learned
 │   ├── vector/                    ← Vector-specific docs
 │   │   └── oskr-research.md      ← OSKR SDK research & feature portability
 │   ├── architecture/              ← architecture docs
