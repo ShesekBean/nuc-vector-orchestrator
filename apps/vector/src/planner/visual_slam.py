@@ -426,6 +426,25 @@ class VisualSLAM:
         """Return occupancy grid reference."""
         return self._grid
 
+    def update_pose_dead_reckoning(
+        self, delta_x: float = 0.0, delta_y: float = 0.0, delta_theta: float = 0.0,
+    ) -> None:
+        """Apply a dead-reckoning position update.
+
+        Called by the explorer after motor commands to keep the pose
+        roughly in sync with reality.  Visual odometry provides rotation
+        correction; this provides the translational component that VO
+        cannot estimate from pure rotation-based feature matching.
+        """
+        with self._lock:
+            prev = self._pose.copy()
+            self._pose.x += delta_x
+            self._pose.y += delta_y
+            self._pose.theta += delta_theta
+
+            # Mark the traversed path as free
+            self._grid.mark_line_free(prev.x, prev.y, self._pose.x, self._pose.y)
+
     @property
     def frames_processed(self) -> int:
         return self._frames_processed

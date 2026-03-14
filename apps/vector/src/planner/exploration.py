@@ -187,12 +187,24 @@ class AutonomousExplorer:
             pass
 
     def _drive_off_charger(self) -> None:
-        """Drive off charger if Vector is currently docked."""
+        """Drive off charger if Vector is currently docked.
+
+        Also saves the charger position as a waypoint so AutoCharger
+        can navigate back later.
+        """
         if self._robot is None:
             return
         try:
             batt = self._robot.get_battery_state()
             if batt.is_on_charger_platform:
+                # Save charger position BEFORE driving off
+                # (this is where the charger physically is)
+                try:
+                    self._nav.save_current_position("charger")
+                    logger.info("Saved charger waypoint at current position")
+                except Exception:
+                    logger.debug("Could not save charger waypoint", exc_info=True)
+
                 logger.info("Vector is on charger — driving off")
                 self._say("Driving off charger.")
                 self._robot.behavior.drive_off_charger()
@@ -594,6 +606,13 @@ class AutonomousExplorer:
                 drive_speed_mmps=self._cfg.drive_speed_mmps,
                 turn_speed_dps=self._cfg.turn_speed_dps,
             )
+            # Dead-reckoning: update SLAM pose with commanded movement
+            # Visual SLAM only tracks rotation — we need to manually
+            # update position so the map builds and frontiers advance.
+            self._slam.update_pose_dead_reckoning(
+                delta_x=distance * math.cos(bearing),
+                delta_y=distance * math.sin(bearing),
+            )
         except CliffSafetyError:
             logger.warning("Cliff detected during exploration — turning away")
             try:
@@ -643,6 +662,7 @@ class AutoCharger:
         nuc_bus: NucEventBus,
         intercom: Intercom | None = None,
         battery_threshold_pct: float = 18.0,
+        resume_threshold_pct: float = 90.0,
         check_interval_s: float = 30.0,
     ) -> None:
         self._robot = robot
@@ -650,11 +670,18 @@ class AutoCharger:
         self._bus = nuc_bus
         self._intercom = intercom
         self._threshold_pct = battery_threshold_pct
+        self._resume_threshold_pct = resume_threshold_pct
         self._check_interval = check_interval_s
 
         self._running = False
         self._thread: threading.Thread | None = None
         self._returning_to_charger = False
+        self._waiting_for_charge = False  # waiting on charger to hit resume threshold
+
+        # Explorer reference — set by ConnectionManager so we can
+        # pause exploration before docking and resume after charging
+        self.explorer: AutonomousExplorer | None = None
+        self._was_exploring = False  # True if we interrupted exploration
 
     def start(self) -> None:
         """Start battery monitoring."""
@@ -695,20 +722,35 @@ class AutoCharger:
                 time.sleep(1.0)
 
     def _check_battery(self) -> None:
-        """Check battery level and navigate to charger if low."""
-        if self._returning_to_charger:
-            return  # Already heading to charger
+        """Check battery level and navigate to charger if low.
 
+        Also checks if battery has recharged enough to resume exploration.
+        """
         try:
             batt = self._robot.get_battery_state()
         except Exception:
             return
 
-        if batt.is_charging or batt.is_on_charger_platform:
-            return  # Already charging
-
         pct = self._voltage_to_percent(batt.battery_volts)
         logger.debug("Battery: %.2fV (%.0f%%)", batt.battery_volts, pct)
+
+        # --- Resume after charging ---
+        if self._waiting_for_charge:
+            if batt.is_charging or batt.is_on_charger_platform:
+                if pct >= self._resume_threshold_pct:
+                    logger.info("Battery charged to %.0f%% — resuming", pct)
+                    self._waiting_for_charge = False
+                    self._resume_exploration(pct)
+                return  # still charging, keep waiting
+            # Fell off charger before reaching threshold — stop waiting
+            self._waiting_for_charge = False
+            return
+
+        if self._returning_to_charger:
+            return  # Already heading to charger
+
+        if batt.is_charging or batt.is_on_charger_platform:
+            return  # Already charging
 
         if pct <= self._threshold_pct:
             logger.warning(
@@ -720,6 +762,14 @@ class AutoCharger:
     def _return_to_charger(self, voltage: float, pct: float) -> None:
         """Navigate to charger waypoint, then dock."""
         self._returning_to_charger = True
+
+        # Stop exploration if running
+        if self.explorer and self.explorer._running:
+            self._was_exploring = True
+            logger.info("Pausing exploration for charging")
+            self.explorer.stop()
+        else:
+            self._was_exploring = False
 
         if self._intercom:
             self._intercom.send_text(
@@ -780,9 +830,14 @@ class AutoCharger:
             logger.info("Successfully docked on charger!")
 
             if self._intercom:
-                self._intercom.send_text(
-                    "I'm on the charger! Charging up."
-                )
+                msg = "I'm on the charger! Charging up."
+                if self._was_exploring:
+                    msg += f" I'll resume exploring when battery reaches {self._resume_threshold_pct:.0f}%."
+                self._intercom.send_text(msg)
+
+            # Wait for battery to recharge before resuming
+            if self._was_exploring:
+                self._waiting_for_charge = True
         except Exception:
             logger.exception("drive_on_charger() failed")
             if self._intercom:
@@ -796,6 +851,24 @@ class AutoCharger:
                 self._robot.conn.release_control()
             except Exception:
                 pass
+
+    def _resume_exploration(self, pct: float) -> None:
+        """Resume exploration after charging if we were exploring before."""
+        if not self._was_exploring or self.explorer is None:
+            return
+
+        self._was_exploring = False
+        logger.info("Resuming exploration after charging (battery %.0f%%)", pct)
+
+        if self._intercom:
+            self._intercom.send_text(
+                f"Battery at {pct:.0f}%! Resuming exploration."
+            )
+
+        try:
+            self.explorer.start()
+        except Exception:
+            logger.exception("Failed to resume exploration after charging")
 
     @classmethod
     def _voltage_to_percent(cls, voltage: float) -> float:

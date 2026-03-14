@@ -289,6 +289,8 @@ class ConnectionManager:
             nuc_bus=self._nuc_bus,
             intercom=self._intercom,
         )
+        # Wire explorer ↔ charger so charger can pause/resume exploration
+        self._auto_charger.explorer = self._explorer
 
         self._connected = True
         logger.info("Connected to Vector successfully")
