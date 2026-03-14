@@ -4,14 +4,15 @@
 Connects to Vector, captures frames with you in view, detects face + body,
 enrolls face embeddings, and saves reference body crops.
 
+Vector speaks each pose instruction so you know when to move.
+Stops the bridge service to get behavior control, restarts it after.
+
 Run: python3 apps/vector/tests/standalone/test_enroll_face.py [name]
   Default name: ophir
-  Captures 5 frames interactively (press Enter for each)
-  Saves face embeddings to apps/vector/data/face_database.json
-  Saves body reference crops to apps/vector/data/reference_images/<name>/
 """
 
 import os
+import subprocess
 import sys
 import time
 
@@ -30,7 +31,14 @@ from apps.vector.src.detector.person_detector import PersonDetector
 SERIAL = "0dd1cdcf"
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 REF_IMG_DIR = os.path.join(DATA_DIR, "reference_images")
-NUM_FRAMES = 5
+
+POSES = [
+    ("Look straight at me", "STRAIGHT ON"),
+    ("Now turn your head left", "HEAD LEFT"),
+    ("Now turn your head right", "HEAD RIGHT"),
+    ("Now look up a little", "LOOK UP"),
+    ("Now look down a little", "LOOK DOWN"),
+]
 
 
 def pil_to_bgr(pil_image):
@@ -42,7 +50,6 @@ def pil_to_bgr(pil_image):
 def draw_detections(frame, faces, persons, name):
     """Draw face and person bounding boxes on frame for preview."""
     vis = frame.copy()
-
     for det in persons:
         x1 = int(det.cx - det.width / 2)
         y1 = int(det.cy - det.height / 2)
@@ -51,14 +58,12 @@ def draw_detections(frame, faces, persons, name):
         cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 255, 0), 2)
         cv2.putText(vis, f"body {det.confidence:.2f}", (x1, y1 - 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-
     for face in faces:
         x, y = int(face.x), int(face.y)
         w, h = int(face.width), int(face.height)
         cv2.rectangle(vis, (x, y), (x + w, y + h), (255, 0, 0), 2)
         cv2.putText(vis, f"face {face.confidence:.2f}", (x, y - 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-
     cv2.putText(vis, f"Enrolling: {name}", (10, 25),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
     return vis
@@ -81,92 +86,99 @@ def main():
     print(f"FACE + BODY ENROLLMENT: {name}")
     print("=" * 60)
 
+    # Stop bridge to get behavior control
+    print("\nStopping bridge service...")
+    subprocess.run(["systemctl", "--user", "stop", "vector-bridge.service"],
+                   capture_output=True)
+    time.sleep(2)
+
     # Init models
-    print("\nLoading models...")
+    print("Loading models...")
     face_detector = FaceDetector()
     face_recognizer = FaceRecognizer()
     person_detector = PersonDetector()
-
-    # Load existing database if present
-    db_path = os.path.join(os.path.abspath(DATA_DIR), "face_database.json")
-    if os.path.isfile(db_path):
-        face_recognizer.load_database(db_path)
-        print(f"Loaded existing database: {face_recognizer.list_enrolled()}")
 
     # Create reference image directory
     person_img_dir = os.path.join(os.path.abspath(REF_IMG_DIR), name)
     os.makedirs(person_img_dir, exist_ok=True)
 
     # Connect to Vector
-    print(f"\nConnecting to Vector ({SERIAL})...")
+    print(f"Connecting to Vector ({SERIAL})...")
     robot = anki_vector.Robot(serial=SERIAL, default_logging=False)
     robot.connect()
+    robot.behavior.set_head_angle(anki_vector.util.degrees(20))
     robot.camera.init_camera_feed()
-    time.sleep(1)  # Let camera stabilize
+    time.sleep(1)
 
-    print("\nReady! Stand in front of Vector.")
-    print(f"Will capture {NUM_FRAMES} frames. Press Enter for each.\n")
+    robot.behavior.say_text(f"Starting face enrollment for {name}. I will tell you how to pose.")
+    time.sleep(0.5)
 
     enrolled_faces = 0
     saved_bodies = 0
 
     try:
-        for i in range(NUM_FRAMES):
-            input(f"  Frame {i + 1}/{NUM_FRAMES} — position yourself, then press Enter...")
+        for i, (speech, label) in enumerate(POSES):
+            # Vector speaks the pose instruction
+            print(f"\n  [{i + 1}/{len(POSES)}] {label}")
+            robot.behavior.say_text(speech)
+            time.sleep(0.5)
+
+            # Wait for user confirmation
+            input(f"    Press Enter when ready...")
 
             # Capture
             img = robot.camera.latest_image
             if img is None:
-                print("    No frame available, retrying...")
                 time.sleep(0.5)
                 img = robot.camera.latest_image
                 if img is None:
-                    print("    Still no frame. Skipping.")
+                    print("    No frame. Skipping.")
                     continue
 
             frame = pil_to_bgr(img.raw_image)
-            print(f"    Captured {frame.shape[1]}x{frame.shape[0]}")
 
             # Detect face
             faces = face_detector.detect(frame)
             if not faces:
-                print("    No face detected! Try better lighting or angle.")
+                print("    No face detected! Try better lighting.")
+                robot.behavior.say_text("I can't see your face. Try again.")
                 continue
 
-            print(f"    Found {len(faces)} face(s), best confidence: {faces[0].confidence:.3f}")
-
-            # Enroll face embedding
-            count = face_recognizer.enroll(name, frame, faces[:1])  # Best face only
+            # Enroll
+            count = face_recognizer.enroll(name, frame, faces[:1])
             enrolled_faces = count
-            print(f"    Face embeddings: {count}/{face_recognizer._embeddings_per_person}")
+            print(f"    Face: conf={faces[0].confidence:.3f}, embeddings={count}/5")
 
-            # Detect body with YOLO
+            # Body
             persons = person_detector.detect(frame)
             if persons:
                 best = persons[0]
                 body_crop = crop_person(frame, best)
                 if body_crop.size > 0:
-                    crop_path = os.path.join(person_img_dir, f"body_{i + 1}.jpg")
-                    cv2.imwrite(crop_path, body_crop)
+                    cv2.imwrite(os.path.join(person_img_dir, f"body_{i + 1}.jpg"), body_crop)
                     saved_bodies += 1
-                    print(f"    Body crop saved: {crop_path} ({body_crop.shape[1]}x{body_crop.shape[0]})")
-            else:
-                print("    No body detected by YOLO (try standing further back)")
+                    print(f"    Body: conf={best.confidence:.3f}, saved")
 
-            # Save annotated preview
+            # Save preview + full frame
             vis = draw_detections(frame, faces, persons, name)
-            preview_path = os.path.join(person_img_dir, f"preview_{i + 1}.jpg")
-            cv2.imwrite(preview_path, vis)
+            cv2.imwrite(os.path.join(person_img_dir, f"preview_{i + 1}.jpg"), vis)
+            cv2.imwrite(os.path.join(person_img_dir, f"full_{i + 1}.jpg"), frame)
 
-            # Also save full frame as reference
-            full_path = os.path.join(person_img_dir, f"full_{i + 1}.jpg")
-            cv2.imwrite(full_path, frame)
+            robot.behavior.say_text("Got it!")
+
+        robot.behavior.say_text(f"All done! I enrolled {enrolled_faces} angles for {name}.")
 
     finally:
         robot.camera.close_camera_feed()
         robot.disconnect()
 
-    # Save face database
+        # Restart bridge
+        print("\nRestarting bridge service...")
+        subprocess.run(["systemctl", "--user", "start", "vector-bridge.service"],
+                       capture_output=True)
+
+    # Save database
+    db_path = os.path.join(os.path.abspath(DATA_DIR), "face_database.json")
     os.makedirs(os.path.abspath(DATA_DIR), exist_ok=True)
     face_recognizer.save_database(db_path)
 
