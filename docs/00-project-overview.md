@@ -1,6 +1,6 @@
 # Project Vector (Vector Edition) — Summary
 
-**Last updated:** 2026-03-12
+**Last updated:** 2026-03-14
 **Purpose:** Self-contained snapshot for onboarding new LLM sessions.
 
 ## What Is This?
@@ -35,7 +35,7 @@ Vector mic → wake word (Porcupine PV) → wire-pod (Vosk STT)
 - **wire-pod** (`wire-pod.service`): Replaces Anki cloud. Handles wake word, STT (Vosk), intent routing.
 - **Voice proxy** (`scripts/openclaw-voice-proxy.py`): Standalone script that bridges wire-pod to OpenClaw via OpenAI-compatible API. Serializes requests to prevent double-trigger abort. 60s timeout for tool-heavy queries. Not deployed as a systemd service.
 - **Built-in intents disabled**: All wire-pod intents set to `requiresexact=True` in `en-US.json` so conversational queries route to OpenClaw instead of being intercepted.
-- **Quiet mode** (`vector-quiet-mode.service`): Holds SDK behavior control at `OVERRIDE_BEHAVIORS_PRIORITY` to keep Vector still and silent. Detects back-tap via `robot.status.is_button_pressed` and releases control for 15s so vic-engine can handle the wake word → STT → OpenClaw → TTS flow, then re-acquires control. Button wake word enabled (tap back to trigger listening mode).
+- **Quiet mode**: Bridge releases SDK behavior control and sends `intent_imperative_quiet` via wire-pod's `cloud_intent` API to activate Vector's built-in QuietMode behavior. Vector sits still with head down but TriggerWordDetected stays active — wake word works, voice interactions work. A keepalive thread re-sends the quiet intent every 15s because voice interactions deactivate the intent. Switch to playful mode via `POST /mode {"mode": "playful"}` to let Vector roam freely.
 - **Voice context**: Voice proxy prepends context to every message telling OpenClaw the speaker is Ophir, so commands like "send to Ophir hello" work without OpenClaw asking who the recipient is.
 - **Firmware**: WireOS 3.0.1.32oskr (slot B). Stock 2.0.1.6091oskr on slot A as fallback.
 
