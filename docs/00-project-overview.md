@@ -17,7 +17,7 @@ Two machines coordinate via GitHub Issues in a single monorepo:
 **Parent:** `ShesekBean/nuc-orchestrator` (R3 robot — reference architecture, archived)
 **Human:** Ophir (communicates via Signal messenger, phone +14084758230)
 **Started:** 2026-03-10 — rapid development over 5 days
-**Scale:** ~188 commits, ~168 Python modules, 17 C source files, 4 OpenClaw skills
+**Scale:** ~188 commits, ~168 Python modules, 17 C source files, 5 OpenClaw skills
 
 ---
 
@@ -47,7 +47,8 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   ├── robot-control skill — Signal → bridge curl commands
 │   ├── companion skill — presence signals → warm personality responses
 │   ├── fitness skill — Strava/Withings/Oura tracking
-│   └── monarch-money skill — financial queries (read-only)
+│   ├── monarch-money skill — financial queries (read-only)
+│   └── chatgpt skill — Outlook email/calendar, Slack, SharePoint (Playwright browser proxy)
 │
 ├── wire-pod (port 8080/443, systemd root service)
 │   └── Vector cloud replacement: auth, STT (Vosk), intent routing

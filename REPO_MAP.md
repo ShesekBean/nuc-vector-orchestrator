@@ -56,6 +56,8 @@ nuc-vector-orchestrator/
 │   │   │   │   └── SKILL.md       ← Signal → robot commands
 │   │   │   ├── companion/
 │   │   │   │   └── SKILL.md       ← Companion personality (presence signals → speech/expression/movement)
+│   │   │   ├── chatgpt/
+│   │   │   │   └── SKILL.md       ← ChatGPT proxy (email, Slack, calendar via Playwright browser)
 │   │   │   ├── fitness/
 │   │   │   │   └── SKILL.md       ← Fitness tracking skill
 │   │   │   └── monarch-money/
@@ -160,6 +162,9 @@ nuc-vector-orchestrator/
 │   ├── signal-interactive.sh     ← interactive test Signal library
 │   ├── intercom-server.py        ← NUC HTTP intercom relay → Signal DM
 │   ├── monarch-login.py          ← Monarch Money auth → saves token for OpenClaw
+│   ├── chatgpt-server.py         ← ChatGPT HTTP proxy (Playwright persistent browser, async job queue)
+│   ├── chatgpt-query.py          ← ChatGPT CLI query + login flow (Playwright)
+│   ├── chatgpt-save-token.py     ← Save ChatGPT auth token (deprecated, uses browser session now)
 │   └── ...                        ← other utility scripts
 ├── infra/                         ← runtime environment configuration
 │   ├── vector/                    ← Vector infra (services, wire-pod config, OSKR setup)

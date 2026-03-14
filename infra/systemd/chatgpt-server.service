@@ -1,0 +1,14 @@
+[Unit]
+Description=ChatGPT Proxy API Server (Playwright)
+After=network.target
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+ExecStart=/usr/bin/python3 /home/ophirsw/Documents/claude/nuc-vector-orchestrator/scripts/chatgpt-server.py
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
