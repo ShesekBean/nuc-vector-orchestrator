@@ -159,8 +159,14 @@ class ConnectionManager:
         from apps.vector.src.motor_controller import MotorController
         from apps.vector.src.voice.audio_client import AudioClient
 
+        from anki_vector.connection import ControlPriorityLevel
+
         logger.info("Connecting to Vector (serial=%s)...", self._serial)
-        self._robot = anki_vector.Robot(serial=self._serial, default_logging=False)
+        self._robot = anki_vector.Robot(
+            serial=self._serial,
+            default_logging=False,
+            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+        )
         self._robot.connect()
 
         self._nuc_bus = NucEventBus()
