@@ -301,6 +301,26 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
 
     logger.info("Voice request: '%s'", user_message[:100])
 
+    # Skip voice processing during active LiveKit calls to prevent echo loops
+    # (speaker audio → mic → wire-pod → OpenClaw → say_text → speaker → ...)
+    try:
+        async with aiohttp.ClientSession() as _sess:
+            async with _sess.get("http://127.0.0.1:8081/call/status", timeout=aiohttp.ClientTimeout(total=1)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("active"):
+                        logger.info("LiveKit call active — suppressing voice request")
+                        return web.json_response({
+                            "id": f"chatcmpl-{uuid.uuid4().hex[:8]}",
+                            "object": "chat.completion",
+                            "created": int(time.time()),
+                            "model": "openclaw",
+                            "choices": [{"index": 0, "message": {"role": "assistant", "content": ""}, "finish_reason": "stop"}],
+                            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                        })
+    except Exception:
+        pass  # Bridge unreachable — proceed normally
+
     # Check if streaming is requested (wire-pod always uses streaming)
     stream = body.get("stream", False)
 

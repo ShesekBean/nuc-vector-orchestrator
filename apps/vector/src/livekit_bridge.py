@@ -74,7 +74,7 @@ MAX_RECONNECT_DELAY = 30.0
 INITIAL_RECONNECT_DELAY = 1.0
 
 # Auto-disconnect when no remote participants for this long (seconds)
-EMPTY_ROOM_TIMEOUT = 3 * 60  # 3 minutes
+EMPTY_ROOM_TIMEOUT = 3  # seconds — disconnect quickly when room empties
 
 # Video-in display settings (remote video -> Vector OLED)
 DISPLAY_WIDTH = 160
