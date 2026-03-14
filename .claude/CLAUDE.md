@@ -347,6 +347,35 @@ PGM parses this format to auto-unstick issues when all listed dependencies close
 
 ---
 
+## Behavior Control — ControlManager Singleton (MANDATORY)
+
+**NEVER call `robot.conn.request_control()` or `robot.conn.release_control()` directly.** All behavior control MUST go through the centralized `ControlManager` singleton at `apps/vector/src/control_manager.py`.
+
+```python
+# WRONG — direct SDK call, causes control conflicts
+from anki_vector.connection import ControlPriorityLevel
+robot.conn.request_control(behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY)
+
+# RIGHT — use the singleton
+control_manager.acquire("my_service_name")
+control_manager.release("my_service_name")
+```
+
+**Why:** Multiple services (explorer, follow, nav, charger, display restore) were independently requesting/releasing SDK behavior control and stepping on each other. The ControlManager ensures:
+- Only one service holds control at a time
+- Higher priority can preempt lower priority
+- Clean handoff between services (no orphaned control locks)
+- Single point of debugging for "why can't Vector move?"
+
+**Rules:**
+- Every service that needs motor/behavior control MUST call `control_manager.acquire("service_name")` before and `control_manager.release("service_name")` after
+- Use a unique string name per service (e.g., "explorer", "nav", "follow", "charger_save")
+- The ControlManager is created in `ConnectionManager.connect()` and passed to all services
+- Test scripts and standalone scripts should create their own `ControlManager(robot)` instance
+- **Exception:** Transient display-restore operations (2-3s acquire→animate→release) may use direct SDK calls since they don't conflict with the main control flow — but should be migrated over time
+
+---
+
 ## Hard-Won Lessons — Do NOT Repeat These Mistakes
 
 ### Vector Robot — Modify With Care
