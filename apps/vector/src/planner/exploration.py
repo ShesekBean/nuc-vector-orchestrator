@@ -95,10 +95,10 @@ class ExploreConfig:
     min_prompt_interval_s: float = 30.0
 
     # Exploration step size (mm) — drive this far toward frontier
-    step_distance_mm: float = 400.0
+    step_distance_mm: float = 600.0
 
     # Maximum exploration time (seconds) before auto-stop
-    max_explore_time_s: float = 1800.0  # 30 minutes
+    max_explore_time_s: float = 7200.0  # 2 hours (battery is the real limit)
 
     # Auto-save map every N seconds during exploration
     auto_save_interval_s: float = 60.0
@@ -520,73 +520,46 @@ class AutonomousExplorer:
         self._state = ExploreState.IDLE
 
     def _scan_for_obstacles(self) -> tuple[bool, str]:
-        """Check for obstacles using the shared ObstacleMap (all 5 tiers).
+        """Fast obstacle check using floor proximity + cached vision.
 
-        Updates Tier 1 (floor proximity) with fresh reading, then queries
-        the fused assessment. If vision data is stale and explorer has time,
-        triggers a synchronous vision check.
+        NEVER blocks on vision API. Uses:
+        - Tier 1 (floor proximity): 5ms, detects walls/surfaces
+        - Tier 3 (vision): background thread, checked only if cached result exists
+        - Cliff sensors: handled by ObstacleMap via event bus
 
         Returns:
             (True, "left"|"right") if obstacle detected.
             (False, "") if path is clear.
         """
-        # Update Tier 1: floor proximity from current frame
-        if self._floor_proximity is not None:
-            frame = self._camera.get_latest_frame()
-            if frame is not None:
-                try:
-                    reading = self._floor_proximity.detect(frame)
-                    if self._obstacle_map is not None:
-                        self._obstacle_map.update_proximity(reading)
-                except Exception:
-                    logger.debug("Floor proximity failed", exc_info=True)
+        frame = self._camera.get_latest_frame()
 
-        # Update Tier 2: YOLO (quick scan)
-        if self._person_detector is not None and self._obstacle_detector is not None:
-            frame = self._camera.get_latest_frame()
-            if frame is not None:
-                try:
-                    detections = self._person_detector.detect(frame)
-                    self._obstacle_detector.update(detections)
-                    if self._obstacle_map is not None:
-                        self._obstacle_map.update_yolo(
-                            self._obstacle_detector.zone,
-                            self._obstacle_detector.speed_scale,
-                        )
-                except Exception:
-                    logger.debug("YOLO scan failed", exc_info=True)
+        # Tier 1: floor proximity (5ms, primary wall detector)
+        if self._floor_proximity is not None and frame is not None:
+            try:
+                reading = self._floor_proximity.detect(frame)
+                if self._obstacle_map is not None:
+                    self._obstacle_map.update_proximity(reading)
+                # Direct check — don't even need the map for this
+                if reading.is_blocked:
+                    turn = reading.suggested_turn or "right"
+                    logger.info(
+                        "Floor proximity: BLOCKED (%.0fmm, turn=%s)",
+                        reading.min_mm, turn,
+                    )
+                    return True, turn
+            except Exception:
+                logger.debug("Floor proximity failed", exc_info=True)
 
-        # Check fused assessment from ObstacleMap
+        # Check cached obstacle map assessment (non-blocking)
         if self._obstacle_map is not None:
             assessment = self._obstacle_map.get_assessment()
-
-            # If vision is stale and we're not in immediate danger,
-            # trigger a synchronous vision check (explorer has time)
-            if (
-                self._vision_checker is not None
-                and self._obstacle_map.vision_stale
-                and assessment.zone != "danger"
-            ):
-                blocked, direction = self._vision_checker.check_now()
-                # Re-read assessment after vision update
-                assessment = self._obstacle_map.get_assessment()
-
             if assessment.zone == "danger":
                 turn = assessment.turn_direction or "right"
                 logger.info(
-                    "ObstacleMap: DANGER (source=%s, prox=%.0fmm, turn=%s)",
-                    assessment.source, assessment.proximity_mm, turn,
+                    "ObstacleMap: DANGER (source=%s, prox=%.0fmm)",
+                    assessment.source, assessment.proximity_mm,
                 )
                 return True, turn
-            elif assessment.zone == "caution":
-                logger.info(
-                    "ObstacleMap: caution (source=%s, prox=%.0fmm, scale=%.2f)",
-                    assessment.source, assessment.proximity_mm, assessment.speed_scale,
-                )
-
-        # Fallback: if no obstacle map, use vision checker directly
-        elif self._vision_checker is not None:
-            return self._vision_checker.check_now()
 
         return False, ""
 
