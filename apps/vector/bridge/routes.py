@@ -1390,29 +1390,26 @@ async def charger_save(request: web.Request) -> web.Response:
         )
         try:
             import time as _time
-            # Use DriveStraight gRPC to back off charger without animation
-            robot.motors.set_wheel_motors(-60, -60)
-            _time.sleep(2.0)
+            # Drive off charger (SDK call — only way to undock)
+            robot.behavior.drive_off_charger()
+            _time.sleep(3.0)
             robot.motors.set_wheel_motors(0, 0)
             _time.sleep(0.5)
-
-            # Check if we actually moved off
-            batt2 = robot.get_battery_state()
-            if batt2.is_on_charger_platform:
-                # Raw motors didn't work — fall back to SDK drive_off_charger
-                logger.info("Raw motors didn't undock — using drive_off_charger()")
-                robot.behavior.drive_off_charger()
-                _time.sleep(3.0)
-                robot.motors.set_wheel_motors(0, 0)
-                _time.sleep(0.5)
 
             # Turn 180° to face the charger
             robot.behavior.turn_in_place(anki_vector.util.degrees(180))
             _time.sleep(3.0)
             robot.motors.set_wheel_motors(0, 0)
             _time.sleep(0.5)
+
             # Save waypoint facing the charger
             nav.save_current_position("charger")
+
+            # Turn 180° again so Vector faces AWAY from charger (ready to explore)
+            robot.behavior.turn_in_place(anki_vector.util.degrees(180))
+            _time.sleep(3.0)
+            robot.motors.set_wheel_motors(0, 0)
+            _time.sleep(0.5)
         finally:
             robot.conn.release_control()
 
