@@ -482,7 +482,7 @@ class AutonomousExplorer:
                 # Scan for obstacles before driving
                 blocked, turn_dir = self._scan_for_obstacles()
                 if blocked:
-                    angle = -90.0 if turn_dir == "left" else 90.0
+                    angle = -45.0 if turn_dir == "left" else 45.0
                     logger.info("Obstacle ahead — turning %s", turn_dir or "right")
                     try:
                         self._motor.turn_in_place(
@@ -817,7 +817,7 @@ class AutonomousExplorer:
         # Fresh obstacle scan before driving
         blocked, turn_dir = self._scan_for_obstacles()
         if blocked:
-            angle = -90.0 if turn_dir == "left" else 90.0
+            angle = -45.0 if turn_dir == "left" else 45.0
             logger.info("Obstacle in _drive_toward — turning %s", turn_dir or "right")
             try:
                 self._motor.turn_in_place(
