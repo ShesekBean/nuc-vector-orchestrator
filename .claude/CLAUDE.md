@@ -349,11 +349,14 @@ PGM parses this format to auto-unstick issues when all listed dependencies close
 
 ## Hard-Won Lessons — Do NOT Repeat These Mistakes
 
-### Vector Robot — NEVER Touch Without Approval
-- **NEVER** run `systemctl restart/stop/start` on Vector services — cascade crashes happen (fault code 800)
-- **NEVER** modify files on Vector via SSH without Ophir's explicit approval
-- **NEVER** change vic-engine, vic-anim, vic-gateway, vic-cloud configs on robot
-- NUC-side code (`apps/vector/`, bridge, etc.) is fine to modify freely
+### Vector Robot — Modify With Care
+Robot modifications are allowed now that WireOS provides a safe recovery path (A/B boot slots, reflash capability). However, be careful:
+- **Prefer NUC-side changes** over robot-side changes when possible
+- **Always remount rootfs rw** before modifying `/anki/` files: `ssh vector 'mount -o remount,rw /'`
+- **Back up before replacing** — copy originals to `.orig` before overwriting binaries
+- **Never copy binaries between boot slots** — different builds have incompatible libraries
+- **Avoid blind `systemctl restart`** on Vector services — cascade crashes happen (fault code 800). Restart specific services only when you understand the dependency chain
+- **Build firmware patches on Jetson** via `ShesekBean/wire-os-victor` fork, deploy via SCP
 
 ### Camera Feed Gotchas
 - Image streaming can get **silently disabled** after SDK connect/disconnect cycles. Always call `robot.camera.image_streaming_enabled()` and explicitly enable via `EnableImageStreamingRequest` before `init_camera_feed()`.
@@ -416,8 +419,7 @@ Doc update issues requesting CLAUDE.md changes will cause workers to spin in rej
 - curl/wget to external URLs not on the allowlist
 - Disable any safety check
 - Stop, restart, or remove openclaw-gateway or openclaw-dns containers
-- Modify Vector robot files/services without Ophir's explicit approval
-- Run `systemctl` commands on Vector (cascade crash risk)
+- Blindly restart Vector services without understanding the dependency chain (cascade crash risk)
 - Copy binaries between Vector boot slots (different builds = incompatible libraries)
 
 ---
