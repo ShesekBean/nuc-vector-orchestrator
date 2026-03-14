@@ -36,6 +36,7 @@ class ConnectionManager:
         self._mode: str = "quiet"  # "quiet" or "playful"
         self._control_watchdog: threading.Thread | None = None
         self._control_watchdog_stop = threading.Event()
+        self._suppress_watchdog = threading.Event()  # set during face restore
 
         # Controllers — created on connect
         self._motor_controller: Any | None = None
@@ -222,7 +223,7 @@ class ConnectionManager:
                     self._control_watchdog_stop.wait(1)
                 if self._control_watchdog_stop.is_set():
                     break
-                if self._mode == "quiet":
+                if self._mode == "quiet" and not self._suppress_watchdog.is_set():
                     logger.warning("Behavior control lost — re-requesting OVERRIDE_BEHAVIORS")
                     from anki_vector.connection import ControlPriorityLevel
                     try:

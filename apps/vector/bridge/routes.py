@@ -665,29 +665,45 @@ def _send_image_to_screen(robot: "Any", sdk_image: "Any", duration_sec: float) -
     robot.screen.set_screen_with_image_data(screen_data, duration_sec=duration_sec)
 
 
-def _restore_face_animation(robot: "Any") -> None:
+def _restore_face_animation(robot: "Any", conn_mgr: "Any" = None) -> None:
     """Restore normal face animation after displaying a static image.
 
     DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
-    Releasing and re-acquiring behavior control forces a full face reset.
+    We release control so vic-engine's behavior tree resumes and re-enables
+    KeepFaceAlive, then re-acquire OVERRIDE_BEHAVIORS after a delay.
     """
+    from anki_vector.connection import ControlPriorityLevel
+
     try:
-        logger.info("Restoring face: releasing behavior control...")
+        # Suppress the behavior watchdog during face restore so it doesn't
+        # immediately re-request control before vic-engine can restart face.
+        if conn_mgr is not None:
+            conn_mgr._suppress_watchdog.set()
+
+        logger.info("Restoring face: releasing control to let vic-engine restart face...")
         robot.conn.release_control()
-        time.sleep(0.5)
-        robot.conn.request_control()
+        # Give vic-engine enough time to run its behavior tree and
+        # re-enable KeepFaceAlive (needs ~2s for face init sequence)
+        time.sleep(2.0)
+        robot.conn.request_control(
+            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+        )
         time.sleep(0.5)
         logger.info("Face animation restored via control cycle")
     except Exception:
         logger.exception("Could not restore face animation")
+    finally:
+        if conn_mgr is not None:
+            conn_mgr._suppress_watchdog.clear()
 
 
 def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
-                          duration: float, stop_event: threading.Event) -> None:
+                          duration: float, stop_event: threading.Event,
+                          conn_mgr: "Any" = None) -> None:
     """Re-send image every 0.5s for *duration* seconds to suppress eye animations.
 
-    After the hold ends, plays a short animation to restore the normal face
-    (DisplayFaceImage permanently disables KeepFaceAlive in vic-anim).
+    After the hold ends, releases and re-acquires behavior control to force
+    vic-engine to re-enable KeepFaceAlive (restoring animated eyes).
     """
     end_time = time.monotonic() + duration
     interval = 0.5
@@ -705,10 +721,11 @@ def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
 
     # Restore normal face animation (eyes) after hold ends
     logger.info("Display hold ended (stopped=%s)", stop_event.is_set())
-    _restore_face_animation(robot)
+    _restore_face_animation(robot, conn_mgr)
 
 
-def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float) -> None:
+def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float,
+                         conn_mgr: "Any" = None) -> None:
     """Start a background thread that holds an image on screen for *duration* seconds.
 
     Cancels any previous hold thread.
@@ -724,7 +741,7 @@ def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float) -> None
 
     t = threading.Thread(
         target=_hold_image_on_screen,
-        args=(robot, sdk_image, duration, stop_event),
+        args=(robot, sdk_image, duration, stop_event, conn_mgr),
         name="display-hold",
         daemon=True,
     )
@@ -827,7 +844,7 @@ async def display_image(request: web.Request) -> web.Response:
 
         # Send immediately, then hold in background
         await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
-        _start_display_hold(conn.robot, sdk_frame, duration)
+        _start_display_hold(conn.robot, sdk_frame, duration, conn_mgr=conn)
 
         return web.json_response({
             "status": "ok",
@@ -873,7 +890,7 @@ async def display_text(request: web.Request) -> web.Response:
         sdk_frame = _prepare_for_screen(text_img)
 
         await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
-        _start_display_hold(conn.robot, sdk_frame, duration)
+        _start_display_hold(conn.robot, sdk_frame, duration, conn_mgr=conn)
 
         return web.json_response({
             "status": "ok",
@@ -919,7 +936,7 @@ async def display_color(request: web.Request) -> web.Response:
         sdk_frame = _prepare_for_screen(fill_img)
 
         await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
-        _start_display_hold(conn.robot, sdk_frame, duration)
+        _start_display_hold(conn.robot, sdk_frame, duration, conn_mgr=conn)
 
         return web.json_response({
             "status": "ok",
