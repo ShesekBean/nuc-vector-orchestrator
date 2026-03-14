@@ -314,6 +314,36 @@ class ConnectionManager:
         # Send quiet intent so Vector sits still by default (wake word still active)
         self._send_quiet_intent()
 
+    def start_monitor(self) -> None:
+        """Start the connection monitor — connects in a background thread."""
+        import threading
+        def _monitor():
+            try:
+                self.connect()
+            except Exception:
+                logger.exception("Initial connection failed — will retry on next request")
+        self._monitor_thread = threading.Thread(
+            target=_monitor, name="conn-monitor", daemon=True
+        )
+        self._monitor_thread.start()
+
+    def stop_monitor(self) -> None:
+        """Stop the connection monitor."""
+        if hasattr(self, '_monitor_thread') and self._monitor_thread:
+            self._monitor_thread.join(timeout=10.0)
+            self._monitor_thread = None
+
+    @property
+    def mode(self) -> str:
+        """Current behavior mode."""
+        return getattr(self, '_mode', 'quiet')
+
+    def set_mode(self, mode: str) -> None:
+        """Set behavior mode (quiet/playful)."""
+        self._mode = mode
+        if mode == "quiet":
+            self._send_quiet_intent()
+
     def _send_quiet_intent(self) -> None:
         """Send imperative_quiet intent via wire-pod to keep Vector still."""
         import urllib.request

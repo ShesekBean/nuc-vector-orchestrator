@@ -1362,6 +1362,57 @@ async def explore_status(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "EXPLORE_STATUS_FAILED")
 
 
+async def charger_save(request: web.Request) -> web.Response:
+    """POST /charger/save — drive off charger, turn 180, save charger waypoint.
+
+    Must be called while Vector is ON the charger.
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "NavController not initialised", "NAV_UNAVAILABLE")
+
+    def _charger_maneuver():
+        import anki_vector
+        from anki_vector.connection import ControlPriorityLevel
+
+        robot = conn.robot
+        batt = robot.get_battery_state()
+        if not batt.is_on_charger_platform:
+            raise RuntimeError("Vector is not on the charger")
+
+        # Override control suppresses idle animations during maneuver
+        robot.conn.request_control(
+            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+        )
+        try:
+            import time as _time
+            # Drive straight back off charger (no animation, just motors)
+            robot.motors.set_wheel_motors(-80, -80)
+            _time.sleep(1.5)
+            robot.motors.set_wheel_motors(0, 0)
+            _time.sleep(0.5)
+            # Turn 180° to face the charger
+            robot.behavior.turn_in_place(anki_vector.util.degrees(180))
+            _time.sleep(2.0)
+            # Save waypoint
+            nav.save_current_position("charger")
+        finally:
+            robot.conn.release_control()
+
+    try:
+        await _run_sync(_charger_maneuver)
+        return web.json_response({"status": "ok", "waypoint": "charger"})
+    except RuntimeError as exc:
+        return _json_error(400, str(exc), "NOT_ON_CHARGER")
+    except Exception as exc:
+        logger.exception("Charger save maneuver failed")
+        return _json_error(500, str(exc), "CHARGER_SAVE_FAILED")
+
+
 async def charger_start(request: web.Request) -> web.Response:
     """POST /charger/start — start battery monitoring + auto-charge."""
     conn: ConnectionManager = request.app["conn"]
@@ -1524,13 +1575,29 @@ async def patrol_resume(request: web.Request) -> web.Response:
 
 
 async def mode_get(request: web.Request) -> web.Response:
-    """GET /mode — get current behavior mode (stub — mode manager not wired)."""
-    return web.json_response({"mode": "quiet", "message": "Mode manager not yet initialised"})
+    """GET /mode — get current behavior mode."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+    return web.json_response({"mode": conn.mode})
 
 
 async def mode_set(request: web.Request) -> web.Response:
-    """POST /mode — set behavior mode (stub)."""
-    return _json_error(503, "Mode manager not yet initialised", "MODE_UNAVAILABLE")
+    """POST /mode — set behavior mode. Body: {"mode": "quiet"|"playful"}."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "BAD_REQUEST")
+    mode = body.get("mode")
+    if mode not in ("quiet", "playful"):
+        return _json_error(400, "mode must be 'quiet' or 'playful'", "BAD_REQUEST")
+    await _run_sync(conn.set_mode, mode)
+    return web.json_response({"mode": conn.mode})
 
 
 def setup_routes(app: web.Application) -> None:
@@ -1577,6 +1644,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/explore/stop", explore_stop)
     app.router.add_get("/explore/status", explore_status)
     # Auto-charger routes
+    app.router.add_post("/charger/save", charger_save)
     app.router.add_post("/charger/start", charger_start)
     app.router.add_post("/charger/stop", charger_stop)
     # Patrol / Home Guardian routes
