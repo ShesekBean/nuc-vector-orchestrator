@@ -401,13 +401,14 @@ When you add, change, or remove functionality:
 
 ## CLAUDE.md Improvement Process
 
-**At the end of each working day**, the Orchestrator should:
-1. Review lessons learned, new patterns, and behavioral insights from the day's work
-2. Draft improvements to `.claude/CLAUDE.md` as a PR (branch: `claude-md-update-YYYY-MM-DD`)
-3. Push the PR for Ophir to review and approve on GitHub
-4. Do NOT commit CLAUDE.md changes directly to main — always use a PR for Ophir's review
-
-This ensures CLAUDE.md stays current without bypassing Ophir's oversight.
+**Aggregate throughout the day, ship once as a PR:**
+1. After each commit, note any CLAUDE.md-worthy insights (new lessons, corrected specs, process improvements) in memory files
+2. At the end of the working day, collect all accumulated improvements into one PR:
+   - Branch: `claude-md-update-YYYY-MM-DD`
+   - Single commit with all changes
+   - Push and create PR for Ophir to review on GitHub
+3. Do NOT commit CLAUDE.md changes directly to main — always use a PR for Ophir's review
+4. Exception: Ophir can explicitly approve direct commits during a session (as he has today)
 
 ---
 
