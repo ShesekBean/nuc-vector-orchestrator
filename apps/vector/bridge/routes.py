@@ -960,74 +960,22 @@ async def call_status(request: web.Request) -> web.Response:
 
 
 async def media_status(request: web.Request) -> web.Response:
-    """GET /media/status -- all media channel statuses."""
+    """GET /media/status -- media channel statuses (stub — MediaService not wired)."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
-
-    media = conn.media_service
-    if media is None:
-        return web.json_response({"started": False, "channels": {}})
-
-    return web.json_response(media.get_status())
+    return web.json_response({"started": False, "channels": {}, "message": "MediaService not yet initialised"})
 
 
 async def media_mic_start(request: web.Request) -> web.Response:
-    """POST /media/mic/start -- start mic audio channel."""
-    conn: ConnectionManager = request.app["conn"]
-    err = _require_connected(conn)
-    if err:
-        return err
-
-    media = conn.media_service
-    if media is None:
-        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
-
-    if media.mic.is_running:
-        return web.json_response({
-            "status": "ok",
-            "message": "Mic channel already running",
-            **media.mic.get_status(),
-        })
-
-    try:
-        media.mic.start()
-        return web.json_response({
-            "status": "ok",
-            **media.mic.get_status(),
-        })
-    except Exception as exc:
-        logger.exception("Failed to start mic channel")
-        return _json_error(500, str(exc), "MIC_START_FAILED")
+    """POST /media/mic/start -- start mic audio channel (stub)."""
+    return _json_error(503, "MediaService not yet initialised", "MEDIA_UNAVAILABLE")
 
 
 async def media_mic_stop(request: web.Request) -> web.Response:
-    """POST /media/mic/stop -- stop mic audio channel."""
-    conn: ConnectionManager = request.app["conn"]
-    err = _require_connected(conn)
-    if err:
-        return err
-
-    media = conn.media_service
-    if media is None:
-        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
-
-    if not media.mic.is_running:
-        return web.json_response({
-            "status": "ok",
-            "message": "Mic channel not running",
-        })
-
-    try:
-        media.mic.stop()
-        return web.json_response({
-            "status": "ok",
-            "message": "Mic channel stopped",
-        })
-    except Exception as exc:
-        logger.exception("Failed to stop mic channel")
-        return _json_error(500, str(exc), "MIC_STOP_FAILED")
+    """POST /media/mic/stop -- stop mic audio channel (stub)."""
+    return _json_error(503, "MediaService not yet initialised", "MEDIA_UNAVAILABLE")
 
 
 # ---------------------------------------------------------------------------
@@ -1396,38 +1344,132 @@ async def charger_stop(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "CHARGER_STOP_FAILED")
 
 
-async def mode_get(request: web.Request) -> web.Response:
-    """GET /mode — get current behavior mode."""
+# ---------------------------------------------------------------------------
+# Patrol / Home Guardian routes
+# ---------------------------------------------------------------------------
+
+
+async def patrol_start(request: web.Request) -> web.Response:
+    """POST /patrol/start — start patrol. Body: {"mode": "patrol"|"sentry", "waypoints": [...]}."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
-    return web.json_response({"mode": conn.mode})
 
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
 
-async def mode_set(request: web.Request) -> web.Response:
-    """POST /mode — set behavior mode. Body: {"mode": "quiet"|"playful"}."""
-    conn: ConnectionManager = request.app["conn"]
-    err = _require_connected(conn)
-    if err:
-        return err
+    if guardian.is_running:
+        return web.json_response({
+            "status": "ok",
+            "message": "Guardian already running",
+            **guardian.get_status(),
+        })
 
+    body = {}
     try:
         body = await request.json()
     except Exception:
-        return _json_error(400, "Invalid JSON body", "BAD_REQUEST")
+        pass  # defaults are fine
 
-    mode = body.get("mode")
-    if mode not in ("quiet", "playful"):
-        return _json_error(400, "mode must be 'quiet' or 'playful'", "BAD_REQUEST")
+    mode = body.get("mode", "patrol")
+    waypoints = body.get("waypoints")
 
     try:
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, conn.set_mode, mode)
-        return web.json_response({"mode": conn.mode})
+        await _run_sync(guardian.start, mode, waypoints)
+        return web.json_response({"status": "ok", **guardian.get_status()})
     except Exception as exc:
-        logger.exception("Mode switch failed")
-        return _json_error(500, str(exc), "MODE_SWITCH_FAILED")
+        logger.exception("Failed to start patrol")
+        return _json_error(500, str(exc), "PATROL_START_FAILED")
+
+
+async def patrol_stop(request: web.Request) -> web.Response:
+    """POST /patrol/stop — stop patrol."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
+
+    try:
+        await _run_sync(guardian.stop)
+        return web.json_response({"status": "ok", "running": False})
+    except Exception as exc:
+        logger.exception("Failed to stop patrol")
+        return _json_error(500, str(exc), "PATROL_STOP_FAILED")
+
+
+async def patrol_status(request: web.Request) -> web.Response:
+    """GET /patrol/status — patrol status and recent events."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return web.json_response({"running": False, "message": "HomeGuardian not initialised"})
+
+    return web.json_response(guardian.get_status())
+
+
+async def patrol_log(request: web.Request) -> web.Response:
+    """GET /patrol/log — full activity log. Query: ?limit=50."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return web.json_response({"events": []})
+
+    limit = int(request.query.get("limit", "50"))
+    return web.json_response({"events": guardian.get_activity_log(limit)})
+
+
+async def patrol_pause(request: web.Request) -> web.Response:
+    """POST /patrol/pause — pause patrol."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
+
+    guardian.pause()
+    return web.json_response({"status": "ok", "paused": True})
+
+
+async def patrol_resume(request: web.Request) -> web.Response:
+    """POST /patrol/resume — resume patrol."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    guardian = conn.home_guardian
+    if guardian is None:
+        return _json_error(503, "HomeGuardian not initialised", "GUARDIAN_UNAVAILABLE")
+
+    guardian.resume()
+    return web.json_response({"status": "ok", "paused": False})
+
+
+async def mode_get(request: web.Request) -> web.Response:
+    """GET /mode — get current behavior mode (stub — mode manager not wired)."""
+    return web.json_response({"mode": "quiet", "message": "Mode manager not yet initialised"})
+
+
+async def mode_set(request: web.Request) -> web.Response:
+    """POST /mode — set behavior mode (stub)."""
+    return _json_error(503, "Mode manager not yet initialised", "MODE_UNAVAILABLE")
 
 
 def setup_routes(app: web.Application) -> None:
@@ -1477,3 +1519,10 @@ def setup_routes(app: web.Application) -> None:
     # Auto-charger routes
     app.router.add_post("/charger/start", charger_start)
     app.router.add_post("/charger/stop", charger_stop)
+    # Patrol / Home Guardian routes
+    app.router.add_post("/patrol/start", patrol_start)
+    app.router.add_post("/patrol/stop", patrol_stop)
+    app.router.add_get("/patrol/status", patrol_status)
+    app.router.add_get("/patrol/log", patrol_log)
+    app.router.add_post("/patrol/pause", patrol_pause)
+    app.router.add_post("/patrol/resume", patrol_resume)

@@ -53,6 +53,7 @@ class ConnectionManager:
         self._intercom: Any | None = None
         self._explorer: Any | None = None
         self._auto_charger: Any | None = None
+        self._home_guardian: Any | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -125,6 +126,11 @@ class ConnectionManager:
     def auto_charger(self) -> Any:
         """AutoCharger instance, or None if not initialised."""
         return self._auto_charger
+
+    @property
+    def home_guardian(self) -> Any:
+        """HomeGuardian instance, or None if not initialised."""
+        return self._home_guardian
 
     @property
     def intercom(self) -> Any:
@@ -231,6 +237,18 @@ class ConnectionManager:
             robot=self._robot,
         )
 
+        # Home Guardian (patrol & security system)
+        from apps.vector.src.planner.patrol import HomeGuardian
+        self._home_guardian = HomeGuardian(
+            nav_controller=self._nav_controller,
+            motor=self._motor_controller,
+            head=self._head_controller,
+            camera=self._camera_client,
+            nuc_bus=self._nuc_bus,
+            intercom=self._intercom,
+            robot=self._robot,
+        )
+
         # Auto-charger (starts monitoring immediately)
         self._auto_charger = AutoCharger(
             robot=self._robot,
@@ -268,6 +286,8 @@ class ConnectionManager:
 
         logger.info("Disconnecting from Vector...")
         try:
+            if self._home_guardian:
+                self._home_guardian.stop()
             if self._auto_charger:
                 self._auto_charger.stop()
             if self._explorer:
@@ -312,6 +332,7 @@ class ConnectionManager:
         self._audio_client = None
         self._livekit_bridge = None
         self._follow_pipeline = None
+        self._home_guardian = None
         self._auto_charger = None
         self._explorer = None
         self._intercom = None

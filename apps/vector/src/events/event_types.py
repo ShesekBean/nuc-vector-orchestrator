@@ -39,6 +39,7 @@ IMU_UPDATE = "imu_update"
 NAV_STATE_CHANGED = "nav_state_changed"
 NAV_RESULT = "nav_result"
 WAYPOINT_SAVED = "waypoint_saved"
+PATROL_EVENT = "patrol_event"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -315,3 +316,13 @@ class MessageRelayedEvent:
     original_text: str  # full STT transcription
     extracted_message: str  # message body sent to Ophir
     success: bool  # whether Intercom delivery succeeded
+
+
+@dataclass(frozen=True)
+class PatrolEventPayload:
+    """Emitted by HomeGuardian during patrol for activity tracking."""
+
+    event_type: str  # "patrol_start", "waypoint_arrived", "person_detected", etc.
+    waypoint: str = ""
+    details: str = ""
+    person_name: str = ""
