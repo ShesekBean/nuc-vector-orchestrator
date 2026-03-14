@@ -201,15 +201,13 @@ class ObstacleMap:
                 speed_scale = 0.0
                 source = "cliff"
 
-            # Tier 5: IMU collision
+            # Tier 5: IMU collision — informational only, logged but does not
+            # override zone. Vector's treads produce too much vibration for
+            # reliable collision detection via accelerometer alone.
             imu_collision = (
                 self._imu_collision
                 and (now - self._imu_time) < IMU_COLLISION_TTL_S
             )
-            if imu_collision:
-                zone = "danger"
-                speed_scale = 0.0
-                source = source or "imu"
 
             # Tier 1: Floor proximity
             if self._proximity_mm < 100 and self._proximity_confidence > 0.3:
