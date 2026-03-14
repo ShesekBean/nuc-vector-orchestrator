@@ -895,16 +895,26 @@ class LiveKitBridge:
             logger.info("Video-in display loop ended (%d frames)", frame_count)
 
     def _restore_face(self) -> None:
-        """Restore face animation after displaying video on OLED."""
+        """Restore face animation after displaying video on OLED.
+
+        DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
+        We must release control long enough (~2s) for vic-engine's behavior
+        tree to restart and re-enable KeepFaceAlive, then re-acquire with
+        OVERRIDE_BEHAVIORS_PRIORITY to keep Vector in sit mode.
+        """
         import time as _time
+        from anki_vector.connection import ControlPriorityLevel
         try:
+            logger.info("Restoring face: releasing control for vic-engine restart...")
             self._robot.conn.release_control()
-            _time.sleep(0.5)
-            self._robot.conn.request_control()
+            _time.sleep(2.0)
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
             _time.sleep(0.5)
             logger.info("Face animation restored after video-in")
         except Exception:
-            logger.debug("Face restore failed", exc_info=True)
+            logger.exception("Face restore failed")
 
     # ------------------------------------------------------------------
     # Frame conversion

@@ -665,7 +665,7 @@ def _send_image_to_screen(robot: "Any", sdk_image: "Any", duration_sec: float) -
     robot.screen.set_screen_with_image_data(screen_data, duration_sec=duration_sec)
 
 
-def _restore_face_animation(robot: "Any", conn_mgr: "Any" = None) -> None:
+def _restore_face_animation(robot: "Any") -> None:
     """Restore normal face animation after displaying a static image.
 
     DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
@@ -675,11 +675,6 @@ def _restore_face_animation(robot: "Any", conn_mgr: "Any" = None) -> None:
     from anki_vector.connection import ControlPriorityLevel
 
     try:
-        # Suppress the behavior watchdog during face restore so it doesn't
-        # immediately re-request control before vic-engine can restart face.
-        if conn_mgr is not None:
-            conn_mgr._suppress_watchdog.set()
-
         logger.info("Restoring face: releasing control to let vic-engine restart face...")
         robot.conn.release_control()
         # Give vic-engine enough time to run its behavior tree and
@@ -692,14 +687,10 @@ def _restore_face_animation(robot: "Any", conn_mgr: "Any" = None) -> None:
         logger.info("Face animation restored via control cycle")
     except Exception:
         logger.exception("Could not restore face animation")
-    finally:
-        if conn_mgr is not None:
-            conn_mgr._suppress_watchdog.clear()
 
 
 def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
-                          duration: float, stop_event: threading.Event,
-                          conn_mgr: "Any" = None) -> None:
+                          duration: float, stop_event: threading.Event) -> None:
     """Re-send image every 0.5s for *duration* seconds to suppress eye animations.
 
     After the hold ends, releases and re-acquires behavior control to force
@@ -721,11 +712,10 @@ def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
 
     # Restore normal face animation (eyes) after hold ends
     logger.info("Display hold ended (stopped=%s)", stop_event.is_set())
-    _restore_face_animation(robot, conn_mgr)
+    _restore_face_animation(robot)
 
 
-def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float,
-                         conn_mgr: "Any" = None) -> None:
+def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float) -> None:
     """Start a background thread that holds an image on screen for *duration* seconds.
 
     Cancels any previous hold thread.
@@ -741,7 +731,7 @@ def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float,
 
     t = threading.Thread(
         target=_hold_image_on_screen,
-        args=(robot, sdk_image, duration, stop_event, conn_mgr),
+        args=(robot, sdk_image, duration, stop_event),
         name="display-hold",
         daemon=True,
     )
@@ -844,7 +834,7 @@ async def display_image(request: web.Request) -> web.Response:
 
         # Send immediately, then hold in background
         await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
-        _start_display_hold(conn.robot, sdk_frame, duration, conn_mgr=conn)
+        _start_display_hold(conn.robot, sdk_frame, duration)
 
         return web.json_response({
             "status": "ok",
@@ -890,7 +880,7 @@ async def display_text(request: web.Request) -> web.Response:
         sdk_frame = _prepare_for_screen(text_img)
 
         await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
-        _start_display_hold(conn.robot, sdk_frame, duration, conn_mgr=conn)
+        _start_display_hold(conn.robot, sdk_frame, duration)
 
         return web.json_response({
             "status": "ok",
@@ -936,7 +926,7 @@ async def display_color(request: web.Request) -> web.Response:
         sdk_frame = _prepare_for_screen(fill_img)
 
         await _run_sync(_send_image_to_screen, conn.robot, sdk_frame, min(1.0, duration))
-        _start_display_hold(conn.robot, sdk_frame, duration, conn_mgr=conn)
+        _start_display_hold(conn.robot, sdk_frame, duration)
 
         return web.json_response({
             "status": "ok",

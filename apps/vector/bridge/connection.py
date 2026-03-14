@@ -34,9 +34,9 @@ class ConnectionManager:
         self._robot: Any | None = None
         self._connected = False
         self._mode: str = "quiet"  # "quiet" or "playful"
-        self._control_watchdog: threading.Thread | None = None
-        self._control_watchdog_stop = threading.Event()
-        self._suppress_watchdog = threading.Event()  # set during face restore
+        # Connection monitor — auto-reconnects when Vector reboots or connection drops
+        self._monitor_thread: threading.Thread | None = None
+        self._monitor_stop = threading.Event()
 
         # Controllers — created on connect
         self._motor_controller: Any | None = None
@@ -189,55 +189,81 @@ class ConnectionManager:
         )
 
         self._connected = True
-
-        # Start behavior control watchdog — re-requests OVERRIDE_BEHAVIORS
-        # whenever the SDK signals control_lost while we're in quiet mode.
-        self._control_watchdog_stop.clear()
-        self._control_watchdog = threading.Thread(
-            target=self._behavior_control_watchdog,
-            daemon=True,
-            name="behavior-control-watchdog",
-        )
-        self._control_watchdog.start()
-
         logger.info("Connected to Vector successfully")
 
-    def _behavior_control_watchdog(self) -> None:
-        """Background thread: re-request OVERRIDE_BEHAVIORS when control is lost.
+    def start_monitor(self) -> None:
+        """Start the connection monitor thread.
 
-        The SDK's BehaviorControl gRPC stream can lose control if another client
-        connects or if the stream hiccups. This watchdog waits for the
-        control_lost_event and immediately re-requests control when in quiet mode.
+        Monitors the connection to Vector and auto-reconnects on failure.
+        Since connect() always requests OVERRIDE_BEHAVIORS, reconnecting
+        automatically puts Vector in sit/quiet mode.
         """
-        while not self._control_watchdog_stop.is_set():
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            return
+        self._monitor_stop.clear()
+        self._monitor_thread = threading.Thread(
+            target=self._connection_monitor,
+            daemon=True,
+            name="connection-monitor",
+        )
+        self._monitor_thread.start()
+        logger.info("Connection monitor started")
+
+    def stop_monitor(self) -> None:
+        """Stop the connection monitor thread."""
+        self._monitor_stop.set()
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            self._monitor_thread.join(timeout=5)
+        self._monitor_thread = None
+
+    def _connection_monitor(self) -> None:
+        """Background thread: ensure Vector connection stays alive.
+
+        - If not connected, attempts to connect (with backoff)
+        - If connected, checks health every 10s via battery state query
+        - On failure, disconnects cleanly and reconnects
+        - Reconnecting always requests OVERRIDE_BEHAVIORS → auto sit mode
+        """
+        backoff = 5
+        while not self._monitor_stop.is_set():
             try:
-                if not self._connected or self._robot is None:
-                    self._control_watchdog_stop.wait(5)
-                    continue
-                # Block until control is lost (or stop is signaled)
-                lost_event = self._robot.conn.control_lost_event
-                # Poll with timeout so we can check stop flag
-                while not self._control_watchdog_stop.is_set():
-                    if lost_event.is_set():
-                        break
-                    self._control_watchdog_stop.wait(1)
-                if self._control_watchdog_stop.is_set():
-                    break
-                if self._mode == "quiet" and not self._suppress_watchdog.is_set():
-                    logger.warning("Behavior control lost — re-requesting OVERRIDE_BEHAVIORS")
-                    from anki_vector.connection import ControlPriorityLevel
+                if not self._connected:
+                    logger.info("Connection monitor: attempting to connect to Vector...")
                     try:
-                        self._robot.conn.request_control(
-                            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-                        )
-                        logger.info("Behavior control re-acquired")
+                        self.connect()
+                        backoff = 5  # reset on success
+                        logger.info("Connection monitor: connected successfully")
                     except Exception:
-                        logger.exception("Failed to re-request behavior control")
-                else:
-                    logger.debug("Control lost in playful mode — not re-requesting")
+                        logger.warning(
+                            "Connection monitor: connect failed, retrying in %ds...",
+                            backoff,
+                        )
+                        self._monitor_stop.wait(backoff)
+                        backoff = min(backoff * 2, 60)  # exponential backoff, max 60s
+                        continue
+
+                # Health check — lightweight gRPC call
+                try:
+                    self._robot.get_battery_state()
+                except Exception:
+                    logger.warning("Connection monitor: health check failed — reconnecting")
+                    try:
+                        self.disconnect()
+                    except Exception:
+                        logger.exception("Connection monitor: disconnect error during reconnect")
+                        # Force-clear state so connect() can proceed
+                        self._connected = False
+                        self._robot = None
+                    backoff = 5
+                    self._monitor_stop.wait(3)  # brief pause before reconnect
+                    continue
+
+                # All good — wait before next check
+                self._monitor_stop.wait(10)
+
             except Exception:
-                logger.exception("Behavior control watchdog error")
-                self._control_watchdog_stop.wait(5)
+                logger.exception("Connection monitor: unexpected error")
+                self._monitor_stop.wait(10)
 
     def disconnect(self) -> None:
         """Disconnect from Vector and stop all controllers."""
@@ -245,12 +271,6 @@ class ConnectionManager:
             return
 
         logger.info("Disconnecting from Vector...")
-
-        # Stop behavior control watchdog
-        self._control_watchdog_stop.set()
-        if self._control_watchdog and self._control_watchdog.is_alive():
-            self._control_watchdog.join(timeout=3)
-        self._control_watchdog = None
 
         try:
             if self._follow_pipeline:

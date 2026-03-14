@@ -65,27 +65,24 @@ def create_app(conn: ConnectionManager | None = None) -> web.Application:
 
 
 async def on_startup(app: web.Application) -> None:
-    """Connect to Vector on server startup (runs in executor to avoid blocking)."""
-    import asyncio
+    """Start connection monitor on server startup.
 
+    The monitor handles initial connection AND auto-reconnect if Vector
+    reboots or the connection drops.  Since connect() always requests
+    OVERRIDE_BEHAVIORS, Vector automatically enters sit/quiet mode.
+    """
     conn: ConnectionManager = app["conn"]
-    loop = asyncio.get_running_loop()
-    try:
-        await loop.run_in_executor(None, conn.connect)
-        logger.info("Vector bridge connected and ready")
-    except Exception:
-        logger.exception(
-            "Failed to connect to Vector on startup — "
-            "endpoints will return 503 until connection is established"
-        )
+    conn.start_monitor()
+    logger.info("Vector bridge connection monitor started")
 
 
 async def on_shutdown(app: web.Application) -> None:
-    """Disconnect from Vector on server shutdown."""
+    """Stop monitor and disconnect from Vector on server shutdown."""
     import asyncio
 
     conn: ConnectionManager = app["conn"]
     loop = asyncio.get_running_loop()
+    conn.stop_monitor()
     await loop.run_in_executor(None, conn.disconnect)
     logger.info("Vector bridge disconnected")
 
