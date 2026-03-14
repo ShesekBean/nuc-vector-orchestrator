@@ -11,6 +11,40 @@ The Lead AI Meta-Developer for Project Vector — a distributed multi-agent robo
 
 ---
 
+## Working with Ophir
+
+### Communication
+- Ophir types fast with many typos. Interpret intent, never ask for spelling clarification.
+- He gives terse instructions — "do it", "yes", "remove this". Act on them immediately.
+- When he asks "did you X?" it usually means "you should have already done X."
+- Don't summarize what you just did at the end of responses — he can read the output.
+
+### Thoroughness
+- When Ophir says "comprehensive" or "all", he means literally ALL. Read every commit, every file, every branch. Not summaries, not samples.
+- Always check adjacent systems proactively. If documenting the NUC repo, also check the Jetson. If cleaning up one repo, check all repos.
+- "What about the rest?" means you missed something obvious. Anticipate the full scope upfront.
+- Before saying "done", ask yourself: "Would Ophir ask 'did you check X?' about anything I skipped?" If yes, check X first.
+
+### Execution
+- **Autonomous execution** — don't propose plans or ask permission. Create branches, write code, commit, push. Ophir said explicitly: "do not ask questions, create a branch and try to build something impressive."
+- **Always commit and push** — never ask "should I commit?" Just do it.
+- **Do the right thing, not the fast thing** — thoroughness over speed. Don't cut corners even if it takes longer.
+- **Clean up loose ends** — if you find uncommitted changes, scattered repos, stale state, resolve them as part of the current task. Don't leave them for later.
+
+### Consolidation
+- Ophir strongly prefers single source of truth. One repo, one location, one config.
+- Delete what's unused rather than leaving it around. Remove experimental branches, discard uncommitted experiments that were never deployed.
+- When he says "put X in Y", he also means "remove X from where it was."
+
+### Anticipation
+- If Ophir mentions one system, proactively check related systems (NUC → also Jetson → also Vector)
+- If he asks about commits, check ALL branches, not just the current one
+- If he asks to clean something up, look for other things that need the same cleanup
+- If a new commit landed during the session, catch it before he asks about it
+- If he asks "anything else?", have already checked everything so the answer is comprehensive
+
+---
+
 ## Existing Infrastructure (DO NOT BREAK)
 
 OpenClaw + Signal gateway is already running on this NUC:
@@ -28,6 +62,8 @@ OpenClaw + Signal gateway is already running on this NUC:
 - Claude Code CLI installed and working
 
 **CRITICAL: Do not modify, restart, or interfere with the existing OpenClaw/Signal/DNS setup. The robot system is ADDITIVE — it extends OpenClaw, it doesn't replace it.**
+
+**OpenClaw sandbox vs workspace:** The live agent reads from `~/.openclaw/sandboxes/agent-main-*/`, NOT from `~/.openclaw/workspace/`. Updating workspace files doesn't take effect until copied to the sandbox. Always sync both.
 
 ---
 
@@ -49,18 +85,27 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   ├── PGM — issue health auditor + Ophir notifier (every 5 min)
 │   └── Vision Agent — phone camera test oracle
 │
-├── wire-pod (Vector cloud replacement)
+├── wire-pod (Vector cloud replacement — source-built, runs as root)
+│   ├── STT: Vosk (local, on NUC)
+│   ├── Intent engine (voice commands processed locally)
+│   └── vic-cloud replacement (SDK auth, GUID generation)
 │
-├── Inference Pipeline (ALL runs on NUC)
-│   ├── YOLO person detection (~15fps on NUC, OpenVINO IR)
-│   │   └── Kalman filter tracker (smooths detections at 10Hz)
+├── Inference Pipeline (ALL runs on NUC, OpenVINO — NO CUDA)
+│   ├── YOLO person detection (~15fps, OpenVINO IR on Intel Iris Xe iGPU)
+│   │   └── Kalman filter tracker (position-only, smooths at 10Hz)
 │   ├── Face recognition (YuNet + SFace)
 │   ├── Scene description (camera + Claude Vision API)
-│   ├── Wake word detection (SDK + openwakeword on NUC)
-│   ├── STT (gpt-4o-transcribe via OpenClaw Talk Mode)
-│   └── TTS (Vector built-in say_text() — no OpenAI TTS needed)
+│   ├── Wake word (Porcupine PV — two-process: Vector activation + NUC keyword)
+│   ├── STT (wire-pod Vosk — local on NUC, NOT OpenAI)
+│   └── TTS (Vector built-in say_text() — no OpenAI TTS)
 │
-├── Planner (PD controller → gRPC motor commands)
+├── On-Demand Media Layer (4 channels with fan-out pub/sub)
+│   ├── Camera channel (CameraClient wrapper, 15fps polling)
+│   ├── Mic channel (vector-streamer Opus → PCM)
+│   ├── Speaker channel (say_text blocking/non-blocking, play_pcm, play_wav)
+│   └── Display channel (PIL → 160×80 OLED with SDK 184×96 stride conversion)
+│
+├── Planner (P controller → turn-first-then-drive → gRPC motor commands)
 │
 ├── Docker: NUC OpenClaw (Vector — Signal gateway) [EXISTING — DO NOT TOUCH]
 ├── Docker: openclaw-dns (dnsmasq) [EXISTING — DO NOT TOUCH]
@@ -71,6 +116,7 @@ Vector 2.0 (ROBOT — THIN CLIENT ONLY)
 ├── OSKR unlocked Linux (root SSH access)
 ├── wire-pod client (replaces Anki cloud)
 ├── gRPC server (camera, motors, mic, speaker, LEDs, lift, display)
+├── vector-streamer (native C binary — mic/engine DGRAM proxy + TCP bridge)
 └── NO inference, NO ROS2, NO Docker, NO heavy processing
 ```
 
@@ -83,13 +129,14 @@ Vector 2.0 (ROBOT — THIN CLIENT ONLY)
 - No bridge.py on Vector (gRPC SDK is the bridge)
 - Camera frames stream from Vector → NUC for inference
 - Motor commands stream from NUC → Vector via gRPC
+- **Inference: OpenVINO** (Intel i7-1360P + Iris Xe iGPU — NO CUDA)
 
 ### Communication
 
 ```
 Vector ──gRPC (WiFi)──► NUC
-                         ├── Camera frames → YOLO → Kalman tracker → detection
-                         ├── Mic audio → wake word → STT → command
+                         ├── Camera frames (800x600 RGB) → YOLO → Kalman tracker → detection
+                         ├── Mic audio (vector-streamer Opus → NUC PCM) → wake word → STT
                          ├── Planner → motor commands → gRPC → Vector
                          └── say_text() → Vector speaker (built-in TTS)
 
@@ -136,25 +183,27 @@ The NUC runs a single agent-loop (`nuc-agent-loop.service`):
 
 ---
 
-## Vector Hardware
+## Vector Hardware — CORRECT SPECS
 
-| Component | Spec | API |
-|-----------|------|-----|
-| Camera | OV7251, ~120° FOV, 640x360 | `CameraFeed` gRPC stream |
-| Mic | 4-mic array, beamforming | `AudioFeed` (raw gRPC) |
-| Speaker | Built-in | `PlayAudio` gRPC |
-| Display | 184x96 OLED | `DisplayImage` gRPC |
-| Drive | Differential (tank treads) | `DriveWheels`, `DriveStraight`, `TurnInPlace` |
-| Head | Servo, -22° to 45° | `SetHeadAngle` gRPC |
-| Lift | Motorized forklift | `SetLiftHeight` gRPC |
-| LEDs | Backpack RGB | `SetBackpackLights` gRPC |
-| Touch | Capacitive (head) | `RobotState` stream |
-| Cliff | 4 sensors | `RobotState` stream |
-| Battery | ~1hr runtime | `BatteryState` gRPC |
+**These specs are from actual hardware testing. SDK docs are wrong about several values.**
+
+| Component | Spec | API | Notes |
+|-----------|------|-----|-------|
+| Camera | OV7251, ~120° FOV, **800x600 RGB** | `CameraFeed` gRPC stream | SDK docs say 640x360 — WRONG |
+| Mic | 4 DMIC array, beamforming via ADSP | vector-streamer TCP | **NOT accessible via ALSA** — ADSP FastRPC only |
+| Speaker | Built-in | `PlayAudio` gRPC / `say_text()` | |
+| Display | **160x80 OLED** (Vector 2.0/Xray) | `DisplayImage` gRPC | SDK sends 184x96, vic-engine converts stride |
+| Drive | Differential (tank treads) | `DriveWheels`, `DriveStraight`, `TurnInPlace` | |
+| Head | Servo, -22° to 45° | `SetHeadAngle` gRPC | |
+| Lift | Motorized forklift | `SetLiftHeight` gRPC | |
+| LEDs | Backpack RGB | `SetBackpackLights` gRPC | |
+| Touch | Capacitive (head) | `RobotState` stream | |
+| Cliff | 4 sensors | `RobotState` stream | |
+| Battery | ~1hr runtime | `BatteryState` gRPC | |
 
 ### Drive Model
 
-**Differential drive (NOT mecanum).** No strafing. Planner must use turn-then-drive.
+**Differential drive (NOT mecanum).** No strafing. Planner must use turn-first-then-drive.
 
 - Max speed: ~200mm/s
 - `DriveWheels(left_speed, right_speed, left_accel, right_accel)` — mm/s
@@ -163,20 +212,48 @@ The NUC runs a single agent-loop (`nuc-agent-loop.service`):
 
 ### No LiDAR
 
-Vector has NO LiDAR. Navigation options:
-- Visual SLAM (camera-only, e.g. ORB-SLAM3)
-- Dead reckoning + visual landmarks
+Vector has NO LiDAR. Current navigation uses:
+- Visual SLAM (monocular ORB features)
+- Dead reckoning (motor odometry + gyro IMU fusion)
 - Camera-based obstacle detection
 - Cliff sensors for edge safety
+- A* path planning on occupancy grid
+
+### Mic Audio — NOT ALSA
+
+Vector's mics go through ADSP FastRPC (`/dev/adsprpc-smd`), NOT kernel ALSA. All ALSA capture attempts produce white noise or I/O errors. The working solution is `vector-streamer` — a custom C binary on Vector that proxies mic audio via TCP to the NUC.
+
+**SDK `AudioFeed` is useless** — only returns signal_power/direction, NO raw PCM.
+
+### Display — 160x80 Not 184x96
+
+Vector 2.0 (Xray, HW_VER=0x20) has a 160x80 OLED. The SDK hardcodes 184x96. A patched `libcozmo_engine.so` on Vector handles stride conversion (row-by-row copy 184→160). Without the patch, display images are corrupted.
+
+### Firmware Patches (deployed on Vector)
+
+Two patches deployed via `ShesekBean/wire-os-victor` fork (built on Jetson):
+1. **DisplayFaceImageRGB stride fix** — static buffer + 184→160 conversion in `animationComponent.cpp`
+2. **Default HighLevelAI to Wait** — Vector sits still on boot instead of wandering (`highLevelAI.json`)
 
 ### Cross-Compilation for Vector
 
-To compile native binaries for Vector (ARM32), use the Docker cross-compile environment on the Jetson (192.168.1.70). Do NOT attempt to cross-compile on the NUC — use the Jetson's Docker build setup.
+Build on the **Jetson** (192.168.1.70), NOT the NUC. Single repo at `/tmp/victor-build/victor/`, branch `vector-v4z4-patches`.
 
-- **Jetson:** `ssh yahboom@192.168.1.70`
-- **Soft-float (vic-anim libraries):** vicos-sdk 5.3.0-r07 Clang, `-mfloat-abi=softfp`
-- **Hard-float (standalone daemons):** `arm-linux-gnueabihf-gcc`, `-mfloat-abi=hard`
-- Native source code lives in `apps/vector/native/`
+- **SSH:** `ssh jetson` (alias in ~/.ssh/config)
+- **Build:** `cd /tmp/victor-build/victor && ./build/build-v.sh` (Docker: `vic-standalone-builder-8`)
+- **Toolchain:** vicos-sdk 5.3.0-r07 Clang (ARM32 soft-float for vic-anim libs)
+- **Deploy:** `scp _build/vicos/Release/lib/libcozmo_engine.so root@192.168.1.110:/anki/lib/`
+- **Push:** `git push fork vector-v4z4-patches` (git credentials configured on Jetson)
+- Native source code also in `apps/vector/native/` (NUC-side reference)
+
+---
+
+## Vector Connection
+
+- **Name:** Vector-V4Z4 | **ESN:** 0dd1cdcf | **IP:** 192.168.1.73
+- **SSH:** `ssh vector` (alias, uses `id_rsa_Vector-V4Z4`, needs `+ssh-rsa` algos)
+- **SDK:** wirepod-vector-sdk 0.8.1 (`import anki_vector`, serial `0dd1cdcf`)
+- **Firmware:** 2.0.1.6091 on slot_a (booted), slot_b has 6079 backup
 
 ---
 
@@ -193,14 +270,17 @@ nuc-vector-orchestrator/
 │   └── vector/                    ← Vector runtime (inference + gRPC bridge, runs on NUC)
 │       ├── bridge/                ← gRPC client → HTTP bridge (compatibility layer)
 │       ├── src/                   ← inference + control nodes
-│       │   └── events/            ← hybrid event system (SDK events + NUC bus)
+│       │   ├── events/            ← hybrid event system (SDK events + NUC bus)
+│       │   ├── media/             ← on-demand media channels (camera, mic, speaker, display)
+│       │   ├── companion/         ← companion behavior system (presence → OpenClaw personality)
+│       │   └── planner/           ← P controller + follow + head tracking + obstacle detection + visual SLAM
 │       ├── config/                ← Vector connection config
-│       └── models/                ← ML models (YOLO, face, STT, TTS)
+│       └── models/                ← ML models (YOLO, face)
 ├── config/                        ← shared config (llm-provider.yaml)
 ├── deploy/vector/                 ← Vector deployment (OSKR setup, wire-pod)
 ├── scripts/                       ← operational scripts
 ├── infra/                         ← runtime environment (systemd, DNS, safety-cop)
-├── docs/                          ← documentation
+├── docs/                          ← documentation (00-project-overview.md is the definitive reference)
 └── tests/                         ← unit + integration tests
 ```
 
@@ -209,6 +289,7 @@ nuc-vector-orchestrator/
 - **NUC tests:** `python3 -m pytest tests/` (run on NUC)
 - **Vector tests:** `tests/vector/` (run on NUC against Vector gRPC)
 - **Standalone test scripts:** `apps/vector/tests/standalone/` (self-contained subsystem scripts)
+- **Physical tests with visual output** must send camera frames to Signal for Ophir to confirm
 - Unlike R3 (which needed SSH + Docker exec), Vector tests run locally on NUC since all inference code runs here
 
 ---
@@ -241,10 +322,18 @@ nuc-vector-orchestrator/
 ### Labels
 
 - `assigned:worker` — ready for worker dispatch
-- `component:vector` — Vector-specific code (worker gets gRPC context)
+- `component:vector` — Vector-specific code (worker gets gRPC context AND occupies Vector slot)
 - `blocker:needs-human` — needs physical test or human decision
 - `stuck` — issue needs investigation (auto-unstick via PGM when dependencies resolve)
 - `milestone` — something notable is working (notify Ophir)
+
+### component:vector Labeling — Use ONLY for Robot Hardware Access
+
+`component:vector` occupies a limited Vector worker slot. Only use when the issue **sends gRPC commands to the robot**.
+
+**IS component:vector:** LED, head, lift, motors, battery, camera streaming, touch/cliff sensors, say_text TTS, person following, head tracking.
+
+**IS NOT component:vector (NUC-only):** YOLO/face inference, OpenClaw config, voice command routing, HTTP→gRPC bridge code, supervisor, echo cancellation, OpenVINO setup, wake word, scene description, Signal/intercom framework. These run in parallel NUC slots.
 
 ### Issue Dependency Convention
 
@@ -255,6 +344,41 @@ Issues that are blocked by other issues should include a `## Dependencies` secti
 - #M (description)
 ```
 PGM parses this format to auto-unstick issues when all listed dependencies close.
+
+---
+
+## Hard-Won Lessons — Do NOT Repeat These Mistakes
+
+### Vector Robot — NEVER Touch Without Approval
+- **NEVER** run `systemctl restart/stop/start` on Vector services — cascade crashes happen (fault code 800)
+- **NEVER** modify files on Vector via SSH without Ophir's explicit approval
+- **NEVER** change vic-engine, vic-anim, vic-gateway, vic-cloud configs on robot
+- NUC-side code (`apps/vector/`, bridge, etc.) is fine to modify freely
+
+### Camera Feed Gotchas
+- Image streaming can get **silently disabled** after SDK connect/disconnect cycles. Always call `robot.camera.image_streaming_enabled()` and explicitly enable via `EnableImageStreamingRequest` before `init_camera_feed()`.
+- SDK `Events.new_camera_image` doesn't reliably fire under bridge context. Always pair event subscription with a polling fallback at ~15fps.
+- Don't bind HTTP servers to `0.0.0.0` — use specific dual-bind (127.0.0.1 + 172.17.0.1).
+
+### Display — KeepFaceAlive Bug
+`DisplayFaceImage()` permanently sets `s_enableKeepFaceAlive = false` in vic-anim. Face/eyes never auto-restore. Fix: release and re-acquire SDK behavior control after image display to force animation pipeline reset.
+
+### QuietMode Architecture
+QuietMode (sit still, wake word active) uses vic-engine's built-in behavior tree, NOT SDK OVERRIDE_BEHAVIORS (which blocks wake word). Bridge sends `intent_imperative_quiet` via wire-pod cloud_intent API. Keepalive re-sends every 15s because voice interactions deactivate it.
+
+### Engine Proxy — Deferred ANKICONN
+The engine-anim proxy must NOT send ANKICONN during init. Wait for vic-engine's ANKICONN and forward it. Early ANKICONN causes dropped handshake messages → dead face animation.
+
+### wire-pod — Must Run Before Vector Boots
+Without wire-pod running, vic-gateway fails → fault code 921 → cascade crash. wire-pod TLS cert **regenerates on every restart** — must re-copy to Vector after wire-pod restarts.
+
+### Development Process
+- **Read ALL related code before coding.** The #1 time sink was jumping into multi-component features without tracing the full data path. Read end-to-end, understand WHY existing code works, THEN code.
+- **Two failed fixes = stop and redesign.** Don't add a third band-aid. Step back and ask if the approach is fundamentally correct.
+- **Kalman filter: predict only what you need.** Position-only prediction works. Predicting bbox size caused wild oscillations. Don't predict variables better served by raw measurements.
+- **Resolution changes must update ALL pixel-based parameters** in the same commit (frame center, target bbox, gains, deadzones, ROI radius, epsilon).
+- **Close manually-completed issues immediately.** Leaving them open blocks the entire dependency chain.
+- **Create issues BEFORE starting work**, not retroactively.
 
 ---
 
@@ -279,6 +403,8 @@ Checklist:
 
 **If an agent needs a CLAUDE.md change, it must create a GitHub Issue requesting the change, NOT modify the file directly.**
 
+Doc update issues requesting CLAUDE.md changes will cause workers to spin in rejection loops. The orchestrator must handle these directly with Ophir's approval.
+
 ---
 
 ## Safety Rules — NEVER
@@ -290,6 +416,9 @@ Checklist:
 - curl/wget to external URLs not on the allowlist
 - Disable any safety check
 - Stop, restart, or remove openclaw-gateway or openclaw-dns containers
+- Modify Vector robot files/services without Ophir's explicit approval
+- Run `systemctl` commands on Vector (cascade crash risk)
+- Copy binaries between Vector boot slots (different builds = incompatible libraries)
 
 ---
 
@@ -298,17 +427,26 @@ Checklist:
 OpenClaw extensions live at `apps/openclaw/`. These are ADDITIVE — they don't change existing functionality.
 
 - **Robot control skill:** `~/.openclaw/workspace/skills/robot-control/SKILL.md` — Signal → robot commands
+- **Companion skill:** `~/.openclaw/workspace/skills/companion/SKILL.md` — presence → personality
+- **Fitness skill:** `~/.openclaw/workspace/skills/fitness/SKILL.md` — Oura ring tracking
+- **Monarch Money skill:** `~/.openclaw/workspace/skills/monarch-money/SKILL.md` — financial queries (read-only)
 - Skills are directories under `~/.openclaw/workspace/skills/<name>/` with YAML frontmatter `SKILL.md`. Hot-deploy without restart.
+- **Remember:** Workspace changes don't take effect until synced to sandbox (`~/.openclaw/sandboxes/agent-main-*/`)
 
 ---
 
 ## wire-pod
 
-wire-pod replaces Anki/DDL cloud servers. Runs on NUC.
-- Handles Vector authentication and pairing
-- Intent engine (voice commands processed locally)
-- Weather, knowledge graph queries
-- **Source:** https://github.com/kercre123/wire-pod
+wire-pod replaces Anki/DDL cloud servers. Source-built on NUC, runs as root.
+- **Source:** `/home/ophirsw/Documents/claude/wire-pod/`
+- **Start:** `cd ~/Documents/claude/wire-pod && sudo ./chipper/start.sh`
+- **Web UI:** http://localhost:8080
+- **Ports:** 443 (gRPC/TLS), 8080 (web UI), 8084 (SDK)
+- **STT:** Vosk (local, configured in `chipper/source.sh` as `STT_SERVICE=vosk`)
+- **DO NOT use Docker wire-pod** — conflicts with source-built wire-pod on same ports
+- Handles Vector authentication, pairing, intent engine, weather, knowledge graph
+- Provides replacement `vic-cloud` binary for Vector (SDK auth, GUID generation)
+- **TLS cert regenerates on every restart** — must re-copy to Vector
 
 ---
 

@@ -32,6 +32,7 @@ class ConnectionManager:
         self._serial = serial
         self._robot: Any | None = None
         self._connected = False
+        self._mode = "quiet"
 
         # Controllers — created on connect
         self._motor_controller: Any | None = None
@@ -42,8 +43,20 @@ class ConnectionManager:
         self._camera_client: Any | None = None
         self._audio_client: Any | None = None
         self._livekit_bridge: Any | None = None
+        self._media_service: Any | None = None
         self._nuc_bus: Any | None = None
         self._follow_pipeline: Any | None = None
+        self._nav_controller: Any | None = None
+        self._explorer: Any | None = None
+        self._auto_charger: Any | None = None
+        self._home_guardian: Any | None = None
+        self._intercom: Any | None = None
+        self._imu_poller: Any | None = None
+        self._imu_fusion: Any | None = None
+        self._visual_slam: Any | None = None
+        self._map_store: Any | None = None
+        self._waypoint_mgr: Any | None = None
+        self._monitor_thread: Any | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -107,6 +120,47 @@ class ConnectionManager:
         """LiveKitBridge instance, or None if not initialised."""
         return self._livekit_bridge
 
+    @property
+    def media_service(self) -> Any:
+        """MediaService instance, or None if not initialised."""
+        return self._media_service
+
+    @property
+    def nav_controller(self) -> Any:
+        """NavController instance, or None if not initialised."""
+        return self._nav_controller
+
+    @property
+    def explorer(self) -> Any:
+        """AutonomousExplorer instance, or None if not initialised."""
+        return self._explorer
+
+    @property
+    def auto_charger(self) -> Any:
+        """AutoCharger instance, or None if not initialised."""
+        return self._auto_charger
+
+    @property
+    def home_guardian(self) -> Any:
+        """HomeGuardian instance, or None if not initialised."""
+        return self._home_guardian
+
+    @property
+    def intercom(self) -> Any:
+        """Intercom instance, or None if not initialised."""
+        return self._intercom
+
+    @property
+    def mode(self) -> str:
+        """Current behavior mode."""
+        return self._mode
+
+    def set_mode(self, mode: str) -> None:
+        """Set behavior mode (quiet/playful)."""
+        self._mode = mode
+        if mode == "quiet":
+            self._send_quiet_intent()
+
     def connect(self) -> None:
         """Connect to Vector and initialise all controllers."""
         if self._connected:
@@ -136,22 +190,26 @@ class ConnectionManager:
         self._lift_controller.start()
         self._led_controller = LedController(self._robot, self._nuc_bus)
         self._led_controller.start()
-        # NOTE: DisplayController disabled — it uses DisplayFaceImageRGB which
-        # crashes vic-anim due to race condition (issue #129).
-        # self._display_controller = DisplayController(self._robot, event_bus=self._nuc_bus)
-        # self._display_controller.start()
         self._camera_client = CameraClient(self._robot)
         self._camera_client.start()
         self._audio_client = AudioClient(self._robot)
         # NOTE: AudioFeed NOT started — SDK only provides signal_power
-        # (980Hz calibration tone), not real mic PCM.  The stall-reconnect
-        # loop starves the camera feed of SDK event-loop time.
+        # (980Hz calibration tone), not real mic PCM.
         # self._audio_client.start()
+
+        # On-demand media service (all 4 channels)
+        from apps.vector.src.media.service import MediaService
+        self._media_service = MediaService(
+            camera_client=self._camera_client,
+            robot=self._robot,
+        )
+
         self._livekit_bridge = LiveKitBridge(
             camera_client=self._camera_client,
             audio_client=self._audio_client,
             robot=self._robot,
             event_bus=self._nuc_bus,
+            media_service=self._media_service,
         )
 
         from apps.vector.bridge.follow_pipeline import FollowPipeline
@@ -164,11 +222,90 @@ class ConnectionManager:
             robot=self._robot,
         )
 
+        # Navigation system
+        from apps.vector.src.planner.imu_fusion import ImuFusion, ImuPoller
+        from apps.vector.src.planner.map_store import MapStore
+        from apps.vector.src.planner.visual_slam import VisualSLAM
+        from apps.vector.src.planner.waypoint_manager import WaypointManager
+        from apps.vector.src.planner.nav_controller import NavController
+
+        self._imu_poller = ImuPoller(self._robot, self._nuc_bus)
+        self._imu_fusion = ImuFusion(self._nuc_bus)
+        self._visual_slam = VisualSLAM(self._nuc_bus)
+        self._map_store = MapStore()
+        self._waypoint_mgr = WaypointManager()
+        self._nav_controller = NavController(
+            slam=self._visual_slam,
+            motor=self._motor_controller,
+            head=self._head_controller,
+            nuc_bus=self._nuc_bus,
+            map_store=self._map_store,
+            waypoint_mgr=self._waypoint_mgr,
+        )
+
+        # Intercom (Signal messaging)
+        from apps.vector.src.intercom import Intercom
+        self._intercom = Intercom()
+
+        # Autonomous explorer
+        from apps.vector.src.planner.exploration import AutonomousExplorer, AutoCharger
+        self._explorer = AutonomousExplorer(
+            slam=self._visual_slam,
+            motor=self._motor_controller,
+            head=self._head_controller,
+            camera=self._camera_client,
+            nuc_bus=self._nuc_bus,
+            nav_controller=self._nav_controller,
+            intercom=self._intercom,
+            robot=self._robot,
+            imu_poller=self._imu_poller,
+            imu_fusion=self._imu_fusion,
+        )
+
+        # Auto-charger with explorer wiring
+        self._auto_charger = AutoCharger(
+            robot=self._robot,
+            nav_controller=self._nav_controller,
+            nuc_bus=self._nuc_bus,
+        )
+        self._auto_charger.explorer = self._explorer
+
+        # Home Guardian (patrol & security system)
+        from apps.vector.src.planner.patrol import HomeGuardian
+        self._home_guardian = HomeGuardian(
+            nav_controller=self._nav_controller,
+            motor=self._motor_controller,
+            head=self._head_controller,
+            camera=self._camera_client,
+            nuc_bus=self._nuc_bus,
+            intercom=self._intercom,
+            robot=self._robot,
+        )
+
         self._connected = True
         logger.info("Connected to Vector successfully")
 
         # Send quiet intent so Vector sits still by default (wake word still active)
         self._send_quiet_intent()
+
+    def start_monitor(self) -> None:
+        """Start the connection monitor — connects and handles reconnect."""
+        import threading
+        def _monitor():
+            try:
+                self.connect()
+            except Exception:
+                logger.exception("Initial connection failed — will retry on next request")
+        self._monitor_thread = threading.Thread(
+            target=_monitor, name="conn-monitor", daemon=True
+        )
+        self._monitor_thread.start()
+
+    def stop_monitor(self) -> None:
+        """Stop the connection monitor."""
+        if hasattr(self, '_monitor_thread') and self._monitor_thread:
+            self._monitor_thread.join(timeout=10.0)
+            self._monitor_thread = None
 
     def _send_quiet_intent(self) -> None:
         """Send imperative_quiet intent via wire-pod to keep Vector still."""
@@ -193,16 +330,28 @@ class ConnectionManager:
 
         logger.info("Disconnecting from Vector...")
         try:
+            if self._home_guardian:
+                self._home_guardian.stop()
+            if self._explorer:
+                self._explorer.stop()
+            if self._auto_charger:
+                self._auto_charger.stop()
+            if self._nav_controller:
+                self._nav_controller.stop()
+            if self._imu_fusion:
+                self._imu_fusion.stop()
+            if self._imu_poller:
+                self._imu_poller.stop()
             if self._follow_pipeline:
                 self._follow_pipeline.stop()
+            if self._media_service:
+                self._media_service.stop()
             if self._motor_controller:
                 self._motor_controller.stop()
             if self._lift_controller:
                 self._lift_controller.stop()
             if self._led_controller:
                 self._led_controller.stop()
-            if self._display_controller:
-                self._display_controller.stop()
             if self._camera_client:
                 self._camera_client.stop()
             if self._audio_client:
@@ -226,7 +375,18 @@ class ConnectionManager:
         self._camera_client = None
         self._audio_client = None
         self._livekit_bridge = None
+        self._media_service = None
         self._follow_pipeline = None
+        self._nav_controller = None
+        self._explorer = None
+        self._auto_charger = None
+        self._home_guardian = None
+        self._intercom = None
+        self._imu_poller = None
+        self._imu_fusion = None
+        self._visual_slam = None
+        self._map_store = None
+        self._waypoint_mgr = None
         self._nuc_bus = None
         logger.info("Disconnected from Vector")
 
