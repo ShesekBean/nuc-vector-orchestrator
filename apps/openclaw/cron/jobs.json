@@ -6,7 +6,7 @@
       "name": "Morning swim push",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773173253892,
+      "updatedAtMs": 1773495031742,
       "schedule": {
         "kind": "cron",
         "expr": "30 6 * * *",
@@ -16,7 +16,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "🏊 6:30 — time to swim. Go."
+        "message": "\ud83c\udfca 6:30 \u2014 time to swim. Go."
       },
       "delivery": {
         "mode": "announce",
@@ -24,11 +24,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773235800000,
-        "lastRunAtMs": 1773173235603,
+        "nextRunAtMs": 1773581400000,
+        "lastRunAtMs": 1773495000010,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 18289,
+        "lastDurationMs": 31732,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -47,7 +47,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring — remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together — e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down — great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
+        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring \u2014 remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together \u2014 e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down \u2014 great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
       },
       "delivery": {
         "mode": "announce",
@@ -55,15 +55,23 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773240300000
-      }
+        "nextRunAtMs": 1773585900000,
+        "lastRunAtMs": 1773499500010,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 66993,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      },
+      "updatedAtMs": 1773499567003
     },
     {
       "id": "weight-checkin",
       "name": "Morning weight check-in",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773173279125,
+      "updatedAtMs": 1773500446412,
       "schedule": {
         "kind": "cron",
         "expr": "0 8 * * *",
@@ -81,11 +89,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773241200000,
-        "lastRunAtMs": 1773173253892,
+        "nextRunAtMs": 1773586800000,
+        "lastRunAtMs": 1773500400010,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 25233,
+        "lastDurationMs": 46402,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -96,7 +104,7 @@
       "name": "Noon swim verification",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773173306967,
+      "updatedAtMs": 1773514844679,
       "schedule": {
         "kind": "cron",
         "expr": "0 12 * * *",
@@ -114,11 +122,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773255600000,
-        "lastRunAtMs": 1773173279125,
+        "nextRunAtMs": 1773601200000,
+        "lastRunAtMs": 1773514800007,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 27842,
+        "lastDurationMs": 44672,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -129,7 +137,7 @@
       "name": "Lunch diet check-in",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773173326570,
+      "updatedAtMs": 1773518431539,
       "schedule": {
         "kind": "cron",
         "expr": "0 13 * * *",
@@ -147,11 +155,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773259200000,
-        "lastRunAtMs": 1773173306967,
+        "nextRunAtMs": 1773604800000,
+        "lastRunAtMs": 1773518400012,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 19603,
+        "lastDurationMs": 31527,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -162,7 +170,7 @@
       "name": "Dinner diet check-in",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773198018817,
+      "updatedAtMs": 1773457221246,
       "schedule": {
         "kind": "cron",
         "expr": "0 20 * * *",
@@ -180,11 +188,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773284400000,
-        "lastRunAtMs": 1773198000010,
+        "nextRunAtMs": 1773543600000,
+        "lastRunAtMs": 1773457200010,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 18807,
+        "lastDurationMs": 21236,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -195,7 +203,7 @@
       "name": "Wednesday run coordinator",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1772643637135,
+      "updatedAtMs": 1773244839234,
       "schedule": {
         "kind": "cron",
         "expr": "0 9 * * 3",
@@ -213,11 +221,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773244800000,
-        "lastRunAtMs": 1772643600008,
+        "nextRunAtMs": 1773849600000,
+        "lastRunAtMs": 1773244800012,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 37127,
+        "lastDurationMs": 39222,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -228,7 +236,7 @@
       "name": "Daily AI shipping brief",
       "enabled": true,
       "createdAtMs": 1773011375086,
-      "updatedAtMs": 1773173405541,
+      "updatedAtMs": 1773496914954,
       "schedule": {
         "kind": "cron",
         "expr": "0 7 * * *",
@@ -238,7 +246,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '🤖 AI Daily Brief' header."
+        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '\ud83e\udd16 AI Daily Brief' header."
       },
       "delivery": {
         "mode": "announce",
@@ -246,13 +254,42 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773237600000,
-        "lastRunAtMs": 1773173344973,
+        "nextRunAtMs": 1773583200000,
+        "lastRunAtMs": 1773496800010,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 60568,
+        "lastDurationMs": 114944,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "work-daily-prep",
+      "name": "Daily work prep via ChatGPT",
+      "enabled": true,
+      "createdAtMs": 1773523654020,
+      "updatedAtMs": 1773523654020,
+      "schedule": {
+        "kind": "cron",
+        "expr": "27 6 * * 1-5",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Give me my daily work prep briefing. Cover ALL of the following:\n\n1. **TODAY'S CALENDAR**: List every meeting/event for today. For each: time, title, attendees, and any prep needed. Flag conflicts or back-to-backs.\n\n2. **TOMORROW PREVIEW**: Same for tomorrow \u2014 so I can prep ahead.\n\n3. **EMAIL TRIAGE (last 7 days)**: Scan my inbox from the past week. Group into:\n   - \ud83d\udd34 ACTION REQUIRED: emails I need to respond to or act on (include sender, subject, what's needed)\n   - \ud83d\udfe1 FYI/AWARENESS: important updates I should know about but don't need to act on\n   - Skip automated notifications, digests, and spam\n\n4. **SLACK HIGHLIGHTS (last 48 hours)**: Scan recent Slack messages. Surface:\n   - Direct messages or mentions I haven't responded to\n   - Important threads in channels I follow\n   - Any decisions or announcements that affect me\n\n5. **RECORDINGS & MEETING NOTES (last 7 days)**: Check for any meeting recordings, transcripts, or shared notes. Summarize key decisions, action items assigned to me, and follow-ups.\n\n6. **TOP 3 PRIORITIES**: Based on everything above, what are the 3 most important things I should focus on today? Be specific.\n\nFormat the whole thing for quick phone reading \u2014 use headers, bullets, and emoji sparingly. Keep it actionable, skip fluff.\""
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 0,
+        "lastRunAtMs": 0,
+        "lastRunStatus": null,
         "consecutiveErrors": 0
       }
     }
