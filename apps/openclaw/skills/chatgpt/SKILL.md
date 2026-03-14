@@ -50,6 +50,8 @@ curl -sf http://172.17.0.1:18792/result/$JOB_ID
 
 Pass the user's full question to the API. Strip trigger prefixes like "ask work" or "work:" if present.
 
+**CRITICAL: When sending the daily brief prompt, you MUST copy the prompt text VERBATIM including all emoji characters (🗓⏰💬🎯✅✍️❓📊🏁1️⃣2️⃣3️⃣). Do NOT strip emojis, do NOT rephrase, do NOT simplify. The ChatGPT proxy needs the exact emoji format to produce correctly formatted output.**
+
 ## Response Style
 
 - Return ChatGPT's response as-is — don't summarize or editorialize
