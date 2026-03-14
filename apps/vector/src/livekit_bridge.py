@@ -155,6 +155,8 @@ class LiveKitBridge:
         self._FRAME_TYPE_CMD = 0x20
         self._CMD_MIC_STREAM_START = 0x01
         self._CMD_MIC_STREAM_STOP = 0x02
+        self._CMD_MIC_MUTE_CLOUD = 0x03
+        self._CMD_MIC_UNMUTE_CLOUD = 0x04
 
     # ------------------------------------------------------------------
     # Public API
@@ -287,8 +289,10 @@ class LiveKitBridge:
 
         self._emit_session_event(active=True, room=room)
 
-        # Request continuous mic streaming from vector-streamer
+        # Request continuous mic streaming and mute mic→vic-cloud
+        # so wire-pod doesn't process speaker echo during the call
         self._start_mic_streaming()
+        self._mute_cloud()
 
         # Start empty-room timer if nobody else is in the room yet
         if not self._room.remote_participants:
@@ -322,8 +326,9 @@ class LiveKitBridge:
         self._mic_task = None
         self._video_in_task = None
 
-        # Stop continuous mic streaming
+        # Stop continuous mic streaming and unmute mic→vic-cloud
         self._stop_mic_streaming()
+        self._unmute_cloud()
 
         # Close mic subscription
         if self._mic_sub:
@@ -380,6 +385,16 @@ class LiveKitBridge:
         """Tell vector-streamer to stop injecting StartWakeWordlessStreaming."""
         logger.info("Stopping continuous mic streaming")
         self._send_streamer_cmd(self._CMD_MIC_STREAM_STOP)
+
+    def _mute_cloud(self) -> None:
+        """Mute mic→vic-cloud so wire-pod gets no audio during calls."""
+        logger.info("Muting mic→vic-cloud (wire-pod silenced)")
+        self._send_streamer_cmd(self._CMD_MIC_MUTE_CLOUD)
+
+    def _unmute_cloud(self) -> None:
+        """Unmute mic→vic-cloud to restore normal voice pipeline."""
+        logger.info("Unmuting mic→vic-cloud")
+        self._send_streamer_cmd(self._CMD_MIC_UNMUTE_CLOUD)
 
     # ------------------------------------------------------------------
     # Publishing loops

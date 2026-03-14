@@ -173,6 +173,14 @@ static void on_tcp_recv(uint8_t type, const uint8_t *data, uint32_t length,
                     LOG("WARNING: engine proxy not enabled (-e flag)");
                 }
                 break;
+            case CMD_MIC_MUTE_CLOUD:
+                LOG("NUC command: mute mic→vic-cloud");
+                mic_mute_cloud();
+                break;
+            case CMD_MIC_UNMUTE_CLOUD:
+                LOG("NUC command: unmute mic→vic-cloud");
+                mic_unmute_cloud();
+                break;
             default:
                 LOG("Unknown command from NUC: 0x%02x", cmd);
                 break;

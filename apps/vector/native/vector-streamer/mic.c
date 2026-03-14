@@ -83,6 +83,7 @@ static int g_proxy_fd = -1;       /* proxy server at mic_sock (receives from vic
 static int g_forwarder_fd = -1;   /* forwarder at mic_sock_vs (relays to/from vic-anim) */
 
 static volatile int   g_running = 0;
+static volatile int   g_mute_to_cloud = 0;  /* When set, audio is NOT forwarded to vic-cloud */
 static mic_audio_cb   g_callback = NULL;
 static void          *g_user_data = NULL;
 
@@ -335,8 +336,9 @@ int mic_run(void)
 
                 /* Forward to vic-cloud via proxy socket (source = mic_sock).
                  * vic-cloud's connected DGRAM accepts from mic_sock only,
-                 * and our proxy IS mic_sock, so this works. */
-                if (g_cloud_connected) {
+                 * and our proxy IS mic_sock, so this works.
+                 * When muted, we still read (to drain the buffer) but don't forward. */
+                if (g_cloud_connected && !g_mute_to_cloud) {
                     ssize_t sent = sendto(g_proxy_fd, dgram_buf, n, 0,
                                           (struct sockaddr *)&g_cloud_addr,
                                           g_cloud_addr_len);
@@ -401,6 +403,27 @@ int mic_run(void)
     return 0;
 }
 
+
+void mic_mute_cloud(void)
+{
+    if (!g_mute_to_cloud) {
+        g_mute_to_cloud = 1;
+        LOG("Mic→vic-cloud MUTED (wire-pod will not receive audio)");
+    }
+}
+
+void mic_unmute_cloud(void)
+{
+    if (g_mute_to_cloud) {
+        g_mute_to_cloud = 0;
+        LOG("Mic→vic-cloud UNMUTED");
+    }
+}
+
+int mic_is_cloud_muted(void)
+{
+    return g_mute_to_cloud;
+}
 
 void mic_stop(void)
 {

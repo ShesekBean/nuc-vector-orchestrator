@@ -23,6 +23,8 @@
 /* Command IDs (payload of FRAME_TYPE_CMD) */
 #define CMD_MIC_STREAM_START  0x01  /* Start continuous mic streaming */
 #define CMD_MIC_STREAM_STOP   0x02  /* Stop continuous mic streaming */
+#define CMD_MIC_MUTE_CLOUD    0x03  /* Mute mic→vic-cloud (blocks wire-pod) */
+#define CMD_MIC_UNMUTE_CLOUD  0x04  /* Unmute mic→vic-cloud */
 
 /* Frame types: Control */
 #define FRAME_TYPE_PING    0xF0  /* Keepalive ping */

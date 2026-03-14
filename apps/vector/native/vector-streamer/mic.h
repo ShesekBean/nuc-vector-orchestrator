@@ -39,6 +39,17 @@ int mic_init(const char *socket_path, mic_audio_cb callback, void *user_data);
  */
 int mic_run(void);
 
+/* Mute mic→vic-cloud forwarding. Audio is still read from vic-anim
+ * (buffer drained, PCM callback still fires) but NOT forwarded to
+ * vic-cloud, so wire-pod receives no audio. Thread-safe. */
+void mic_mute_cloud(void);
+
+/* Unmute mic→vic-cloud forwarding. Thread-safe. */
+void mic_unmute_cloud(void);
+
+/* Returns 1 if mic→vic-cloud is muted, 0 otherwise. Thread-safe. */
+int mic_is_cloud_muted(void);
+
 /* Signal the proxy loop to stop. Thread-safe. */
 void mic_stop(void);
 
