@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-FRAME_H_DEFAULT = 360  # default; overridden by event.frame_height when available
+FRAME_H_DEFAULT = 600  # default; overridden by event.frame_height when available
 
 
 @dataclass

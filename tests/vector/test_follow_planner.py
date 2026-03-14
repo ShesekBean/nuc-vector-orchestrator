@@ -24,8 +24,8 @@ from apps.vector.src.planner.follow_planner import (
 )
 
 # Default frame dimensions (matches TrackedPersonEvent defaults)
-FRAME_W = 640
-FRAME_H = 360
+FRAME_W = 800
+FRAME_H = 600
 
 
 # ---------------------------------------------------------------------------

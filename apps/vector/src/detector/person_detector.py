@@ -94,7 +94,7 @@ class PersonDetector:
         """Run person detection on a single BGR frame.
 
         Args:
-            frame: BGR numpy array (640x360 from Vector camera).
+            frame: BGR numpy array (800x600 from Vector camera).
 
         Returns:
             List of ``Detection`` objects for persons found in the frame.

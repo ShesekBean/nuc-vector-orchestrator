@@ -48,8 +48,8 @@ class YoloPersonDetectedEvent:
     width: float
     height: float
     confidence: float
-    frame_width: int = 640
-    frame_height: int = 360
+    frame_width: int = 800
+    frame_height: int = 600
 
 
 @dataclass(frozen=True)
@@ -152,8 +152,8 @@ class TrackedPersonEvent:
     age_frames: int  # total frames since track creation
     hits: int  # number of YOLO measurements received
     confidence: float  # last YOLO confidence
-    frame_width: int = 640
-    frame_height: int = 360
+    frame_width: int = 800
+    frame_height: int = 600
 
 
 @dataclass(frozen=True)
@@ -248,8 +248,8 @@ class ObstacleDetectedEvent:
     speed_scale: float  # 0.0 (full stop) to 1.0 (full speed)
     bbox_area_ratio: float  # obstacle bbox area / frame area
     label: str = ""  # COCO class label if available
-    frame_width: int = 640
-    frame_height: int = 360
+    frame_width: int = 800
+    frame_height: int = 600
 
 
 @dataclass(frozen=True)
