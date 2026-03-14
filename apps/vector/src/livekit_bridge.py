@@ -629,14 +629,18 @@ class LiveKitBridge:
     # ------------------------------------------------------------------
 
     def _on_participant_connected(self, participant: rtc.RemoteParticipant) -> None:
-        """A remote participant joined — cancel empty-room timer."""
+        """A remote participant joined — resume mic streaming and cancel empty-room timer."""
         logger.info("Participant joined: %s", participant.identity)
         self._cancel_empty_room_timer()
+        self._start_mic_streaming()
 
     def _on_participant_disconnected(self, participant: rtc.RemoteParticipant) -> None:
-        """A remote participant left — start empty-room timer if room is empty."""
+        """A remote participant left — stop mic streaming and start empty-room timer."""
         logger.info("Participant left: %s", participant.identity)
         if self._room and not self._room.remote_participants:
+            # Stop mic streaming immediately to prevent wire-pod feedback loop
+            # (StartWakeWordlessStreaming → silence intents → vic-engine loop)
+            self._stop_mic_streaming()
             self._start_empty_room_timer()
 
     def _start_empty_room_timer(self) -> None:
