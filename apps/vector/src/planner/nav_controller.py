@@ -500,7 +500,8 @@ class NavController:
         """Auto-dock on charger after arriving at charger waypoint.
 
         Uses SDK drive_on_charger() which recognizes the charger's visual
-        marker for precise alignment and docking.
+        marker for precise alignment and docking. Sends quiet intent after
+        docking so Vector sits still while charging.
         """
         if self._control_mgr is None:
             logger.warning("No ControlManager — cannot auto-dock")
@@ -515,6 +516,18 @@ class NavController:
             logger.info("Auto-docking on charger...")
             robot.behavior.drive_on_charger()
             logger.info("Successfully docked on charger!")
+
+            # Send quiet intent so Vector sits still while charging
+            import urllib.request
+            import urllib.parse
+            serial = getattr(robot, '_serial', '0dd1cdcf')
+            url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
+                "serial": serial,
+                "intent": "intent_imperative_quiet",
+            })
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                resp.read()
+            logger.info("Quiet intent sent — Vector will sit still while charging")
         except Exception:
             logger.exception("Auto-dock on charger failed")
 

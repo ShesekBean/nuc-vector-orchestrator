@@ -1103,6 +1103,8 @@ class AutoCharger:
             self._returning_to_charger = False
             if self._control_mgr is not None:
                 self._control_mgr.release("charger_dock")
+            # Send quiet intent so Vector sits still while charging
+            self._send_quiet_intent()
 
     def _resume_exploration(self, pct: float) -> None:
         """Resume exploration after charging if we were exploring before."""
@@ -1121,6 +1123,22 @@ class AutoCharger:
             self.explorer.start()
         except Exception:
             logger.exception("Failed to resume exploration after charging")
+
+    def _send_quiet_intent(self) -> None:
+        """Send quiet intent via wire-pod so Vector sits still on charger."""
+        try:
+            import urllib.request
+            import urllib.parse
+            serial = getattr(self._robot, '_serial', '0dd1cdcf')
+            url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
+                "serial": serial,
+                "intent": "intent_imperative_quiet",
+            })
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                resp.read()
+            logger.info("Sent quiet intent — Vector will sit still while charging")
+        except Exception:
+            logger.warning("Failed to send quiet intent", exc_info=True)
 
     @classmethod
     def _voltage_to_percent(cls, voltage: float) -> float:
