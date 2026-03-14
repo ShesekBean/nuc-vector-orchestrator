@@ -1,0 +1,15 @@
+[Unit]
+Description=Porcupine v4 wake word worker daemon
+Before=vic-anim.service
+
+[Service]
+Type=simple
+Environment=LD_LIBRARY_PATH=/anki/lib/hf
+Environment=HOME=/root
+ExecStart=/anki/bin/pv_worker
+Restart=always
+RestartSec=2
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

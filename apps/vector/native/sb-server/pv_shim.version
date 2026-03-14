@@ -1,0 +1,15 @@
+PV_PORCUPINE_SOFTFP {
+    global:
+        pv_porcupine_init_softfp;
+        pv_porcupine_init;
+        pv_porcupine_delete;
+        pv_porcupine_process;
+        pv_porcupine_frame_length;
+        pv_porcupine_version;
+        pv_porcupine_multiple_keywords_init;
+        pv_porcupine_multiple_keywords_process;
+        pv_sample_rate;
+        pv_status_to_string;
+    local:
+        *;
+};

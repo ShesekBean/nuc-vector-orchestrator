@@ -169,6 +169,15 @@ Vector has NO LiDAR. Navigation options:
 - Camera-based obstacle detection
 - Cliff sensors for edge safety
 
+### Cross-Compilation for Vector
+
+To compile native binaries for Vector (ARM32), use the Docker cross-compile environment on the Jetson (192.168.1.70). Do NOT attempt to cross-compile on the NUC — use the Jetson's Docker build setup.
+
+- **Jetson:** `ssh yahboom@192.168.1.70`
+- **Soft-float (vic-anim libraries):** vicos-sdk 5.3.0-r07 Clang, `-mfloat-abi=softfp`
+- **Hard-float (standalone daemons):** `arm-linux-gnueabihf-gcc`, `-mfloat-abi=hard`
+- Native source code lives in `apps/vector/native/`
+
 ---
 
 ## Repo Structure
