@@ -271,7 +271,7 @@ class ConnectionManager:
         self._imu_fusion = ImuFusion(self._nuc_bus)
         self._visual_slam = VisualSLAM(self._nuc_bus)
         self._map_store = MapStore()
-        self._waypoint_mgr = WaypointManager(self._map_store)
+        self._waypoint_mgr = WaypointManager(self._map_store, map_name="home")
         self._nav_controller = NavController(
             slam=self._visual_slam,
             motor=self._motor_controller,

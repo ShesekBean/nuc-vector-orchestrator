@@ -382,6 +382,10 @@ class NavController:
                 self._transition(NavState.ARRIVED)
                 self._emit_nav_result(True, f"Arrived at {target.name}")
 
+                # Auto-dock if navigating to charger waypoint
+                if target.name.lower() == "charger":
+                    self._auto_dock_charger()
+
                 # Auto-save map after successful navigation
                 self._save_map()
                 self._release_control()
@@ -491,6 +495,28 @@ class NavController:
             return dist < self._cfg.arrival_tolerance_mm * 2  # relaxed for final check
 
         return True
+
+    def _auto_dock_charger(self) -> None:
+        """Auto-dock on charger after arriving at charger waypoint.
+
+        Uses SDK drive_on_charger() which recognizes the charger's visual
+        marker for precise alignment and docking.
+        """
+        if self._control_mgr is None:
+            logger.warning("No ControlManager — cannot auto-dock")
+            return
+
+        robot = getattr(self._control_mgr, '_robot', None)
+        if robot is None:
+            logger.warning("No robot reference — cannot auto-dock")
+            return
+
+        try:
+            logger.info("Auto-docking on charger...")
+            robot.behavior.drive_on_charger()
+            logger.info("Successfully docked on charger!")
+        except Exception:
+            logger.exception("Auto-dock on charger failed")
 
     def _align_heading(self, target_theta: float) -> None:
         """Turn to align with the target heading."""
