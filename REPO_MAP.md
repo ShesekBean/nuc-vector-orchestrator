@@ -128,7 +128,7 @@ nuc-vector-orchestrator/
 │       │       ├── test_mic.py
 │       │       ├── test_sensors.py
 │       │       ├── test_detection.py
-│       │       ├── test_enroll_face.py  ← interactive face + body enrollment (captures from Vector camera)
+│       │       ├── test_enroll_face.py  ← interactive face + body enrollment (close + far range, Vector speaks poses)
 │       │       └── test_follow_standalone.py
 │       ├── native/                ← native C binaries (cross-compiled for Vector ARM)
 │       │   └── vector-streamer/   ← mic/engine DGRAM proxy + TCP bridge to NUC
@@ -149,6 +149,7 @@ nuc-vector-orchestrator/
 │   └── llm-provider.yaml         ← LLM provider + model selection
 ├── deploy/
 │   └── vector/                    ← Vector deployment (OSKR setup, wire-pod)
+│       └── behavior-configs/      ← Firmware behavior configs (sit-still: Wait-only HighLevelAI, 24h QuietMode)
 ├── scripts/                       ← operational utility scripts
 │   ├── wire-pod-setup.sh         ← wire-pod installation on NUC
 │   ├── vector-connect.sh         ← Vector gRPC connectivity test
@@ -220,7 +221,7 @@ nuc-vector-orchestrator/
 2. **wire-pod**: Native service on NUC (systemd: `wire-pod.service`, root)
 3. **Voice Proxy**: `python3 scripts/openclaw-voice-proxy.py` (standalone script) — bridges wire-pod STT → OpenClaw LLM
 4. **Vector Supervisor**: `python3 -m apps.vector` (component lifecycle: startup, health, reconnect)
-5. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility; connects with OVERRIDE_BEHAVIORS — Vector sits still by default; `POST /mode {"mode":"playful"}` to release)
+5. **Vector Bridge**: `python3 -m apps.vector.bridge` (gRPC → HTTP compatibility; connects with no behavior control — Vector sits still via firmware Wait-only config; `POST /mode {"mode":"playful"}` for 8-min playful timer)
 7. **Process Management**: `bash scripts/start-all.sh` / `bash scripts/kill-all.sh`
 
 ## Testing

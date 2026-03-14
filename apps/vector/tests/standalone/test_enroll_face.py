@@ -4,7 +4,11 @@
 Connects to Vector, captures frames with you in view, detects face + body,
 enrolls face embeddings, and saves reference body crops.
 
-Vector speaks each pose instruction so you know when to move.
+Two rounds:
+  1. CLOSE range (5 poses) — face enrollment + body reference
+  2. FAR range (3 captures) — body-only reference at distance
+
+Vector speaks each instruction so you know when to move.
 Stops the bridge service to get behavior control, restarts it after.
 
 Run: python3 apps/vector/tests/standalone/test_enroll_face.py [name]
@@ -32,12 +36,18 @@ SERIAL = "0dd1cdcf"
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
 REF_IMG_DIR = os.path.join(DATA_DIR, "reference_images")
 
-POSES = [
+CLOSE_POSES = [
     ("Look straight at me", "STRAIGHT ON"),
     ("Now turn your head left", "HEAD LEFT"),
     ("Now turn your head right", "HEAD RIGHT"),
     ("Now look up a little", "LOOK UP"),
     ("Now look down a little", "LOOK DOWN"),
+]
+
+FAR_POSES = [
+    ("Now step back about six feet and face me", "FAR — FRONT"),
+    ("Turn a little to the left", "FAR — ANGLED LEFT"),
+    ("Now turn a little to the right", "FAR — ANGLED RIGHT"),
 ]
 
 
@@ -79,11 +89,24 @@ def crop_person(frame, detection):
     return frame[y1:y2, x1:x2]
 
 
+def capture_frame(robot):
+    """Capture a frame from Vector's camera, with retry."""
+    img = robot.camera.latest_image
+    if img is None:
+        time.sleep(0.5)
+        img = robot.camera.latest_image
+    if img is None:
+        return None
+    return pil_to_bgr(img.raw_image)
+
+
 def main():
     name = sys.argv[1] if len(sys.argv) > 1 else "ophir"
 
     print("=" * 60)
     print(f"FACE + BODY ENROLLMENT: {name}")
+    print("  Round 1: Close range (5 poses) — face + body")
+    print("  Round 2: Far range (3 captures) — body only")
     print("=" * 60)
 
     # Stop bridge to get behavior control
@@ -110,32 +133,30 @@ def main():
     robot.camera.init_camera_feed()
     time.sleep(1)
 
-    robot.behavior.say_text(f"Starting face enrollment for {name}. I will tell you how to pose.")
+    robot.behavior.say_text(
+        f"Starting face enrollment for {name}. "
+        "First, stand close to me. I will tell you how to pose."
+    )
     time.sleep(0.5)
 
     enrolled_faces = 0
-    saved_bodies = 0
+    saved_bodies_close = 0
+    saved_bodies_far = 0
 
     try:
-        for i, (speech, label) in enumerate(POSES):
-            # Vector speaks the pose instruction
-            print(f"\n  [{i + 1}/{len(POSES)}] {label}")
+        # --- Round 1: Close range ---
+        print("\n--- ROUND 1: CLOSE RANGE (face + body) ---")
+        for i, (speech, label) in enumerate(CLOSE_POSES):
+            print(f"\n  [{i + 1}/{len(CLOSE_POSES)}] {label}")
             robot.behavior.say_text(speech)
             time.sleep(0.5)
 
-            # Wait for user confirmation
-            input(f"    Press Enter when ready...")
+            input("    Press Enter when ready...")
 
-            # Capture
-            img = robot.camera.latest_image
-            if img is None:
-                time.sleep(0.5)
-                img = robot.camera.latest_image
-                if img is None:
-                    print("    No frame. Skipping.")
-                    continue
-
-            frame = pil_to_bgr(img.raw_image)
+            frame = capture_frame(robot)
+            if frame is None:
+                print("    No frame. Skipping.")
+                continue
 
             # Detect face
             faces = face_detector.detect(frame)
@@ -144,29 +165,71 @@ def main():
                 robot.behavior.say_text("I can't see your face. Try again.")
                 continue
 
-            # Enroll
+            # Enroll face embedding
             count = face_recognizer.enroll(name, frame, faces[:1])
             enrolled_faces = count
             print(f"    Face: conf={faces[0].confidence:.3f}, embeddings={count}/5")
 
-            # Body
+            # Body crop
             persons = person_detector.detect(frame)
             if persons:
                 best = persons[0]
                 body_crop = crop_person(frame, best)
                 if body_crop.size > 0:
                     cv2.imwrite(os.path.join(person_img_dir, f"body_{i + 1}.jpg"), body_crop)
-                    saved_bodies += 1
+                    saved_bodies_close += 1
                     print(f"    Body: conf={best.confidence:.3f}, saved")
 
-            # Save preview + full frame
-            vis = draw_detections(frame, faces, persons, name)
-            cv2.imwrite(os.path.join(person_img_dir, f"preview_{i + 1}.jpg"), vis)
+            # Save full frame
             cv2.imwrite(os.path.join(person_img_dir, f"full_{i + 1}.jpg"), frame)
 
             robot.behavior.say_text("Got it!")
 
-        robot.behavior.say_text(f"All done! I enrolled {enrolled_faces} angles for {name}.")
+        # --- Round 2: Far range ---
+        print("\n--- ROUND 2: FAR RANGE (body only) ---")
+        robot.behavior.say_text(
+            "Now let's do far range. Step back about six feet from me."
+        )
+        time.sleep(0.5)
+
+        for i, (speech, label) in enumerate(FAR_POSES):
+            print(f"\n  [{i + 1}/{len(FAR_POSES)}] {label}")
+            robot.behavior.say_text(speech)
+            time.sleep(0.5)
+
+            input("    Press Enter when ready...")
+
+            frame = capture_frame(robot)
+            if frame is None:
+                print("    No frame. Skipping.")
+                continue
+
+            # Body crop (face may not be visible at distance)
+            persons = person_detector.detect(frame)
+            if persons:
+                best = persons[0]
+                body_crop = crop_person(frame, best)
+                if body_crop.size > 0:
+                    cv2.imwrite(os.path.join(person_img_dir, f"body_far_{i + 1}.jpg"), body_crop)
+                    saved_bodies_far += 1
+                    print(f"    Body: conf={best.confidence:.3f}, saved")
+            else:
+                print("    No person detected!")
+
+            # Try face at distance too (bonus)
+            faces = face_detector.detect(frame)
+            if faces:
+                print(f"    Face at distance: conf={faces[0].confidence:.3f}")
+
+            # Save full frame
+            cv2.imwrite(os.path.join(person_img_dir, f"full_far_{i + 1}.jpg"), frame)
+
+            robot.behavior.say_text("Got it!")
+
+        robot.behavior.say_text(
+            f"All done! I enrolled {enrolled_faces} face angles and "
+            f"{saved_bodies_close + saved_bodies_far} body references for {name}."
+        )
 
     finally:
         robot.camera.close_camera_feed()
@@ -185,7 +248,8 @@ def main():
     print(f"\n{'=' * 60}")
     print(f"ENROLLMENT COMPLETE: {name}")
     print(f"  Face embeddings: {enrolled_faces}")
-    print(f"  Body crops saved: {saved_bodies}")
+    print(f"  Body crops (close): {saved_bodies_close}")
+    print(f"  Body crops (far): {saved_bodies_far}")
     print(f"  Reference images: {person_img_dir}")
     print(f"  Face database: {db_path}")
     print(f"  All enrolled: {face_recognizer.list_enrolled()}")
