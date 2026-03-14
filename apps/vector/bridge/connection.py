@@ -277,6 +277,7 @@ class ConnectionManager:
             map_store=self._map_store,
             waypoint_mgr=self._waypoint_mgr,
             obstacle_map=self._obstacle_map,
+            robot=self._robot,
         )
 
         # Shared obstacle map (fuses all detection tiers)

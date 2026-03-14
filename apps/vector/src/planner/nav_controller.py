@@ -111,11 +111,13 @@ class NavController:
         waypoint_mgr: WaypointManager,
         config: NavConfig | None = None,
         obstacle_map: Any | None = None,
+        robot: Any | None = None,
     ) -> None:
         self._slam = slam
         self._motor = motor
         self._head = head
         self._bus = nuc_bus
+        self._robot = robot
         self._map_store = map_store
         self._waypoint_mgr = waypoint_mgr
         self._obstacle_map = obstacle_map
@@ -328,12 +330,36 @@ class NavController:
 
     # -- Navigation task (runs in thread) ------------------------------------
 
+    def _request_control(self) -> None:
+        """Request override behavior control for navigation."""
+        if self._robot is None:
+            return
+        try:
+            from anki_vector.connection import ControlPriorityLevel
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
+            logger.info("Override control granted for navigation")
+        except Exception:
+            logger.warning("Failed to request override control", exc_info=True)
+
+    def _release_control(self) -> None:
+        """Release override behavior control."""
+        if self._robot is None:
+            return
+        try:
+            self._robot.conn.release_control()
+            logger.info("Released override control")
+        except Exception:
+            pass
+
     def _navigate_task(self) -> None:
         """Full navigation sequence: plan → execute segments → arrive."""
         target = self._target_waypoint
         if target is None:
             return
 
+        self._request_control()
         self._transition(NavState.PLANNING)
 
         for attempt in range(self._cfg.max_replan_attempts):
@@ -369,6 +395,7 @@ class NavController:
 
                 # Auto-save map after successful navigation
                 self._save_map()
+                self._release_control()
                 return
 
             # Execution failed — replan
@@ -378,6 +405,7 @@ class NavController:
 
         self._transition(NavState.BLOCKED)
         self._emit_nav_result(False, "Max replan attempts exceeded")
+        self._release_control()
 
     def _plan_path(
         self, goal_x: float, goal_y: float
