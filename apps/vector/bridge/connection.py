@@ -42,6 +42,7 @@ class ConnectionManager:
         self._camera_client: Any | None = None
         self._audio_client: Any | None = None
         self._livekit_bridge: Any | None = None
+        self._media_service: Any | None = None
         self._nuc_bus: Any | None = None
         self._follow_pipeline: Any | None = None
         self._imu_poller: Any | None = None
@@ -138,6 +139,11 @@ class ConnectionManager:
         return self._intercom
 
     @property
+    def media_service(self) -> Any:
+        """MediaService instance, or None if not initialised."""
+        return self._media_service
+
+    @property
     def livekit_bridge(self) -> Any:
         """LiveKitBridge instance, or None if not initialised."""
         return self._livekit_bridge
@@ -215,11 +221,19 @@ class ConnectionManager:
         # (980Hz calibration tone), not real mic PCM.  The stall-reconnect
         # loop starves the camera feed of SDK event-loop time.
         # self._audio_client.start()
+        # On-demand media service (all 4 channels)
+        from apps.vector.src.media.service import MediaService
+        self._media_service = MediaService(
+            camera_client=self._camera_client,
+            robot=self._robot,
+        )
+
         self._livekit_bridge = LiveKitBridge(
             camera_client=self._camera_client,
             audio_client=self._audio_client,
             robot=self._robot,
             event_bus=self._nuc_bus,
+            media_service=self._media_service,
         )
 
         from apps.vector.bridge.follow_pipeline import FollowPipeline
@@ -366,6 +380,9 @@ class ConnectionManager:
         self._camera_client = None
         self._audio_client = None
         self._livekit_bridge = None
+        if self._media_service:
+            self._media_service.stop()
+        self._media_service = None
         self._follow_pipeline = None
         self._home_guardian = None
         self._auto_charger = None

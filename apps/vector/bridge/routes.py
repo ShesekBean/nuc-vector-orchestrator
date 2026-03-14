@@ -960,22 +960,83 @@ async def call_status(request: web.Request) -> web.Response:
 
 
 async def media_status(request: web.Request) -> web.Response:
-    """GET /media/status -- media channel statuses (stub — MediaService not wired)."""
+    """GET /media/status — status of all media channels."""
     conn: ConnectionManager = request.app["conn"]
     err = _require_connected(conn)
     if err:
         return err
-    return web.json_response({"started": False, "channels": {}, "message": "MediaService not yet initialised"})
+    ms = conn.media_service
+    if ms is None:
+        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
+    return web.json_response(ms.get_status())
 
 
-async def media_mic_start(request: web.Request) -> web.Response:
-    """POST /media/mic/start -- start mic audio channel (stub)."""
-    return _json_error(503, "MediaService not yet initialised", "MEDIA_UNAVAILABLE")
+async def media_channels(request: web.Request) -> web.Response:
+    """POST /media/channels — start/stop media channels on demand.
+
+    Body (JSON)::
+
+        {
+            "action": "start" | "stop",
+            "video_in": true,     // camera channel
+            "audio_in": true,     // mic channel
+            "audio_out": true,    // speaker channel
+            "video_out": true     // display channel
+        }
+
+    Omitted fields default to false.  Specify ``"action": "start"`` to
+    start or ``"action": "stop"`` to stop the listed channels.
+
+    Returns status of all channels after the operation.
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+    ms = conn.media_service
+    if ms is None:
+        return _json_error(503, "MediaService not initialised", "MEDIA_UNAVAILABLE")
+
+    body = await request.json()
+    action = body.get("action", "start")
+
+    # Map user-facing names to internal channel names
+    channel_map = {
+        "video_in": "camera",
+        "audio_in": "mic",
+        "audio_out": "speaker",
+        "video_out": "display",
+    }
+
+    started = []
+    stopped = []
+    errors = []
+
+    for key, channel_name in channel_map.items():
+        if not body.get(key, False):
+            continue
+        try:
+            if action == "start":
+                ms.start_channel(channel_name)
+                started.append(channel_name)
+            elif action == "stop":
+                ms.stop_channel(channel_name)
+                stopped.append(channel_name)
+            else:
+                errors.append(f"unknown action: {action}")
+        except (RuntimeError, ValueError) as exc:
+            errors.append(f"{channel_name}: {exc}")
+
+    result = {
+        "started": started,
+        "stopped": stopped,
+    }
+    if errors:
+        result["errors"] = errors
+    result["status"] = ms.get_status()
+    return web.json_response(result)
 
 
-async def media_mic_stop(request: web.Request) -> web.Response:
-    """POST /media/mic/stop -- stop mic audio channel (stub)."""
-    return _json_error(503, "MediaService not yet initialised", "MEDIA_UNAVAILABLE")
 
 
 # ---------------------------------------------------------------------------
@@ -1496,8 +1557,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/call/join-url", call_join_url)
     app.router.add_get("/call/status", call_status)
     app.router.add_get("/media/status", media_status)
-    app.router.add_post("/media/mic/start", media_mic_start)
-    app.router.add_post("/media/mic/stop", media_mic_stop)
+    app.router.add_post("/media/channels", media_channels)
     app.router.add_get("/mode", mode_get)
     app.router.add_post("/mode", mode_set)
     # Navigation routes
