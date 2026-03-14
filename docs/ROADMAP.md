@@ -23,7 +23,7 @@ HTTP→gRPC Bridge (NUC) ── gRPC ──► Vector 2.0
     │
     ├── Vision pipeline (YOLO, face rec, scene) ← camera frames
     ├── Voice pipeline (OpenClaw Talk Mode) ← mic audio
-    ├── Motion planner (PD controller) → motor commands
+    ├── Motion planner (P controller, drive+steer) → motor commands
     └── LiveKit bridge → WebRTC to Ophir's phone
 ```
 
@@ -99,10 +99,10 @@ Autonomous person tracking and following — the flagship feature.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 15 | [Person following](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/15) | #7, #11, #5, #36, #38, #33 | stuck | YOLO detection → PD controller → differential drive. Core feature. |
-| 16 | [Head tracking](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/16) | #5, #11, #15 | stuck | Keep person centered in frame by adjusting head angle during follow. |
+| 15 | [Person following](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/15) | #7, #11, #5, #36, #33 | working | YOLO detection → P controller (drive+steer) → differential drive. Core feature. |
+| 16 | [Head tracking](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/16) | #5, #11, #15 | working | Keep person centered in frame by adjusting head angle during follow. |
 | 17 | [Obstacle avoidance](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/17) | #9, #11, #15 | stuck | Camera-based (no LiDAR). Cliff sensors for edges. Safety overlay on follow. |
-| 38 | [Kalman filter](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/38) | #11 | stuck | Smooth YOLO detections, predict position between frames. R3 lesson: critical for tracking. |
+| 38 | [Kalman filter](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/38) | #11 | not needed | YOLO at ~15fps on NUC OpenVINO is fast enough — raw detections passed directly to planner. |
 
 **Phase 3 unlocks:** Full autonomous following behavior. Combined with voice = "follow me" command.
 
@@ -304,10 +304,10 @@ Custom native binaries to run on Vector, enabling capabilities not available thr
 Key lessons from R3 (nuc-orchestrator) baked into this plan:
 
 1. **Standalone-first** — each subsystem has standalone test scripts (#33) before integration
-2. **State machines** — follow behavior uses explicit states (SEARCHING → ACQUIRING → FOLLOWING → LOST)
-3. **Kalman filter** — smooth YOLO detections, predict between frames (#38)
+2. **State machines** — follow behavior uses explicit states (IDLE → SEARCHING → FOLLOWING)
+3. **Simple P control** — YOLO at 15fps is fast enough without Kalman; drive+steer with proportional gains
 4. **Echo cancellation** — TTS→mic feedback loop prevention from day 1 (#37)
-5. **Gain re-tuning** — PD controller gains must be re-tuned for Vector's differential drive (not mecanum)
+5. **Gain tuning** — P controller gains tuned for Vector's floor-level camera (person fills frame at 1.5m)
 6. **int16 audio** — openwakeword requires int16, NOT float32
 7. **No over-engineering** — event bus is ~100 lines, not ROS2
 8. **Process supervisor** — graceful startup/shutdown, not ad-hoc scripts (#35)

@@ -73,7 +73,7 @@ No robot needed. Tests all CV/ML on NUC with synthetic/mocked data.
 | 3.1 | YOLO model loads | OpenVINO IR model loads |
 | 3.2 | YOLO detect + empty | Person → bbox (conf > 0.5), empty frame → no detections |
 | 3.3 | Face recognition | Same person high similarity, different people low similarity |
-| 3.4 | Kalman tracker lifecycle | Create → consistent ID over 5 frames → timeout drops track |
+| 3.4 | Detection tracking | YOLO detections emit TrackedPersonEvent with consistent track ID |
 | 3.5 | Scene describer | `SceneDescriber` instantiates with mock camera |
 | 3.6 | Detection → event bus | YOLO detection fires `person_detected` event |
 
@@ -203,7 +203,7 @@ Signal → OpenClaw gateway → robot-control skill → curl → bridge → Vect
                                                            ↕
 wire-pod → wake word → STT → OpenClaw hooks → response → say_text()
                                                            ↕
-LiveKit Cloud ← phone camera    NUC inference (YOLO, face, Kalman) ← Vector camera
+LiveKit Cloud ← phone camera    NUC inference (YOLO, face) ← Vector camera
                                                            ↕
                                 Event bus (SDK events + NUC bus) → follow planner → motors
 ```

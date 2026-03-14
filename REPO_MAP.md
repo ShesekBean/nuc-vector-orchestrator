@@ -71,8 +71,8 @@ nuc-vector-orchestrator/
 │       ├── src/                   ← inference + control nodes
 │       │   ├── detector/          ← YOLO person detection (NUC GPU/CPU)
 │       │   ├── face_recognition/  ← YuNet + SFace (NUC)
-│       │   ├── planner/           ← Visual SLAM + PD controller → gRPC motor commands
-│       │   │   ├── __init__.py    ← PD follow controller (proportional-derivative tracking)
+│       │   ├── planner/           ← P controller + drive+steer → gRPC motor commands
+│       │   │   ├── __init__.py
 │       │   │   ├── follow_planner.py ← person-following planner
 │       │   │   ├── head_tracker.py   ← head servo tracking logic
 │       │   │   ├── obstacle_detector.py ← camera-based obstacle detection
