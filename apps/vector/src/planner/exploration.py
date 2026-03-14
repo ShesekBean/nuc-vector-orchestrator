@@ -513,58 +513,51 @@ class AutonomousExplorer:
         self._state = ExploreState.IDLE
 
     def _scan_for_obstacles(self) -> tuple[bool, str]:
-        """Check if there's an obstacle ahead using Claude Vision.
+        """Check if there's an obstacle ahead using Claude Vision via CLI.
 
-        Sends the current camera frame to Claude Haiku for a fast obstacle
-        assessment. Returns (is_blocked, turn_direction).
+        Saves the current camera frame to a temp file and asks Claude Code
+        (Haiku model) to assess obstacles. Returns (is_blocked, turn_direction).
 
         Returns:
             (True, "left"|"right") if obstacle detected.
             (False, "") if path is clear.
         """
+        import subprocess
+        import tempfile
+
         jpeg = self._camera.get_latest_jpeg()
         if jpeg is None:
             return False, ""
 
         try:
-            import anthropic
-            import base64
+            # Write frame to temp file
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                tmp.write(jpeg)
+                tmp_path = tmp.name
 
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-            if not api_key:
-                return False, ""
-
-            b64 = base64.b64encode(jpeg).decode("ascii")
-            client = anthropic.Anthropic(api_key=api_key)
-
-            response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=50,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg",
-                                "data": b64,
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": (
-                                "You are a small robot's obstacle detector. "
-                                "Is there an obstacle within 30cm directly ahead? "
-                                "Reply ONLY with one word: CLEAR or LEFT or RIGHT. "
-                                "LEFT/RIGHT = which way to turn to avoid it."
-                            ),
-                        },
-                    ],
-                }],
+            # Ask Claude Code CLI (uses OAuth, no API key needed)
+            result = subprocess.run(
+                [
+                    "claude", "--print", "--model", "haiku",
+                    "--dangerously-skip-permissions",
+                    f"Read the file {tmp_path} and tell me: "
+                    "You are a small robot's obstacle detector camera. "
+                    "Is there an obstacle within 30cm directly ahead of the robot? "
+                    "Reply ONLY one word: CLEAR or LEFT or RIGHT. "
+                    "LEFT/RIGHT means which way to turn to avoid it.",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
 
-            answer = response.content[0].text.strip().upper()
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+            answer = result.stdout.strip().upper().split("\n")[0]
             logger.info("Vision obstacle check: %s", answer)
 
             if "CLEAR" in answer:
@@ -574,10 +567,12 @@ class AutonomousExplorer:
             elif "RIGHT" in answer:
                 return True, "right"
             else:
-                # Ambiguous — treat as blocked, turn right by default
                 logger.warning("Ambiguous obstacle response: %r", answer)
                 return True, "right"
 
+        except subprocess.TimeoutExpired:
+            logger.warning("Vision obstacle check timed out")
+            return False, ""
         except Exception:
             logger.debug("Vision obstacle check failed", exc_info=True)
             return False, ""
