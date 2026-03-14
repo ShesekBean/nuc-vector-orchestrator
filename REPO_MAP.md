@@ -54,6 +54,8 @@ nuc-vector-orchestrator/
 │   │   ├── skills/
 │   │   │   ├── robot-control/
 │   │   │   │   └── SKILL.md       ← Signal → robot commands
+│   │   │   ├── companion/
+│   │   │   │   └── SKILL.md       ← Companion personality (presence signals → speech/expression/movement)
 │   │   │   ├── fitness/
 │   │   │   │   └── SKILL.md       ← Fitness tracking skill
 │   │   │   └── monarch-money/
@@ -95,6 +97,11 @@ nuc-vector-orchestrator/
 │       │   ├── led_controller.py   ← eye color + animated LED patterns (priority-based state manager)
 │       │   ├── lift_controller.py  ← forklift height control with named presets
 │       │   ├── motor_controller.py ← cliff-safe differential drive (turn-then-drive planner)
+│       │   ├── companion/           ← companion behavior system (presence → OpenClaw personality)
+│       │   │   ├── __init__.py      ← CompanionSystem lifecycle manager
+│       │   │   ├── presence_tracker.py ← state machine: detection events → arrival/departure/check-in
+│       │   │   ├── dispatcher.py    ← engagement-adaptive throttling + OpenClaw signal formatting
+│       │   │   └── openclaw_client.py ← WebSocket chat.send client (companion session)
 │       │   ├── expression_engine.py ← coordinated face + LED + sound expressions (emotion states)
 │       │   ├── intercom.py        ← Signal messaging client (photo + text to Ophir via intercom-server)
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)

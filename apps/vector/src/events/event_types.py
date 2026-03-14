@@ -40,6 +40,7 @@ NAV_STATE_CHANGED = "nav_state_changed"
 NAV_RESULT = "nav_result"
 WAYPOINT_SAVED = "waypoint_saved"
 PATROL_EVENT = "patrol_event"
+PRESENCE_CHANGED = "presence_changed"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -326,3 +327,17 @@ class PatrolEventPayload:
     waypoint: str = ""
     details: str = ""
     person_name: str = ""
+
+
+@dataclass(frozen=True)
+class PresenceChangedEvent:
+    """Emitted by PresenceTracker when someone arrives, departs, or triggers a check-in."""
+
+    signal: str  # "arrival", "departure", "still_present", "touch", "goodnight"
+    person_name: str  # "ophir", "smadara", "unknown"
+    is_present: bool
+    first_today: bool = False
+    away_duration_s: float = 0.0
+    session_duration_s: float = 0.0
+    engagement_score: float = 0.0
+    interactions_today: int = 0

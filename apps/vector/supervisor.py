@@ -272,6 +272,7 @@ class VectorSupervisor:
         current robot instance.
         """
         from apps.vector.src.camera.camera_client import CameraClient
+        from apps.vector.src.companion import CompanionSystem
         from apps.vector.src.detector.person_detector import PersonDetector
         from apps.vector.src.display_controller import DisplayController
         from apps.vector.src.led_controller import LedController
@@ -331,6 +332,9 @@ class VectorSupervisor:
             motor = self._get_component("motor_controller")
             return FollowPlanner(robot, bus, motor)
 
+        def _make_companion() -> CompanionSystem:
+            return CompanionSystem(bus)
+
         self._components = [
             # Order 1-2: connection + event bus handled before components
             # Order 3: Motor controller (needed for safety — cliff reactions)
@@ -366,6 +370,10 @@ class VectorSupervisor:
             ComponentInfo("voice_bridge", _make_voice_bridge, 14),
             # Order 15: Follow planner (idle, waiting for trigger)
             ComponentInfo("follow_planner", _make_follow_planner, 15),
+            # Order 16: Companion system (presence tracking + OpenClaw signals)
+            ComponentInfo(
+                "companion", _make_companion, 16, requires_connection=False,
+            ),
         ]
 
         # Sort by start_order
