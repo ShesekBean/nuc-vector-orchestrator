@@ -199,8 +199,17 @@ class ConnectionManager:
         from apps.vector.src.voice.audio_client import AudioClient
 
         logger.info("Connecting to Vector (serial=%s)...", self._serial)
-        self._robot = anki_vector.Robot(serial=self._serial, default_logging=False)
+        self._robot = anki_vector.Robot(
+            serial=self._serial,
+            default_logging=False,
+            behavior_control_level=None,  # connect without requesting control
+        )
         self._robot.connect()
+        # Request control separately (won't crash if it fails)
+        try:
+            self._robot.conn.request_control()
+        except Exception:
+            logger.warning("Could not get behavior control — will retry later")
 
         self._nuc_bus = NucEventBus()
         self._motor_controller = MotorController(self._robot, self._nuc_bus)
