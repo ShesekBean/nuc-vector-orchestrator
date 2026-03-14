@@ -669,16 +669,17 @@ def _restore_face_animation(robot: "Any") -> None:
     """Restore normal face animation after displaying a static image.
 
     DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
-    We release control so vic-engine's behavior tree resumes and re-enables
-    KeepFaceAlive, then re-acquire OVERRIDE_BEHAVIORS after a delay.
+    Playing an animation re-enables KeepFaceAlive and restores the eyes.
+    We release control briefly so vic-engine can process the animation,
+    then re-acquire OVERRIDE_BEHAVIORS to keep Vector in sit mode.
     """
     from anki_vector.connection import ControlPriorityLevel
 
     try:
-        logger.info("Restoring face: releasing control to let vic-engine restart face...")
+        logger.info("Restoring face: releasing control + playing animation...")
         robot.conn.release_control()
-        # Give vic-engine enough time to run its behavior tree and
-        # re-enable KeepFaceAlive (needs ~2s for face init sequence)
+        time.sleep(0.5)
+        robot.anim.play_animation("anim_neutral_eyes_01")
         time.sleep(2.0)
         robot.conn.request_control(
             behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,

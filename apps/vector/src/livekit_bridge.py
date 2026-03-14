@@ -130,6 +130,7 @@ class LiveKitBridge:
         self._room: rtc.Room | None = None
         self._video_source: rtc.VideoSource | None = None
         self._audio_source: rtc.AudioSource | None = None
+        self._apm: rtc.AudioProcessingModule | None = None  # echo cancellation
 
         self._video_task: asyncio.Task | None = None
         self._audio_pub_task: asyncio.Task | None = None
@@ -267,6 +268,14 @@ class LiveKitBridge:
         await self._room.local_participant.publish_track(video_track, video_opts)
         logger.info("Published video track (vector-camera)")
 
+        # Create echo cancellation + noise suppression processor
+        self._apm = rtc.AudioProcessingModule(
+            echo_cancellation=True,
+            noise_suppression=True,
+            auto_gain_control=True,
+        )
+        logger.info("Audio processing module initialized (AEC + NS + AGC)")
+
         # Create and publish audio track for mic (fed by MediaService mic channel)
         self._audio_source = rtc.AudioSource(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
         audio_track = rtc.LocalAudioTrack.create_audio_track(
@@ -325,6 +334,7 @@ class LiveKitBridge:
         self._audio_sub_task = None
         self._mic_task = None
         self._video_in_task = None
+        self._apm = None  # release echo cancellation resources
 
         # Stop continuous mic streaming and unmute mic→vic-cloud
         self._stop_mic_streaming()
@@ -545,6 +555,14 @@ class LiveKitBridge:
                     )
                 if remote_sample_rate == 0:
                     remote_sample_rate = frame.sample_rate
+
+                # Feed remote audio as reference for echo cancellation
+                if self._apm is not None:
+                    try:
+                        self._apm.process_reverse_stream(frame)
+                    except Exception:
+                        pass  # don't block audio on AEC errors
+
                 pcm_buffer.extend(bytes(frame.data))
 
                 # Accumulate ~2 seconds of audio before playing
@@ -772,6 +790,9 @@ class LiveKitBridge:
                         num_channels=AUDIO_CHANNELS,
                         samples_per_channel=samples_per_channel,
                     )
+                    # Run echo cancellation / noise suppression on mic audio
+                    if self._apm is not None:
+                        self._apm.process_stream(frame)
                     await self._audio_source.capture_frame(frame)
                     published_count += 1
                     if published_count <= 3 or published_count % 500 == 0:
@@ -898,15 +919,17 @@ class LiveKitBridge:
         """Restore face animation after displaying video on OLED.
 
         DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
-        We must release control long enough (~2s) for vic-engine's behavior
-        tree to restart and re-enable KeepFaceAlive, then re-acquire with
-        OVERRIDE_BEHAVIORS_PRIORITY to keep Vector in sit mode.
+        Playing an animation re-enables KeepFaceAlive and restores the eyes.
+        We release control briefly so vic-engine can process the animation,
+        then re-acquire OVERRIDE_BEHAVIORS to keep Vector in sit mode.
         """
         import time as _time
         from anki_vector.connection import ControlPriorityLevel
         try:
-            logger.info("Restoring face: releasing control for vic-engine restart...")
+            logger.info("Restoring face: releasing control + playing animation...")
             self._robot.conn.release_control()
+            _time.sleep(0.5)
+            self._robot.anim.play_animation("anim_neutral_eyes_01")
             _time.sleep(2.0)
             self._robot.conn.request_control(
                 behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
