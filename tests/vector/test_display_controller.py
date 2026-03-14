@@ -11,8 +11,6 @@ from apps.vector.src.display_controller import (
     EXPRESSIONS,
     SCREEN_H,
     SCREEN_W,
-    SDK_H,
-    SDK_W,
     DisplayController,
     render_face,
     render_status,

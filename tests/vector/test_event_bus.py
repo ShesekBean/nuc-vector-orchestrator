@@ -207,8 +207,8 @@ class TestEventPayloads:
         evt = YoloPersonDetectedEvent(
             x=100.0, y=50.0, width=200.0, height=300.0, confidence=0.95
         )
-        assert evt.frame_width == 640
-        assert evt.frame_height == 360
+        assert evt.frame_width == 800
+        assert evt.frame_height == 600
         assert evt.confidence == 0.95
 
     def test_face_recognized(self):

@@ -104,7 +104,7 @@ def main():
     robot.camera.init_camera_feed()
     time.sleep(1)  # Let camera stabilize
 
-    print(f"\nReady! Stand in front of Vector.")
+    print("\nReady! Stand in front of Vector.")
     print(f"Will capture {NUM_FRAMES} frames. Press Enter for each.\n")
 
     enrolled_faces = 0

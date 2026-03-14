@@ -118,28 +118,28 @@ def test_pd_controller():
     # Person far right → should turn right (left > right)
     left, right = pd.compute(FRAME_W * 0.9, cfg.target_height)
     print(f"  Far right: L={left:.1f} R={right:.1f}")
-    assert left > right, f"Expected left > right for rightward turn"
+    assert left > right, "Expected left > right for rightward turn"
 
     pd.reset()
 
     # Person far left → should turn left (right > left)
     left, right = pd.compute(FRAME_W * 0.1, cfg.target_height)
     print(f"  Far left: L={left:.1f} R={right:.1f}")
-    assert right > left, f"Expected right > left for leftward turn"
+    assert right > left, "Expected right > left for leftward turn"
 
     pd.reset()
 
     # Person too far (small bbox) → should drive forward (both positive)
     left, right = pd.compute(FRAME_W / 2, cfg.target_height * 0.5)
     print(f"  Too far (h={cfg.target_height * 0.5}): L={left:.1f} R={right:.1f}")
-    assert left > 10 and right > 10, f"Expected forward drive"
+    assert left > 10 and right > 10, "Expected forward drive"
 
     pd.reset()
 
     # Person too close (large bbox) → should drive backward (both negative, capped)
     left, right = pd.compute(FRAME_W / 2, cfg.target_height * 2.0)
     print(f"  Too close (h={cfg.target_height * 2}): L={left:.1f} R={right:.1f}")
-    assert left < 0 and right < 0, f"Expected backward drive"
+    assert left < 0 and right < 0, "Expected backward drive"
     # Check reverse cap (40% of max)
     max_reverse = cfg.max_wheel_speed * 0.4
     assert abs(left) <= max_reverse + 1, f"Reverse not capped: {left}"
@@ -218,7 +218,7 @@ def test_kalman_tracker():
 
     primary = tracker.get_primary_track()
     assert primary is None, "Track should be deleted after max_age frames"
-    print(f"  Track deleted after max_age — correct")
+    print("  Track deleted after max_age — correct")
 
     print("  PASS")
     return True
@@ -334,7 +334,7 @@ def test_low_light_enhancement():
     gray_after = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY).mean()
 
     print(f"  Dark frame: before={gray_before:.1f} after={gray_after:.1f}")
-    assert gray_after > gray_before * 3, f"Enhancement should brighten significantly"
+    assert gray_after > gray_before * 3, "Enhancement should brighten significantly"
 
     # Create moderate frame (brightness ~60)
     mod_frame = make_frame(brightness=60)
@@ -364,19 +364,19 @@ def test_adaptive_confidence():
     dark = make_frame(brightness=12)
     conf_dark = detector._adaptive_confidence(dark)
     print(f"  Dark (12): conf={conf_dark:.3f}")
-    assert conf_dark < 0.15, f"Should be very permissive for dark frames"
+    assert conf_dark < 0.15, "Should be very permissive for dark frames"
 
     # Normal frame
     normal = make_frame(brightness=100)
     conf_normal = detector._adaptive_confidence(normal)
     print(f"  Normal (100): conf={conf_normal:.3f}")
-    assert abs(conf_normal - 0.25) < 0.01, f"Should be default for normal frames"
+    assert abs(conf_normal - 0.25) < 0.01, "Should be default for normal frames"
 
     # Bright frame
     bright = make_frame(brightness=180)
     conf_bright = detector._adaptive_confidence(bright)
     print(f"  Bright (180): conf={conf_bright:.3f}")
-    assert conf_bright > 0.30, f"Should be stricter for bright frames"
+    assert conf_bright > 0.30, "Should be stricter for bright frames"
 
     print("  PASS")
     return True
@@ -423,7 +423,7 @@ def test_full_pipeline_mock():
     """Test the complete pipeline with mock components."""
     from apps.vector.src.detector.kalman_tracker import Detection, KalmanTracker
     from apps.vector.src.events.event_types import TRACKED_PERSON, TrackedPersonEvent
-    from apps.vector.src.planner.follow_planner import FollowConfig, FollowPlanner, State
+    from apps.vector.src.planner.follow_planner import FollowPlanner
 
     print("\n--- Test: Full Pipeline Mock ---")
     motor = MockMotorController()
@@ -490,8 +490,8 @@ def test_full_pipeline_mock():
         # Find a command from when person was at cx=580
         mid_cmds = motor_cmds[3:6]
         if mid_cmds:
-            l, r, _ = mid_cmds[0]
-            print(f"  Mid command (person right): L={l:.1f} R={r:.1f}")
+            left_spd, r, _ = mid_cmds[0]
+            print(f"  Mid command (person right): L={left_spd:.1f} R={r:.1f}")
 
     # Now simulate person disappearing
     print("\n  Simulating person loss...")
@@ -511,7 +511,6 @@ def test_full_pipeline_mock():
 
 def test_reactive_timing():
     """Test that detection → motor command latency is acceptable."""
-    from apps.vector.src.detector.kalman_tracker import Detection, KalmanTracker
     from apps.vector.src.events.event_types import TRACKED_PERSON, TrackedPersonEvent
     from apps.vector.src.planner.follow_planner import FollowPlanner
 

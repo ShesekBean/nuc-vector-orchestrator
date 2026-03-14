@@ -14,7 +14,7 @@ import json
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,6 @@ from apps.vector.src.events.event_types import PRESENCE_CHANGED, PresenceChanged
 logger = logging.getLogger(__name__)
 
 # Paths
-FITNESS_LOG_PATH = Path.home() / ".openclaw" / "workspace" / "memory" / "fitness-log.json"
 COMPANION_LOG_PATH = Path.home() / ".openclaw" / "workspace" / "memory" / "companion-log.json"
 
 # Throttle windows (seconds)
@@ -184,18 +183,7 @@ class CompanionDispatcher:
         return CHECKIN_LOW_S
 
     def _is_quiet_hours(self) -> bool:
-        """Check if we're in quiet hours (Oura sleep or time-based fallback)."""
-        # Try Oura sleep data from fitness log
-        try:
-            if FITNESS_LOG_PATH.exists():
-                data = json.loads(FITNESS_LOG_PATH.read_text())
-                # Look for a recent sleep entry indicating user is asleep
-                # The fitness skill doesn't store real-time sleep state,
-                # so we use time-based fallback
-        except Exception:
-            pass
-
-        # Time-based fallback
+        """Check if we're in quiet hours (time-based)."""
         hour = datetime.now().hour
         return hour >= QUIET_HOUR_START or hour < QUIET_HOUR_END
 

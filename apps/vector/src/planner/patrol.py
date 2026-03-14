@@ -30,18 +30,14 @@ Usage::
 
 from __future__ import annotations
 
-import base64
 import logging
-import math
-import os
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import numpy as np
 
     from apps.vector.src.camera.camera_client import CameraClient
     from apps.vector.src.events.nuc_event_bus import NucEventBus
@@ -453,7 +449,6 @@ class HomeGuardian:
             self._say(f"Checking the {waypoint_name}.")
 
         persons_found = []
-        scan_start = time.monotonic()
 
         # Head sweep with detection at each angle
         for angle in self._cfg.head_angles:

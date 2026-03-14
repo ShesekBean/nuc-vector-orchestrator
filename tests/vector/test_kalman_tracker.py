@@ -381,7 +381,7 @@ class TestTrackedPersonEvent:
         assert event.track_id == 1
         assert event.cx == 320.0
         assert event.width == 100
-        assert event.frame_width == 640
+        assert event.frame_width == 800
 
     def test_event_constant(self):
         assert TRACKED_PERSON == "tracked_person"

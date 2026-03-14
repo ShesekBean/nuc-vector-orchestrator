@@ -220,6 +220,7 @@ class TestLifecycle:
             patch("apps.vector.src.livekit_bridge.rtc.LocalVideoTrack") as mock_vt,
             patch("apps.vector.src.livekit_bridge.rtc.AudioSource"),
             patch("apps.vector.src.livekit_bridge.rtc.LocalAudioTrack") as mock_at,
+            patch("apps.vector.src.livekit_bridge.rtc.AudioProcessingModule", create=True),
         ):
             mock_vt.create_video_track.return_value = MagicMock()
             mock_at.create_audio_track.return_value = MagicMock()
@@ -229,8 +230,8 @@ class TestLifecycle:
             assert bridge.is_active
             assert bridge.room_name == "test-room"
             mock_room.connect.assert_called_once()
-            # Should publish video track only (mic audio not available via SDK)
-            assert mock_room.local_participant.publish_track.call_count == 1
+            # Should publish video + audio tracks
+            assert mock_room.local_participant.publish_track.call_count == 2
 
             # Cleanup
             await bridge.stop()
