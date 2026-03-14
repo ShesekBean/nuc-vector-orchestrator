@@ -16,7 +16,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "🏊 6:30 — time to swim. Go."
+        "message": "\ud83c\udfca 6:30 \u2014 time to swim. Go."
       },
       "delivery": {
         "mode": "announce",
@@ -47,7 +47,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring — remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together — e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down — great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
+        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring \u2014 remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together \u2014 e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down \u2014 great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
       },
       "delivery": {
         "mode": "announce",
@@ -246,7 +246,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '🤖 AI Daily Brief' header."
+        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '\ud83e\udd16 AI Daily Brief' header."
       },
       "delivery": {
         "mode": "announce",
@@ -269,7 +269,7 @@
       "name": "Daily work prep via ChatGPT",
       "enabled": true,
       "createdAtMs": 1773523654020,
-      "updatedAtMs": 1773524300862,
+      "updatedAtMs": 1773525594180,
       "schedule": {
         "kind": "cron",
         "expr": "27 6 * * 1-5",
@@ -279,7 +279,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Daily brief for today. STRICT FORMAT — no deviation, no extras, no strategy advice, no mental models, no offers to do more. Just the facts.\n\nSECTION 1 — TOP 3\nThree things I must get done today. One sentence each. Based on emails, Slack, calendar.\n\nSECTION 2 — MEETINGS\nEach meeting: time (Pacific), title.\nUnder each: 1-3 lines max — what I need to know going IN to that meeting. Context from emails/Slack/recordings. Skip meetings needing no prep.\n\nSECTION 3 — RESPOND TO\nEmails or Slack I need to reply to. Format: sender — one line. Max 5 items. Skip if nothing.\n\nHARD RULES: All times Pacific. Max 25 lines total output. No headers beyond the three sections. No strategy analysis. No suggestions. No offers. Just the brief.\""
+        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Daily brief for today. Use EXACTLY this format \u2014 no deviation, no extras, no paragraphs, no strategy essays, no offers to do more. Check my calendar, emails (7 days), Slack (48h), and recordings (7 days).\n\n\ud83d\uddd3 Schedule\n\u23f0 HH:MM Meeting Name \u2013 one-line goal/purpose\n(list every meeting for the day, times in Pacific)\n\n\ud83d\udcac Talking Points\nPerson \u2192 key question or topic to raise (one per meeting, one line each)\n\n\ud83c\udfaf Top 3 Must-Remember\n1\ufe0f\u20e3 thing one\n2\ufe0f\u20e3 thing two\n3\ufe0f\u20e3 thing three\n\n\u2705 Prep Actions\n\u270d\ufe0f/\u2753/\ud83d\udcca concrete thing to do before meetings (max 3)\n\n\ud83c\udfc1 Success Outcome\nOne sentence: what does a good today look like?\n\nHARD RULES: All times Pacific. No paragraphs. No bullet explanations longer than one line. No strategy analysis. No sub-bullets. No offers. Just the brief in this exact format.\""
       },
       "delivery": {
         "mode": "announce",

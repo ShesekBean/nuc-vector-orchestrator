@@ -64,19 +64,27 @@ When the user says "daily brief", "daily prep", "work brief", or "brief for tomo
 
 Send this expanded prompt to the ChatGPT proxy:
 
-> Daily brief for [TARGET DAY]. STRICT FORMAT — no deviation, no extras, no strategy advice, no mental models, no offers to do more. Just the facts.
+> Daily brief for [TARGET DAY]. Use EXACTLY this format — no deviation, no extras, no paragraphs, no strategy essays, no offers to do more. Check my calendar, emails (7 days), Slack (48h), and recordings (7 days).
 >
-> SECTION 1 — TOP 3
-> Three things I must get done [TARGET DAY]. One sentence each. Based on emails, Slack, calendar.
+> 🗓 Schedule
+> ⏰ HH:MM Meeting Name – one-line goal/purpose
+> (list every meeting for the day, times in Pacific)
 >
-> SECTION 2 — MEETINGS
-> Each meeting: time (Pacific), title.
-> Under each: 1-3 lines max — what I need to know going IN to that meeting. Context from emails/Slack/recordings. Skip meetings needing no prep.
+> 💬 Talking Points
+> Person → key question or topic to raise (one per meeting, one line each)
 >
-> SECTION 3 — RESPOND TO
-> Emails or Slack I need to reply to. Format: sender — one line. Max 5 items. Skip if nothing.
+> 🎯 Top 3 Must-Remember
+> 1️⃣ thing one
+> 2️⃣ thing two
+> 3️⃣ thing three
 >
-> HARD RULES: All times Pacific. Max 25 lines total output. No headers beyond the three sections. No strategy analysis. No suggestions. No "want me to also..." offers. Just the brief.
+> ✅ Prep Actions
+> ✍️/❓/📊 concrete thing to do before meetings (max 3)
+>
+> 🏁 Success Outcome
+> One sentence: what does a good [TARGET DAY] look like?
+>
+> HARD RULES: All times Pacific. No paragraphs. No bullet explanations longer than one line. No strategy analysis. No sub-bullets. No "want me to also..." No "if you want I can...". Just the brief in this exact format.
 
 ## Trigger Words
 
