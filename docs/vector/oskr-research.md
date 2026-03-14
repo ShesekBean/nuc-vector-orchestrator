@@ -106,6 +106,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │   ├── A* path planning on occupancy grid
 │   └── Camera-based obstacle detection (YOLO bbox area ratio)
 ├── Companion System (presence tracker → OpenClaw personality → expressions)
+├── Media Layer (4 on-demand channels: camera fan-out, mic, speaker, display)
 ├── Planner (P controller → turn-then-drive → gRPC motor commands)
 ├── LiveKit Bridge (camera + mic out to LiveKit Cloud room)
 ├── Intercom Server (NUC HTTP → Signal DM for robot messages/photos)

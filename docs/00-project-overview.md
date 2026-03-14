@@ -346,6 +346,26 @@ Auto-disconnect: 30s initial wait, 3s after last participant leaves.
 
 ---
 
+## On-Demand Media Layer
+
+**Module:** `apps/vector/src/media/`
+**API:** `POST /media/channels`
+
+Four independently controllable media channels:
+
+| Channel | Direction | Description |
+|---------|-----------|-------------|
+| `camera` (video_in) | Vector → NUC | JPEG frames via CameraChannel fan-out (subscribers get frames via queue) |
+| `mic` (audio_in) | Vector → NUC | PCM from vector-streamer Opus → MicChannel |
+| `speaker` (audio_out) | NUC → Vector | TTS via say_text() or PCM via stream_wav_file() |
+| `display` (video_out) | NUC → Vector | PIL images → 160x80 OLED (handles SDK 184x96 stride conversion) |
+
+Channels are lazy — only consume resources when started. Multiple services can subscribe to the same input channel. MediaService is created by ConnectionManager and used by LiveKit bridge.
+
+Unified endpoint: `POST /media/channels {"action": "start|stop", "video_in": true, "audio_in": true, ...}`
+
+---
+
 ## Native Binaries (Cross-compiled for Vector ARM32)
 
 Source: `apps/vector/native/`
@@ -366,6 +386,17 @@ Systemd service on Vector: `vector-streamer.service` (Before=vic-engine, After=v
 Patch to `libcozmo_engine.so` on Vector:
 - Static buffer + stride conversion (184 → 160 columns) for Vector 2.0 (Xray) display
 - Fixes SDK assumption of 184x96 → actual 160x80 hardware
+
+### Firmware Patches (ShesekBean/wire-os-victor fork)
+
+Source: `/tmp/victor-build/victor/` on Jetson (192.168.1.70)
+Branch: `vector-v4z4-patches`
+Build: Docker cross-compile (`./build/build-v.sh`)
+
+Two patches deployed to Vector:
+
+1. **DisplayFaceImageRGB stride fix** (`engine/components/animationComponent.cpp`) — Static buffer + stride 184→160 conversion for Xray display. Deployed as `/anki/lib/libcozmo_engine.so`.
+2. **HighLevelAI default to Wait** (`highLevelAI.json`) — Vector sits still on boot instead of wandering. Deployed to `/anki/data/assets/cozmo_resources/config/`.
 
 ---
 

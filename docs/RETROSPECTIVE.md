@@ -242,6 +242,7 @@ The day of hardest hardware problems and most ambitious features:
 - **Voice:** Wake word (Porcupine) to STT (wire-pod Vosk) to command routing (wire-pod intents + OpenClaw natural language via openclaw-voice-proxy) to TTS (say_text) with echo suppression
 - **Communication:** Signal to OpenClaw to robot control (all commands), voice-to-Signal relay, intercom (photo + text to Signal)
 - **Video calls:** LiveKit WebRTC with camera + mic + speaker + display, echo prevention, empty-room timeout
+- **Media layer:** On-demand 4-channel media service (camera, mic, speaker, display) with fan-out subscribers and unified REST endpoint
 - **Companion:** Presence tracking, greeting/check-in/goodnight behaviors, touch responses, engagement-adaptive throttling, OpenClaw personality integration
 - **Navigation:** Autonomous exploration with room naming via Signal, indoor navigation (A* path planning, waypoint management), dead reckoning with visual SLAM fusion
 - **Security:** Smart patrol with security alerts, home guardian mode
