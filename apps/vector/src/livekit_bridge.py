@@ -75,7 +75,8 @@ MAX_RECONNECT_DELAY = 30.0
 INITIAL_RECONNECT_DELAY = 1.0
 
 # Auto-disconnect when no remote participants for this long (seconds)
-EMPTY_ROOM_TIMEOUT = 3  # seconds — disconnect quickly when room empties
+EMPTY_ROOM_TIMEOUT_INITIAL = 30  # seconds — wait for first participant to join
+EMPTY_ROOM_TIMEOUT_REJOIN = 3   # seconds — after last participant leaves
 
 # Flag file — voice proxy checks this to suppress LLM during calls
 _CALL_ACTIVE_FLAG = Path("/tmp/livekit-call-active")
@@ -139,6 +140,7 @@ class LiveKitBridge:
         self._should_reconnect = False
         self._playing_audio = False  # guard against overlapping playback
         self._empty_room_timer: asyncio.TimerHandle | None = None
+        self._had_participant = False  # True after first participant joins
 
         # Mic audio subscription (from MediaService mic channel)
         self._mic_sub = None
@@ -297,6 +299,7 @@ class LiveKitBridge:
         self._cancel_empty_room_timer()
         was_active = self._active
         self._active = False
+        self._had_participant = False
         _CALL_ACTIVE_FLAG.unlink(missing_ok=True)
         self._video_in_active = False
 
@@ -637,6 +640,7 @@ class LiveKitBridge:
     def _on_participant_connected(self, participant: rtc.RemoteParticipant) -> None:
         """A remote participant joined — resume mic streaming and cancel empty-room timer."""
         logger.info("Participant joined: %s", participant.identity)
+        self._had_participant = True
         self._cancel_empty_room_timer()
         self._start_mic_streaming()
 
@@ -650,14 +654,20 @@ class LiveKitBridge:
             self._start_empty_room_timer()
 
     def _start_empty_room_timer(self) -> None:
-        """Start a timer that auto-disconnects after EMPTY_ROOM_TIMEOUT."""
+        """Start a timer that auto-disconnects when room is empty.
+
+        Uses a longer timeout (30s) before anyone has joined (waiting for
+        user to open the URL), and a short timeout (3s) after participants
+        have already been in the room and left.
+        """
         self._cancel_empty_room_timer()
+        timeout = EMPTY_ROOM_TIMEOUT_REJOIN if self._had_participant else EMPTY_ROOM_TIMEOUT_INITIAL
         loop = asyncio.get_event_loop()
         logger.info(
-            "Room empty — will auto-disconnect in %ds", EMPTY_ROOM_TIMEOUT
+            "Room empty — will auto-disconnect in %ds", timeout
         )
         self._empty_room_timer = loop.call_later(
-            EMPTY_ROOM_TIMEOUT, lambda: asyncio.ensure_future(self._empty_room_disconnect())
+            timeout, lambda: asyncio.ensure_future(self._empty_room_disconnect())
         )
 
     def _cancel_empty_room_timer(self) -> None:
@@ -673,7 +683,7 @@ class LiveKitBridge:
         if self._room and self._room.remote_participants:
             logger.info("Empty-room timer fired but room has participants — ignoring")
             return
-        logger.info("No participants for %ds — auto-disconnecting", EMPTY_ROOM_TIMEOUT)
+        logger.info("No participants — auto-disconnecting")
         await self.stop()
         self._notify_signal_closed()
 
