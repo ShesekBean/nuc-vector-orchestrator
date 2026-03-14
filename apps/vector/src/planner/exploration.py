@@ -283,6 +283,22 @@ class AutonomousExplorer:
         """Main exploration loop: find frontiers, drive to them, check rooms."""
         start_time = time.monotonic()
 
+        # --- Warmup phase: seed the map and do an initial scan ---------------
+        self._say("Starting exploration.")
+        self._seed_start_area()
+
+        # Wait for SLAM to process a few frames
+        warmup_end = time.monotonic() + 3.0
+        while self._running and time.monotonic() < warmup_end:
+            time.sleep(0.5)
+
+        # Initial 360° scan to build map around starting position
+        if self._running:
+            self._initial_scan()
+
+        # --- Main exploration loop -------------------------------------------
+        no_frontier_count = 0
+
         while self._running:
             # Check time limit
             if time.monotonic() - start_time > self._cfg.max_explore_time_s:
@@ -301,11 +317,19 @@ class AutonomousExplorer:
                 # Find nearest frontier
                 frontier = self._find_frontier()
                 if frontier is None:
-                    logger.info("No more frontiers — exploration complete!")
-                    self._intercom.send_text(
-                        "I've explored everywhere I can reach! No more unexplored areas."
-                    )
-                    break
+                    no_frontier_count += 1
+                    if no_frontier_count >= 3:
+                        logger.info("No more frontiers — exploration complete!")
+                        self._say("Exploration complete!")
+                        self._intercom.send_text(
+                            "I've explored everywhere I can reach! No more unexplored areas."
+                        )
+                        break
+                    # Sometimes SLAM just needs more frames — wait and retry
+                    time.sleep(1.0)
+                    continue
+
+                no_frontier_count = 0
 
                 # Drive toward frontier
                 self._state = ExploreState.NAVIGATING_TO_FRONTIER
@@ -320,6 +344,45 @@ class AutonomousExplorer:
 
         self._running = False
         self._state = ExploreState.IDLE
+
+    def _seed_start_area(self) -> None:
+        """Mark the area around the starting position as FREE.
+
+        Without this, the grid is entirely UNKNOWN and frontier detection
+        can't find any FREE cells to anchor frontiers on.
+        """
+        from apps.vector.src.planner.visual_slam import CellState
+
+        grid = self._slam.get_grid()
+        pose = self._slam.get_pose()
+
+        # Mark a small area around the robot as free (200mm radius)
+        for dx in range(-200, 201, 50):
+            for dy in range(-200, 201, 50):
+                if math.hypot(dx, dy) <= 200:
+                    grid.set_cell(int(pose.x + dx), int(pose.y + dy), CellState.FREE)
+
+        logger.info("Seeded start area with FREE cells at (%.0f, %.0f)", pose.x, pose.y)
+
+    def _initial_scan(self) -> None:
+        """Do a slow 360° turn to build initial map around the robot."""
+        logger.info("Performing initial 360° scan")
+        try:
+            # Head level for best field of view
+            self._head.set_angle(0.0)
+            time.sleep(0.3)
+
+            # Turn in place: 4 × 90°, pausing to let SLAM process
+            for i in range(4):
+                if not self._running:
+                    return
+                self._motor.turn_in_place(
+                    90.0, speed_dps=self._cfg.turn_speed_dps
+                )
+                time.sleep(1.0)  # let SLAM process frames during pause
+
+        except Exception:
+            logger.warning("Initial scan failed — continuing anyway", exc_info=True)
 
     def _check_room_transition(self) -> None:
         """Check if robot has moved far enough to be in a new area."""
