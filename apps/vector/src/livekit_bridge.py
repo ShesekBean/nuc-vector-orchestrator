@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+from pathlib import Path
 import tempfile
 import wave
 from typing import TYPE_CHECKING, Any
@@ -75,6 +76,9 @@ INITIAL_RECONNECT_DELAY = 1.0
 
 # Auto-disconnect when no remote participants for this long (seconds)
 EMPTY_ROOM_TIMEOUT = 3  # seconds — disconnect quickly when room empties
+
+# Flag file — voice proxy checks this to suppress LLM during calls
+_CALL_ACTIVE_FLAG = Path("/tmp/livekit-call-active")
 
 # Video-in display settings (remote video -> Vector OLED)
 DISPLAY_WIDTH = 160
@@ -244,6 +248,7 @@ class LiveKitBridge:
         # (which fire during connect for existing participants) don't
         # see _active=False and exit their loops immediately.
         self._active = True
+        _CALL_ACTIVE_FLAG.touch()
 
         logger.info("Connecting to LiveKit room %r at %s", room, self._livekit_url)
         await self._room.connect(self._livekit_url, token)
@@ -292,6 +297,7 @@ class LiveKitBridge:
         self._cancel_empty_room_timer()
         was_active = self._active
         self._active = False
+        _CALL_ACTIVE_FLAG.unlink(missing_ok=True)
         self._video_in_active = False
 
         # Cancel all tasks
