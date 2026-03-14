@@ -1,0 +1,15 @@
+# Sprint Definitions — Templates for automated sprint advancement
+#
+# Each sprint defines:
+# - id: sprint-N (label for GitHub issues)
+# - name: Human-readable sprint name
+# - status: "active" | "completed" | "archived"
+# - label: sprint-N (matches id)
+# - description: What this sprint focuses on
+# - done_when: Acceptance criteria (describe observable behavior or verification)
+# - issue_templates: List of issue templates to create on sprint start
+
+sprints: []
+# Sprints are not currently defined. When ready to use sprints, add sprint definitions here.
+# Each sprint will be auto-created and advanced when all issues are closed.
+# See scripts/sprint-advance.sh for implementation details.
