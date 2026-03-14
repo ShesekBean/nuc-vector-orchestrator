@@ -268,40 +268,13 @@ class FollowPipeline:
         """Request behavior control via centralized ControlManager."""
         if self._control_mgr is not None:
             self._control_mgr.acquire("follow")
-        elif self._robot is not None:
-            try:
-                from anki_vector.connection import ControlPriorityLevel
-                self._robot.conn.request_control(
-                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-                )
-            except Exception:
-                logger.exception("Failed to request behavior control")
+        else:
+            logger.warning("No ControlManager — follow may not have motor control")
 
     def _release_control(self) -> None:
         """Release behavior control via centralized ControlManager."""
         if self._control_mgr is not None:
             self._control_mgr.release("follow")
-            # Also re-send quiet intent
-            if self._robot is not None:
-                try:
-                    import urllib.request, urllib.parse
-                    serial = getattr(self._robot, '_serial', '0dd1cdcf')
-                    url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
-                        "serial": serial, "intent": "intent_imperative_quiet",
-                    })
-                    with urllib.request.urlopen(url, timeout=5) as resp:
-                        resp.read()
-                except Exception:
-                    pass
-            return
-        """Release SDK behavior control — Vector returns to firmware Wait."""
-        if self._robot is None:
-            return
-        try:
-            self._robot.conn.release_control()
-            logger.info("Behavior control released — Vector returns to Wait")
-        except Exception:
-            logger.exception("Failed to release behavior control")
 
     def _boost_camera_exposure(self) -> None:
         """Ensure camera auto-exposure is enabled for best low-light performance.

@@ -110,6 +110,7 @@ class LiveKitBridge:
         robot: Any,
         event_bus: NucEventBus | None = None,
         media_service: MediaService | None = None,
+        control_manager: Any = None,
         *,
         livekit_url: str = DEFAULT_LIVEKIT_URL,
         api_key: str | None = None,
@@ -121,6 +122,7 @@ class LiveKitBridge:
         self._robot = robot
         self._bus = event_bus
         self._media_service = media_service
+        self._control_mgr = control_manager
         self._livekit_url = livekit_url
 
         import os
@@ -924,16 +926,15 @@ class LiveKitBridge:
         then re-acquire OVERRIDE_BEHAVIORS to keep Vector in sit mode.
         """
         import time as _time
-        from anki_vector.connection import ControlPriorityLevel
         try:
             logger.info("Restoring face: releasing control + playing animation...")
-            self._robot.conn.release_control()
+            if self._control_mgr is not None:
+                self._control_mgr.release("livekit_face_restore")
             _time.sleep(0.5)
             self._robot.anim.play_animation("anim_neutral_eyes_01")
             _time.sleep(2.0)
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-            )
+            if self._control_mgr is not None:
+                self._control_mgr.acquire("livekit_face_restore")
             _time.sleep(0.5)
             logger.info("Face animation restored after video-in")
         except Exception:

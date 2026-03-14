@@ -32,6 +32,20 @@ logger = logging.getLogger(__name__)
 PRIORITY_DEFAULT = 0
 PRIORITY_OVERRIDE = 10
 
+# Module-level singleton — set by ConnectionManager.connect()
+_instance: ControlManager | None = None
+
+
+def get_control_manager() -> ControlManager | None:
+    """Get the global ControlManager singleton."""
+    return _instance
+
+
+def set_control_manager(mgr: ControlManager) -> None:
+    """Set the global ControlManager singleton (called by ConnectionManager)."""
+    global _instance
+    _instance = mgr
+
 
 class ControlManager:
     """Singleton behavior control manager for Vector SDK.

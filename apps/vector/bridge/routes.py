@@ -668,25 +668,25 @@ def _send_image_to_screen(robot: "Any", sdk_image: "Any", duration_sec: float) -
     robot.screen.set_screen_with_image_data(screen_data, duration_sec=duration_sec)
 
 
-def _restore_face_animation(robot: "Any") -> None:
+def _restore_face_animation(robot: "Any", _unused: "Any" = None) -> None:
     """Restore normal face animation after displaying a static image.
 
     DisplayFaceImage permanently disables KeepFaceAlive in vic-anim.
     Playing an animation re-enables KeepFaceAlive and restores the eyes.
-    We temporarily request control, play an animation, then release — Vector
-    returns to firmware Wait state with normal eye animations.
+    Uses global ControlManager singleton.
     """
-    from anki_vector.connection import ControlPriorityLevel
+    from apps.vector.src.control_manager import get_control_manager
 
+    ctrl = get_control_manager()
     try:
         logger.info("Restoring face: request control + play animation...")
-        robot.conn.request_control(
-            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-        )
+        if ctrl is not None:
+            ctrl.acquire("face_restore")
         time.sleep(0.3)
         robot.anim.play_animation("anim_neutral_eyes_01")
         time.sleep(2.0)
-        robot.conn.release_control()
+        if ctrl is not None:
+            ctrl.release("face_restore")
         time.sleep(0.3)
         logger.info("Face animation restored, control released")
     except Exception:
@@ -694,7 +694,8 @@ def _restore_face_animation(robot: "Any") -> None:
 
 
 def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
-                          duration: float, stop_event: threading.Event) -> None:
+                          duration: float, stop_event: threading.Event,
+                          control_mgr: "Any" = None) -> None:
     """Re-send image every 0.5s for *duration* seconds to suppress eye animations.
 
     After the hold ends, releases and re-acquires behavior control to force
@@ -716,10 +717,11 @@ def _hold_image_on_screen(robot: "Any", sdk_image: "Any",
 
     # Restore normal face animation (eyes) after hold ends
     logger.info("Display hold ended (stopped=%s)", stop_event.is_set())
-    _restore_face_animation(robot)
+    _restore_face_animation(robot, control_mgr)
 
 
-def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float) -> None:
+def _start_display_hold(robot: "Any", sdk_image: "Any", duration: float,
+                         control_mgr: "Any" = None) -> None:
     """Start a background thread that holds an image on screen for *duration* seconds.
 
     Cancels any previous hold thread.

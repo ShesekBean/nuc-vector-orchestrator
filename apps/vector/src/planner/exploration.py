@@ -189,24 +189,13 @@ class AutonomousExplorer:
         """Request behavior control via centralized ControlManager."""
         if self._control_mgr is not None:
             self._control_mgr.acquire("explorer")
-        elif self._robot is not None:
-            try:
-                from anki_vector.connection import ControlPriorityLevel
-                self._robot.conn.request_control(
-                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-                )
-            except Exception:
-                logger.warning("Failed to request control", exc_info=True)
+        else:
+            logger.warning("No ControlManager — explorer may not have motor control")
 
     def _release_control(self) -> None:
         """Release behavior control via centralized ControlManager."""
         if self._control_mgr is not None:
             self._control_mgr.release("explorer")
-        elif self._robot is not None:
-            try:
-                self._robot.conn.release_control()
-            except Exception:
-                pass
 
     def _drive_off_charger(self) -> None:
         """Drive off charger if Vector is currently docked.
@@ -931,11 +920,13 @@ class AutoCharger:
         battery_threshold_pct: float = 18.0,
         resume_threshold_pct: float = 90.0,
         check_interval_s: float = 30.0,
+        control_manager: Any = None,
     ) -> None:
         self._robot = robot
         self._nav = nav_controller
         self._bus = nuc_bus
         self._intercom = intercom
+        self._control_mgr = control_manager
         self._threshold_pct = battery_threshold_pct
         self._resume_threshold_pct = resume_threshold_pct
         self._check_interval = check_interval_s
@@ -1083,13 +1074,10 @@ class AutoCharger:
         The SDK handles the final approach alignment and backing onto
         the charging contacts.
         """
-        try:
-            from anki_vector.connection import ControlPriorityLevel
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-            )
-        except Exception:
-            logger.warning("Failed to request control for docking")
+        if self._control_mgr is not None:
+            self._control_mgr.acquire("charger_dock")
+        else:
+            logger.warning("No ControlManager for docking")
 
         try:
             logger.info("Calling SDK drive_on_charger()...")
@@ -1102,7 +1090,6 @@ class AutoCharger:
                     msg += f" I'll resume exploring when battery reaches {self._resume_threshold_pct:.0f}%."
                 self._intercom.send_text(msg)
 
-            # Wait for battery to recharge before resuming
             if self._was_exploring:
                 self._waiting_for_charge = True
         except Exception:
@@ -1114,10 +1101,8 @@ class AutoCharger:
                 )
         finally:
             self._returning_to_charger = False
-            try:
-                self._robot.conn.release_control()
-            except Exception:
-                pass
+            if self._control_mgr is not None:
+                self._control_mgr.release("charger_dock")
 
     def _resume_exploration(self, pct: float) -> None:
         """Resume exploration after charging if we were exploring before."""

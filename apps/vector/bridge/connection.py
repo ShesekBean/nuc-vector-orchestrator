@@ -172,24 +172,13 @@ class ConnectionManager:
         """
         if self._control_manager is not None:
             self._control_manager.acquire("bridge")
-        elif self._robot is not None:
-            try:
-                from anki_vector.connection import ControlPriorityLevel
-                self._robot.conn.request_control(
-                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-                )
-            except Exception:
-                logger.warning("Failed to request override control", exc_info=True)
+        else:
+            logger.warning("No ControlManager — cannot request override control")
 
     def release_override_control(self) -> None:
         """Release override priority — Vector returns to firmware Wait state."""
         if self._control_manager is not None:
             self._control_manager.release("bridge")
-        elif self._robot is not None:
-            try:
-                self._robot.conn.release_control()
-            except Exception:
-                logger.warning("Failed to release override control", exc_info=True)
 
     def connect(self) -> None:
         """Connect to Vector and initialise all controllers."""
@@ -219,8 +208,9 @@ class ConnectionManager:
 
         # Centralized control manager — all services use this instead of
         # calling robot.conn.request_control() directly
-        from apps.vector.src.control_manager import ControlManager
+        from apps.vector.src.control_manager import ControlManager, set_control_manager
         self._control_manager = ControlManager(self._robot)
+        set_control_manager(self._control_manager)
 
         self._nuc_bus = NucEventBus()
         self._motor_controller = MotorController(self._robot, self._nuc_bus)
@@ -254,6 +244,7 @@ class ConnectionManager:
             robot=self._robot,
             event_bus=self._nuc_bus,
             media_service=self._media_service,
+            control_manager=self._control_manager,
         )
 
         from apps.vector.bridge.follow_pipeline import FollowPipeline
@@ -266,6 +257,7 @@ class ConnectionManager:
             robot=self._robot,
             obstacle_map=self._obstacle_map,
             floor_proximity=self._floor_proximity,
+            control_manager=self._control_manager,
         )
 
         # Navigation system
@@ -348,6 +340,7 @@ class ConnectionManager:
             nav_controller=self._nav_controller,
             nuc_bus=self._nuc_bus,
             intercom=self._intercom,
+            control_manager=self._control_manager,
         )
         # Wire explorer ↔ charger so charger can pause/resume exploration
         self._auto_charger.explorer = self._explorer

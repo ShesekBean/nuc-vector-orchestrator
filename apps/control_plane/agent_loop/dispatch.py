@@ -128,8 +128,10 @@ robot.disconnect()
 ```
 
 **IMPORTANT: Up to 2 Vector workers may run in parallel (max_vector_workers=2).
-Another worker may be using the robot concurrently — use `robot.conn.request_control()` before
-movement commands and release promptly. Do NOT leave robot.connect() open when done — always disconnect.**
+Another worker may be using the robot concurrently — use the centralized ControlManager singleton
+(`from apps.vector.src.control_manager import get_control_manager; ctrl = get_control_manager(); ctrl.acquire("worker")`)
+before movement commands and `ctrl.release("worker")` after. NEVER call `robot.conn.request_control()` directly.
+Do NOT leave robot.connect() open when done — always disconnect.**
 
 **ARCHITECTURE:**
 - No Docker on Vector — too resource-constrained (Snapdragon 212)
