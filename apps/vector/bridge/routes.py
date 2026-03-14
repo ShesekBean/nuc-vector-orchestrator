@@ -11,9 +11,12 @@ import asyncio
 import base64
 import io
 import logging
+import os
 import threading
 import time
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from aiohttp import web
 
@@ -1610,6 +1613,243 @@ async def mode_set(request: web.Request) -> web.Response:
     return web.json_response({"mode": conn.mode})
 
 
+# ---------------------------------------------------------------------------
+# Face enrollment routes
+# ---------------------------------------------------------------------------
+
+# Lazy-loaded face models (shared across requests)
+_face_detector = None
+_face_recognizer = None
+_person_detector_face = None
+
+_FACE_DATA_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "data",
+)
+_FACE_DB_PATH = os.path.join(os.path.abspath(_FACE_DATA_DIR), "face_database.json")
+_REF_IMG_DIR = os.path.join(os.path.abspath(_FACE_DATA_DIR), "reference_images")
+
+
+def _get_face_models():
+    """Lazy-load face detection and recognition models."""
+    global _face_detector, _face_recognizer, _person_detector_face
+    if _face_detector is None:
+        from apps.vector.src.face_recognition.face_detector import FaceDetector
+        from apps.vector.src.face_recognition.face_recognizer import FaceRecognizer
+        _face_detector = FaceDetector()
+        _face_recognizer = FaceRecognizer()
+        if os.path.isfile(_FACE_DB_PATH):
+            _face_recognizer.load_database(_FACE_DB_PATH)
+            logger.info("Loaded face database: %s", _face_recognizer.list_enrolled())
+    if _person_detector_face is None:
+        from apps.vector.src.detector.person_detector import PersonDetector
+        _person_detector_face = PersonDetector()
+    return _face_detector, _face_recognizer, _person_detector_face
+
+
+def _pil_to_bgr(pil_image):
+    """Convert PIL Image to OpenCV BGR numpy array."""
+    import cv2
+    rgb = np.array(pil_image)
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+
+async def face_enroll(request: web.Request) -> web.Response:
+    """POST /face/enroll — enroll a face from a live camera capture.
+
+    JSON body: {"name": "ophir"}
+    Captures a frame from Vector's camera, detects face + body,
+    stores face embedding and saves body crop as reference image.
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "BAD_REQUEST")
+
+    name = body.get("name", "").strip().lower()
+    if not name:
+        return _json_error(400, "name is required", "BAD_REQUEST")
+
+    def _do_enroll():
+        import cv2
+
+        detector, recognizer, person_det = _get_face_models()
+
+        # Capture frame
+        jpeg = conn.camera_client.get_latest_jpeg()
+        if jpeg:
+            buf = np.frombuffer(jpeg, dtype=np.uint8)
+            frame = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+        else:
+            image = conn.robot.camera.capture_single_image()
+            if image is None:
+                raise RuntimeError("Camera not producing frames")
+            frame = _pil_to_bgr(image.raw_image)
+
+        # Detect face
+        faces = detector.detect(frame)
+        if not faces:
+            return {"status": "no_face", "message": "No face detected — try better lighting or angle"}
+
+        # Enroll best face
+        count = recognizer.enroll(name, frame, faces[:1])
+
+        # Save database
+        os.makedirs(os.path.abspath(_FACE_DATA_DIR), exist_ok=True)
+        recognizer.save_database(_FACE_DB_PATH)
+
+        result = {
+            "status": "ok",
+            "name": name,
+            "face_embeddings": count,
+            "face_confidence": round(faces[0].confidence, 3),
+        }
+
+        # Detect body and save reference crop
+        persons = person_det.detect(frame)
+        if persons:
+            best = persons[0]
+            h, w = frame.shape[:2]
+            x1 = max(0, int(best.cx - best.width / 2))
+            y1 = max(0, int(best.cy - best.height / 2))
+            x2 = min(w, int(best.cx + best.width / 2))
+            y2 = min(h, int(best.cy + best.height / 2))
+            body_crop = frame[y1:y2, x1:x2]
+
+            if body_crop.size > 0:
+                person_dir = os.path.join(_REF_IMG_DIR, name)
+                os.makedirs(person_dir, exist_ok=True)
+                crop_path = os.path.join(person_dir, f"body_{count}.jpg")
+                cv2.imwrite(crop_path, body_crop)
+                full_path = os.path.join(person_dir, f"full_{count}.jpg")
+                cv2.imwrite(full_path, frame)
+                result["body_saved"] = True
+                result["body_confidence"] = round(best.confidence, 3)
+        else:
+            result["body_saved"] = False
+
+        return result
+
+    try:
+        result = await _run_sync(_do_enroll)
+        status_code = 200 if result.get("status") == "ok" else 404
+        return web.json_response(result, status=status_code)
+    except Exception as exc:
+        logger.exception("Face enrollment failed")
+        return _json_error(500, str(exc), "ENROLL_FAILED")
+
+
+async def face_list(request: web.Request) -> web.Response:
+    """GET /face/list — list all enrolled faces."""
+    _, recognizer, _ = _get_face_models()
+    enrolled = recognizer.list_enrolled()
+
+    # Check for reference images too
+    people = {}
+    for name, emb_count in enrolled.items():
+        person_dir = os.path.join(_REF_IMG_DIR, name)
+        body_count = 0
+        if os.path.isdir(person_dir):
+            body_count = len([f for f in os.listdir(person_dir) if f.startswith("body_")])
+        people[name] = {"face_embeddings": emb_count, "body_references": body_count}
+
+    return web.json_response({"status": "ok", "enrolled": people})
+
+
+async def face_remove(request: web.Request) -> web.Response:
+    """POST /face/remove — remove an enrolled face.
+
+    JSON body: {"name": "ophir"}
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "BAD_REQUEST")
+
+    name = body.get("name", "").strip().lower()
+    if not name:
+        return _json_error(400, "name is required", "BAD_REQUEST")
+
+    _, recognizer, _ = _get_face_models()
+    removed = recognizer.remove(name)
+    if removed:
+        recognizer.save_database(_FACE_DB_PATH)
+        # Also remove reference images
+        person_dir = os.path.join(_REF_IMG_DIR, name)
+        if os.path.isdir(person_dir):
+            import shutil
+            shutil.rmtree(person_dir)
+        return web.json_response({"status": "ok", "removed": name})
+    return _json_error(404, f"'{name}' not enrolled", "NOT_FOUND")
+
+
+async def face_recognize(request: web.Request) -> web.Response:
+    """GET /face/recognize — capture frame and identify who's in view.
+
+    Returns face match results and body detection.
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    def _do_recognize():
+        import cv2
+
+        detector, recognizer, person_det = _get_face_models()
+
+        # Capture frame
+        jpeg = conn.camera_client.get_latest_jpeg()
+        if jpeg:
+            buf = np.frombuffer(jpeg, dtype=np.uint8)
+            frame = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+        else:
+            image = conn.robot.camera.capture_single_image()
+            if image is None:
+                raise RuntimeError("Camera not producing frames")
+            frame = _pil_to_bgr(image.raw_image)
+
+        result = {"status": "ok", "faces": [], "persons": []}
+
+        # Face recognition
+        faces = detector.detect(frame)
+        if faces:
+            matches = recognizer.recognize(frame, faces)
+            for m in matches:
+                result["faces"].append({
+                    "name": m.name,
+                    "confidence": round(m.confidence, 3),
+                    "x": round(m.detection.x),
+                    "y": round(m.detection.y),
+                    "width": round(m.detection.width),
+                    "height": round(m.detection.height),
+                })
+
+        # Person detection
+        persons = person_det.detect(frame)
+        for p in persons:
+            result["persons"].append({
+                "cx": round(p.cx),
+                "cy": round(p.cy),
+                "width": round(p.width),
+                "height": round(p.height),
+                "confidence": round(p.confidence, 3),
+            })
+
+        return result
+
+    try:
+        result = await _run_sync(_do_recognize)
+        return web.json_response(result)
+    except Exception as exc:
+        logger.exception("Face recognition failed")
+        return _json_error(500, str(exc), "RECOGNIZE_FAILED")
+
+
 def setup_routes(app: web.Application) -> None:
     """Register all bridge routes on the application."""
     app.router.add_get("/health", health)
@@ -1664,3 +1904,8 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/patrol/log", patrol_log)
     app.router.add_post("/patrol/pause", patrol_pause)
     app.router.add_post("/patrol/resume", patrol_resume)
+    # Face enrollment routes
+    app.router.add_post("/face/enroll", face_enroll)
+    app.router.add_get("/face/list", face_list)
+    app.router.add_post("/face/remove", face_remove)
+    app.router.add_get("/face/recognize", face_recognize)
