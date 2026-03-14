@@ -115,6 +115,18 @@ nuc-vector-orchestrator/
 │       │       ├── test_sensors.py
 │       │       ├── test_detection.py
 │       │       └── test_follow_standalone.py
+│       ├── native/                ← native C binaries (cross-compiled for Vector ARM)
+│       │   └── vector-streamer/   ← mic/engine DGRAM proxy + TCP bridge to NUC
+│       │       ├── main.c         ← entry point, TCP server, Opus encode
+│       │       ├── mic.c/h        ← server-side DGRAM proxy for mic_sock
+│       │       ├── engine_proxy.c/h ← engine-anim DGRAM proxy (deferred ANKICONN)
+│       │       ├── tcp_server.c/h ← framed TCP protocol (port 5555)
+│       │       ├── opus_encoder.c/h ← Opus encoding wrapper
+│       │       ├── protocol.h     ← frame types (OPUS, H264, JPEG, PCM, CMD)
+│       │       ├── bin/           ← pre-built ARM binary
+│       │       ├── victor-reference/ ← backed-up Victor CLAD/source for reference
+│       │       ├── CMakeLists.txt ← cross-compile config
+│       │       └── vicos-toolchain.cmake ← vicos-sdk toolchain
 │       ├── config/                ← Vector connection config
 │       └── models/                ← ML models (YOLO, face)
 ├── config/                        ← shared cross-component configuration
@@ -133,7 +145,9 @@ nuc-vector-orchestrator/
 │   ├── monarch-login.py          ← Monarch Money auth → saves token for OpenClaw
 │   └── ...                        ← other utility scripts
 ├── infra/                         ← runtime environment configuration
-│   ├── vector/                    ← Vector infra (wire-pod config, OSKR setup)
+│   ├── vector/                    ← Vector infra (services, wire-pod config, OSKR setup)
+│   │   ├── vector-streamer.service ← systemd service (Before=vic-engine, After=vic-anim)
+│   │   ├── vector-streamer-start.sh ← startup script (socket wait, launch, verify)
 │   │   └── web-setup/            ← Local mirror of vector-web-setup.anki.bot (BLE pairing)
 │   ├── docker/                    ← Signal gateway Docker setup
 │   ├── systemd/                   ← Service units (wire-pod, quiet mode, supervisor, bridge, agent loop)

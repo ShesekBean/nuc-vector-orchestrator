@@ -3,16 +3,19 @@
  *
  * Intercepts the _engine_anim_server_0 Unix DGRAM socket to enable
  * injection of CLAD messages (e.g., StartWakeWordlessStreaming) into
- * the vic-engine → vic-anim IPC channel.
+ * the vic-engine ↔ vic-anim IPC channel.
  *
- * Architecture:
- *   vic-engine → [proxy server socket] → [proxy client socket] → vic-anim
- *   vic-anim   → [proxy client socket] → [proxy server socket] → vic-engine
- *                                    ↑
- *                          inject StartWakeWordlessStreaming here
+ * Architecture (after proxy setup):
+ *   vic-engine (_engine_anim_client_0)
+ *       → proxy server (_engine_anim_server_0)
+ *       → proxy client (_engine_anim_client_vs)
+ *       → vic-anim (_engine_anim_server_0_orig)
+ *                   ↑
+ *         inject StartWakeWordlessStreaming here
  *
- * After deployment, vic-engine must be restarted once so it connects
- * to the proxy instead of directly to vic-anim.
+ * Uses deferred ANKICONN: proxy waits for vic-engine's handshake and
+ * forwards it to vic-anim, preserving the natural boot timing.
+ * systemd Before= ordering ensures vic-engine starts after the proxy.
  */
 
 #ifndef ENGINE_PROXY_H
