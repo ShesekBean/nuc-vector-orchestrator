@@ -55,12 +55,16 @@ class FollowPipeline:
         head_controller: HeadController,
         nuc_bus: NucEventBus,
         robot: Any = None,
+        obstacle_map: Any = None,
+        floor_proximity: Any = None,
     ) -> None:
         self._camera = camera_client
         self._motor = motor_controller
         self._head = head_controller
         self._bus = nuc_bus
         self._robot = robot
+        self._obstacle_map = obstacle_map
+        self._floor_proximity = floor_proximity
 
         self._detector = PersonDetector(event_bus=nuc_bus)
         self._tracker = KalmanTracker()
@@ -79,6 +83,7 @@ class FollowPipeline:
         self._planner = FollowPlanner(
             motor_controller, head_controller, nuc_bus,
             obstacle_detector=self._obstacle,
+            obstacle_map=obstacle_map,
             say_func=say_func,
         )
 
@@ -201,6 +206,20 @@ class FollowPipeline:
 
                 # Run YOLO detection
                 detections = self._detector.detect(frame)
+
+                # Run floor proximity detection (Tier 1) and update obstacle map
+                if self._floor_proximity is not None and self._obstacle_map is not None:
+                    try:
+                        proximity = self._floor_proximity.detect(frame)
+                        self._obstacle_map.update_proximity(proximity)
+                    except Exception:
+                        pass
+
+                # Update obstacle map with YOLO results (Tier 2)
+                if self._obstacle_map is not None:
+                    self._obstacle_map.update_yolo(
+                        self._obstacle.zone, self._obstacle.speed_scale,
+                    )
 
                 if detections:
                     best = max(detections, key=lambda d: d.confidence)

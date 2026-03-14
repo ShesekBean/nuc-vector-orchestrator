@@ -110,6 +110,7 @@ class NavController:
         map_store: MapStore,
         waypoint_mgr: WaypointManager,
         config: NavConfig | None = None,
+        obstacle_map: Any | None = None,
     ) -> None:
         self._slam = slam
         self._motor = motor
@@ -117,6 +118,7 @@ class NavController:
         self._bus = nuc_bus
         self._map_store = map_store
         self._waypoint_mgr = waypoint_mgr
+        self._obstacle_map = obstacle_map
         self._cfg = config or NavConfig()
 
         self._state = NavState.IDLE
@@ -409,11 +411,21 @@ class NavController:
             if distance < self._cfg.arrival_tolerance_mm:
                 continue  # Already close enough to this waypoint
 
-            # Check obstacle detector — if stuck, try escape
-            if self._obstacle_detector:
+            # Check obstacle map (all tiers) or fall back to detector
+            if self._obstacle_map is not None:
+                assessment = self._obstacle_map.get_assessment()
+                if assessment.zone == "danger":
+                    logger.warning(
+                        "Obstacle danger at segment %d (source=%s) — replanning",
+                        i, assessment.source,
+                    )
+                    return False
+                if assessment.speed_scale < 1.0:
+                    distance *= assessment.speed_scale
+            elif self._obstacle_detector:
                 if self._obstacle_detector.check_stuck():
                     logger.info("Stuck during navigation — escape triggered")
-                    return False  # trigger replan
+                    return False
                 scale = self._obstacle_detector.speed_scale
                 if scale <= 0.0:
                     logger.warning("Obstacle in danger zone at segment %d — replanning", i)

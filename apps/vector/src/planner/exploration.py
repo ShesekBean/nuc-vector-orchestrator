@@ -136,6 +136,9 @@ class AutonomousExplorer:
         robot: Any = None,
         imu_poller: Any = None,
         imu_fusion: Any = None,
+        obstacle_map: Any = None,
+        vision_checker: Any = None,
+        floor_proximity: Any = None,
         config: ExploreConfig | None = None,
     ) -> None:
         self._slam = slam
@@ -148,6 +151,9 @@ class AutonomousExplorer:
         self._robot = robot
         self._imu_poller = imu_poller
         self._imu_fusion = imu_fusion
+        self._obstacle_map = obstacle_map
+        self._vision_checker = vision_checker
+        self._floor_proximity = floor_proximity
         self._cfg = config or ExploreConfig()
 
         self._state = ExploreState.IDLE
@@ -280,6 +286,11 @@ class AutonomousExplorer:
         except Exception:
             logger.warning("Failed to load YOLO detector", exc_info=True)
 
+        # Start async vision checker (Tier 3)
+        if self._vision_checker is not None:
+            self._vision_checker.start()
+            logger.info("Vision obstacle checker started (background)")
+
         # Start SLAM if not already running
         self._slam.start()
 
@@ -346,11 +357,13 @@ class AutonomousExplorer:
             self._slam_thread.join(timeout=5.0)
             self._slam_thread = None
 
-        # Stop obstacle detector + YOLO
+        # Stop obstacle detector + YOLO + vision checker
         if self._obstacle_detector:
             self._obstacle_detector.stop()
             self._obstacle_detector = None
         self._person_detector = None
+        if self._vision_checker is not None:
+            self._vision_checker.stop()
 
         # Stop IMU
         if self._imu_fusion is not None:
@@ -513,69 +526,75 @@ class AutonomousExplorer:
         self._state = ExploreState.IDLE
 
     def _scan_for_obstacles(self) -> tuple[bool, str]:
-        """Check if there's an obstacle ahead using Claude Vision via CLI.
+        """Check for obstacles using the shared ObstacleMap (all 5 tiers).
 
-        Saves the current camera frame to a temp file and asks Claude Code
-        (Haiku model) to assess obstacles. Returns (is_blocked, turn_direction).
+        Updates Tier 1 (floor proximity) with fresh reading, then queries
+        the fused assessment. If vision data is stale and explorer has time,
+        triggers a synchronous vision check.
 
         Returns:
             (True, "left"|"right") if obstacle detected.
             (False, "") if path is clear.
         """
-        import subprocess
-        import tempfile
+        # Update Tier 1: floor proximity from current frame
+        if self._floor_proximity is not None:
+            frame = self._camera.get_latest_frame()
+            if frame is not None:
+                try:
+                    reading = self._floor_proximity.detect(frame)
+                    if self._obstacle_map is not None:
+                        self._obstacle_map.update_proximity(reading)
+                except Exception:
+                    logger.debug("Floor proximity failed", exc_info=True)
 
-        jpeg = self._camera.get_latest_jpeg()
-        if jpeg is None:
-            return False, ""
+        # Update Tier 2: YOLO (quick scan)
+        if self._person_detector is not None and self._obstacle_detector is not None:
+            frame = self._camera.get_latest_frame()
+            if frame is not None:
+                try:
+                    detections = self._person_detector.detect(frame)
+                    self._obstacle_detector.update(detections)
+                    if self._obstacle_map is not None:
+                        self._obstacle_map.update_yolo(
+                            self._obstacle_detector.zone,
+                            self._obstacle_detector.speed_scale,
+                        )
+                except Exception:
+                    logger.debug("YOLO scan failed", exc_info=True)
 
-        try:
-            # Write frame to temp file
-            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                tmp.write(jpeg)
-                tmp_path = tmp.name
+        # Check fused assessment from ObstacleMap
+        if self._obstacle_map is not None:
+            assessment = self._obstacle_map.get_assessment()
 
-            # Ask Claude Code CLI (uses OAuth, no API key needed)
-            result = subprocess.run(
-                [
-                    "claude", "--print", "--model", "haiku",
-                    "--dangerously-skip-permissions",
-                    f"Read the file {tmp_path} and tell me: "
-                    "You are a small robot's obstacle detector camera. "
-                    "Is there an obstacle within 30cm directly ahead of the robot? "
-                    "Reply ONLY one word: CLEAR or LEFT or RIGHT. "
-                    "LEFT/RIGHT means which way to turn to avoid it.",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
+            # If vision is stale and we're not in immediate danger,
+            # trigger a synchronous vision check (explorer has time)
+            if (
+                self._vision_checker is not None
+                and self._obstacle_map.vision_stale
+                and assessment.zone != "danger"
+            ):
+                blocked, direction = self._vision_checker.check_now()
+                # Re-read assessment after vision update
+                assessment = self._obstacle_map.get_assessment()
 
-            # Clean up temp file
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+            if assessment.zone == "danger":
+                turn = assessment.turn_direction or "right"
+                logger.info(
+                    "ObstacleMap: DANGER (source=%s, prox=%.0fmm, turn=%s)",
+                    assessment.source, assessment.proximity_mm, turn,
+                )
+                return True, turn
+            elif assessment.zone == "caution":
+                logger.info(
+                    "ObstacleMap: caution (source=%s, prox=%.0fmm, scale=%.2f)",
+                    assessment.source, assessment.proximity_mm, assessment.speed_scale,
+                )
 
-            answer = result.stdout.strip().upper().split("\n")[0]
-            logger.info("Vision obstacle check: %s", answer)
+        # Fallback: if no obstacle map, use vision checker directly
+        elif self._vision_checker is not None:
+            return self._vision_checker.check_now()
 
-            if "CLEAR" in answer:
-                return False, ""
-            elif "LEFT" in answer:
-                return True, "left"
-            elif "RIGHT" in answer:
-                return True, "right"
-            else:
-                logger.warning("Ambiguous obstacle response: %r", answer)
-                return True, "right"
-
-        except subprocess.TimeoutExpired:
-            logger.warning("Vision obstacle check timed out")
-            return False, ""
-        except Exception:
-            logger.debug("Vision obstacle check failed", exc_info=True)
-            return False, ""
+        return False, ""
 
     def _sync_pose_from_imu(self) -> None:
         """Sync SLAM pose with IMU-fused heading for drift correction.

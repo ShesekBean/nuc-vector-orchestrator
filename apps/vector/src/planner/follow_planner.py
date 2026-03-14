@@ -116,6 +116,7 @@ class FollowPlanner:
         nuc_bus: NucEventBus,
         config: FollowConfig | None = None,
         obstacle_detector: Any | None = None,
+        obstacle_map: Any | None = None,
         say_func: Any | None = None,
     ) -> None:
         self._motor = motor_controller
@@ -123,6 +124,7 @@ class FollowPlanner:
         self._bus = nuc_bus
         self._cfg = config or FollowConfig()
         self._obstacle = obstacle_detector
+        self._obstacle_map = obstacle_map
         self._say = say_func
 
         # Head tracker
@@ -451,8 +453,15 @@ class FollowPlanner:
             turn_speed = cfg.kp_turn * error_x * (cfg.max_turn_speed / (fw / 2.0))
             turn_speed = max(-cfg.max_turn_speed, min(cfg.max_turn_speed, turn_speed))
 
-        # Apply obstacle detector speed scaling
-        if self._obstacle is not None:
+        # Apply obstacle avoidance — prefer obstacle_map (all tiers) over raw detector
+        if self._obstacle_map is not None:
+            assessment = self._obstacle_map.get_assessment()
+            if assessment.zone == "danger":
+                drive_speed = 0.0
+                turn_speed = 0.0
+            elif assessment.speed_scale < 1.0:
+                drive_speed *= assessment.speed_scale
+        elif self._obstacle is not None:
             scale = self._obstacle.speed_scale
             if scale <= 0.0:
                 drive_speed = 0.0

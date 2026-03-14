@@ -55,6 +55,9 @@ class ConnectionManager:
         self._explorer: Any | None = None
         self._auto_charger: Any | None = None
         self._home_guardian: Any | None = None
+        self._obstacle_map: Any | None = None
+        self._vision_checker: Any | None = None
+        self._floor_proximity: Any | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -127,6 +130,11 @@ class ConnectionManager:
     def auto_charger(self) -> Any:
         """AutoCharger instance, or None if not initialised."""
         return self._auto_charger
+
+    @property
+    def obstacle_map(self) -> Any:
+        """ObstacleMap instance, or None if not initialised."""
+        return self._obstacle_map
 
     @property
     def home_guardian(self) -> Any:
@@ -245,6 +253,8 @@ class ConnectionManager:
             head_controller=self._head_controller,
             nuc_bus=self._nuc_bus,
             robot=self._robot,
+            obstacle_map=self._obstacle_map,
+            floor_proximity=self._floor_proximity,
         )
 
         # Navigation system
@@ -266,6 +276,23 @@ class ConnectionManager:
             nuc_bus=self._nuc_bus,
             map_store=self._map_store,
             waypoint_mgr=self._waypoint_mgr,
+            obstacle_map=self._obstacle_map,
+        )
+
+        # Shared obstacle map (fuses all detection tiers)
+        from apps.vector.src.planner.obstacle_map import ObstacleMap
+        self._obstacle_map = ObstacleMap(nuc_bus=self._nuc_bus)
+        self._obstacle_map.start()
+
+        # Floor proximity detector (Tier 1)
+        from apps.vector.src.detector.floor_proximity import FloorProximityDetector
+        self._floor_proximity = FloorProximityDetector()
+
+        # Async vision obstacle checker (Tier 3)
+        from apps.vector.src.detector.vision_obstacle_checker import VisionObstacleChecker
+        self._vision_checker = VisionObstacleChecker(
+            camera_client=self._camera_client,
+            obstacle_map=self._obstacle_map,
         )
 
         # Intercom for Signal messaging
@@ -285,6 +312,9 @@ class ConnectionManager:
             robot=self._robot,
             imu_poller=self._imu_poller,
             imu_fusion=self._imu_fusion,
+            obstacle_map=self._obstacle_map,
+            vision_checker=self._vision_checker,
+            floor_proximity=self._floor_proximity,
         )
 
         # Home Guardian (patrol & security system)
@@ -412,6 +442,10 @@ class ConnectionManager:
                 self._imu_fusion.stop()
             if self._imu_poller:
                 self._imu_poller.stop()
+            if self._vision_checker:
+                self._vision_checker.stop()
+            if self._obstacle_map:
+                self._obstacle_map.stop()
             if self._follow_pipeline:
                 self._follow_pipeline.stop()
             if self._motor_controller:
