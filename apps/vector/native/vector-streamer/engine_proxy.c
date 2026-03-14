@@ -2,7 +2,7 @@
  * engine_proxy.c -- Engine-to-anim DGRAM socket proxy.
  *
  * Proxies the _engine_anim_server_0 Unix DGRAM socket to intercept
- * the vic-engine → vic-anim IPC channel. This allows injection of
+ * the vic-engine ↔ vic-anim IPC channel. This allows injection of
  * CLAD messages (SetTriggerWordResponse + StartWakeWordlessStreaming)
  * to trigger continuous mic audio streaming during LiveKit calls.
  *
@@ -10,29 +10,43 @@
  *
  *   vic-engine  ──DGRAM──►  proxy_server_fd   (at _engine_anim_server_0)
  *                               │
- *                               │ forward via sendto()
+ *                               │ forward via sendto(proxy_client_fd)
  *                               ▼
- *   vic-anim    ◄──DGRAM──  proxy_client_fd   (at _engine_anim_client_0)
+ *   vic-anim    ◄──DGRAM──  proxy_client_fd   (at _engine_anim_client_vs)
  *                               │
  *                               │ inject SetTriggerWordResponse + StartWakeWordlessStreaming
  *                               ▼
  *                         [when mic streaming requested by NUC]
  *
- * Key constraints:
- *   - vic-anim's LocalUdpServer (engine-anim, _bindClients=true) calls
- *     connect() to the first client, then ONLY accepts datagrams from
- *     that peer (kernel checks unix_peer pointer → EPERM otherwise).
- *   - Therefore, our proxy client MUST be the first to send ANKICONN
- *     to vic-anim's server. This requires starting AFTER vic-anim but
- *     BEFORE vic-engine.
- *   - We bind our proxy client to _engine_anim_client_0 (same path as
- *     vic-engine would use), so vic-anim recognizes us as the peer.
+ * Handshake sequence (deferred ANKICONN):
  *
- * Startup sequence (managed by startup script):
- *   1. Stop vic-engine
- *   2. Restart vic-anim (fresh server socket, no connected peer)
- *   3. Start vector-streamer (renames server, creates proxy, sends ANKICONN)
- *   4. Start vic-engine (connects to our proxy server)
+ *   During init:
+ *     1. Rename vic-anim's server socket (_engine_anim_server_0 → _orig)
+ *     2. Create proxy server at _engine_anim_server_0
+ *     3. Create proxy client at _engine_anim_client_vs
+ *     4. Do NOT send ANKICONN yet — wait for vic-engine
+ *
+ *   At runtime (after vic-engine starts via systemd Before= ordering):
+ *     5. vic-engine sends ANKICONN to our proxy server
+ *     6. We forward ANKICONN from proxy client to vic-anim's original server
+ *     7. vic-anim receives ANKICONN, connect()s to proxy client
+ *     8. vic-anim starts sending RobotToEngine messages via send()
+ *     9. We receive on proxy client, forward to vic-engine via proxy server
+ *    10. vic-engine receives initial messages, considers channel "up"
+ *    11. vic-engine starts sending EngineToRobot messages
+ *    12. We forward them to vic-anim — full bidirectional proxy active
+ *
+ *   This preserves the exact same handshake sequence as normal boot.
+ *   vic-anim only starts sending after receiving ANKICONN from vic-engine
+ *   (forwarded through us), so no messages are dropped.
+ *
+ * Key constraints:
+ *   - vic-anim's LocalUdpServer (_bindClients=true) calls connect() on
+ *     the first client that sends ANKICONN, then ONLY accepts datagrams
+ *     from that peer (kernel DGRAM peer filtering).
+ *   - Our proxy client MUST be the address that sends ANKICONN to vic-anim.
+ *     We use _engine_anim_client_vs (not _client_0) to avoid conflicting
+ *     with vic-engine's own client socket at _engine_anim_client_0.
  *
  * CLAD EngineToRobot wire format:
  *   [tag:1 byte (uint8)][payload bytes]
@@ -64,7 +78,7 @@
 /* Socket paths */
 static char g_server_path[256];       /* our proxy server (replaces _engine_anim_server_0) */
 static char g_orig_server_path[256];  /* renamed original (_engine_anim_server_0_orig) */
-static char g_client_path[256];       /* our proxy client (takes over _engine_anim_client_0) */
+static char g_client_path[256];       /* our proxy client (_engine_anim_client_vs) */
 static int  g_paths_set = 0;
 static int  g_socket_renamed = 0;
 
@@ -85,6 +99,9 @@ static volatile int g_mic_streaming = 0;
 static struct sockaddr_un g_engine_addr;
 static socklen_t          g_engine_addr_len = 0;
 static int                g_engine_connected = 0;
+
+/* Track whether we've forwarded ANKICONN to vic-anim */
+static int g_ankiconn_forwarded = 0;
 
 /* Stats */
 static uint64_t g_msgs_engine_to_anim = 0;
@@ -257,7 +274,7 @@ int engine_proxy_init(const char *server_path)
     snprintf(g_server_path, sizeof(g_server_path), "%s", server_path);
     snprintf(g_orig_server_path, sizeof(g_orig_server_path), "%s_orig", server_path);
     snprintf(g_client_path, sizeof(g_client_path),
-             "/dev/socket/_engine_anim_client_0");
+             "/dev/socket/_engine_anim_client_vs");
     g_paths_set = 1;
     g_running = 1;
 
@@ -313,7 +330,7 @@ int engine_proxy_init(const char *server_path)
 
     /*
      * Step 2: Create proxy server socket at the original path.
-     * vic-engine will connect here when it starts.
+     * vic-engine will send to this address when it starts.
      */
     g_server_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (g_server_fd < 0) {
@@ -339,16 +356,15 @@ int engine_proxy_init(const char *server_path)
     LOG("Proxy server socket created at %s", g_server_path);
 
     /*
-     * Step 3: Create proxy client socket at _engine_anim_client_0.
+     * Step 3: Create proxy client socket.
      *
-     * CRITICAL: We must be the FIRST to send ANKICONN to vic-anim's server.
-     * vic-anim's LocalUdpServer (_bindClients=true) calls connect() on the
-     * first client, then uses kernel-level DGRAM filtering (EPERM for all
-     * other senders). By being the first client, we become the sole
-     * accepted peer.
+     * We use _engine_anim_client_vs (NOT _client_0) to avoid conflicting
+     * with vic-engine's own client socket at _engine_anim_client_0.
      *
-     * We bind to _engine_anim_client_0 (the path vic-engine normally uses)
-     * so our messages appear to come from the expected address.
+     * We do NOT send ANKICONN yet — we wait for vic-engine to send its
+     * ANKICONN first, then forward it. This preserves the natural handshake
+     * timing so vic-anim's initial response messages arrive AFTER
+     * vic-engine is connected and ready to receive them through our proxy.
      */
     g_client_fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (g_client_fd < 0) {
@@ -377,22 +393,9 @@ int engine_proxy_init(const char *server_path)
     chmod(g_client_path, 0777);
     LOG("Proxy client socket bound to %s", g_client_path);
 
-    /* Send ANKICONN handshake to vic-anim's original server */
-    ssize_t sent = send_to_anim((const uint8_t *)ANKICONN_PACKET, ANKICONN_PACKET_LEN);
-    if (sent < 0) {
-        LOG("FATAL: Failed to send ANKICONN to vic-anim: %s", strerror(errno));
-        LOG("vic-anim's server may have already connected to another client.");
-        LOG("Ensure vic-anim is restarted before vector-streamer.");
-        close(g_server_fd);
-        close(g_client_fd);
-        g_server_fd = -1;
-        g_client_fd = -1;
-        restore_original_socket();
-        return -1;
-    }
-    LOG("Sent ANKICONN handshake to vic-anim — proxy is now the connected peer");
+    /* NOTE: No ANKICONN sent here — deferred until vic-engine connects */
 
-    LOG("Engine-anim proxy initialized");
+    LOG("Engine-anim proxy initialized (ANKICONN deferred)");
     LOG("  Proxy server: %s (for vic-engine)", g_server_path);
     LOG("  Proxy client: %s (to vic-anim)", g_client_path);
     LOG("  Original:     %s (vic-anim's server)", g_orig_server_path);
@@ -406,13 +409,18 @@ int engine_proxy_run(void)
     uint64_t last_inject_ms = 0;
 
     LOG("Engine-anim proxy loop started");
-    LOG("Waiting for vic-engine to connect...");
+    LOG("Waiting for vic-engine to connect and send ANKICONN...");
 
     while (g_running) {
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(g_server_fd, &rfds);
-        FD_SET(g_client_fd, &rfds);
+
+        /* Only listen on client_fd after ANKICONN has been forwarded to vic-anim.
+         * Before that, vic-anim hasn't connected to us, so nothing to receive. */
+        if (g_ankiconn_forwarded) {
+            FD_SET(g_client_fd, &rfds);
+        }
 
         int maxfd = (g_server_fd > g_client_fd) ? g_server_fd : g_client_fd;
 
@@ -434,6 +442,7 @@ int engine_proxy_run(void)
         if (nready > 0 && FD_ISSET(g_server_fd, &rfds)) {
             struct sockaddr_un src_addr;
             socklen_t src_len = sizeof(src_addr);
+            memset(&src_addr, 0, sizeof(src_addr));
 
             ssize_t n = recvfrom(g_server_fd, buf, sizeof(buf), 0,
                                   (struct sockaddr *)&src_addr, &src_len);
@@ -449,13 +458,28 @@ int engine_proxy_run(void)
                 /* Check for ANKICONN handshake */
                 if (n == ANKICONN_PACKET_LEN &&
                     memcmp(buf, ANKICONN_PACKET, ANKICONN_PACKET_LEN) == 0) {
-                    LOG("Received ANKICONN from vic-engine (already proxied)");
-                    /* Don't forward — we already sent our own ANKICONN.
-                     * Forwarding would be a no-op (server already connected). */
+                    LOG("Received ANKICONN from vic-engine — forwarding to vic-anim");
+
+                    /* Forward ANKICONN to vic-anim. This is the FIRST message
+                     * vic-anim receives on this channel, triggering:
+                     *   1. AddClient() → connect() to our proxy client
+                     *   2. vic-anim starts sending RobotToEngine messages
+                     * Since g_engine_connected is now true, those responses
+                     * will be immediately forwarded to vic-engine. */
+                    ssize_t sent = send_to_anim(buf, n);
+                    if (sent < 0) {
+                        LOG("FATAL: Failed to forward ANKICONN to vic-anim: %s",
+                            strerror(errno));
+                        LOG("vic-anim's server may have already connected to another client");
+                    } else {
+                        g_ankiconn_forwarded = 1;
+                        LOG("ANKICONN forwarded — vic-anim should now connect to proxy client");
+                    }
+                    g_msgs_engine_to_anim++;
                     continue;
                 }
 
-                /* Forward to vic-anim via sendto() */
+                /* Forward regular messages to vic-anim via sendto() */
                 ssize_t sent = send_to_anim(buf, n);
                 if (sent < 0) {
                     if (errno != EINTR) {
@@ -464,7 +488,7 @@ int engine_proxy_run(void)
                     }
                 } else {
                     g_msgs_engine_to_anim++;
-                    if (g_msgs_engine_to_anim <= 5 || g_msgs_engine_to_anim % 10000 == 0) {
+                    if (g_msgs_engine_to_anim <= 10 || g_msgs_engine_to_anim % 10000 == 0) {
                         LOG("engine→anim msg #%llu (%zd bytes, tag=0x%02x)",
                             (unsigned long long)g_msgs_engine_to_anim, n,
                             (n > 0) ? buf[0] : 0);
@@ -474,7 +498,7 @@ int engine_proxy_run(void)
         }
 
         /* Handle replies from vic-anim → forward to vic-engine */
-        if (nready > 0 && FD_ISSET(g_client_fd, &rfds)) {
+        if (g_ankiconn_forwarded && nready > 0 && FD_ISSET(g_client_fd, &rfds)) {
             ssize_t n = recv(g_client_fd, buf, sizeof(buf), 0);
             if (n > 0 && g_engine_connected) {
                 ssize_t sent = sendto(g_server_fd, buf, n, 0,
@@ -482,11 +506,12 @@ int engine_proxy_run(void)
                                        g_engine_addr_len);
                 if (sent < 0) {
                     if (errno != EINTR) {
-                        LOG("Forward to vic-engine failed: %s", strerror(errno));
+                        LOG("Forward to vic-engine failed: %s (errno=%d, %zd bytes)",
+                            strerror(errno), errno, n);
                     }
                 } else {
                     g_msgs_anim_to_engine++;
-                    if (g_msgs_anim_to_engine <= 5 || g_msgs_anim_to_engine % 10000 == 0) {
+                    if (g_msgs_anim_to_engine <= 10 || g_msgs_anim_to_engine % 10000 == 0) {
                         LOG("anim→engine msg #%llu (%zd bytes)",
                             (unsigned long long)g_msgs_anim_to_engine, n);
                     }
@@ -516,6 +541,11 @@ void engine_proxy_start_mic_stream(void)
 {
     if (g_mic_streaming) {
         LOG("Mic streaming already active");
+        return;
+    }
+
+    if (!g_ankiconn_forwarded) {
+        LOG("Cannot start mic streaming — proxy not connected to vic-anim yet");
         return;
     }
 

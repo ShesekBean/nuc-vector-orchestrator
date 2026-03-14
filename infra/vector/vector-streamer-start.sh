@@ -1,32 +1,38 @@
 #!/bin/sh
 #
-# vector-streamer-start.sh — Start vector-streamer with proper service ordering.
+# vector-streamer-start.sh — Start/stop the vector-streamer socket proxy.
 #
-# This script manages the startup sequence required for the engine-anim
-# proxy and mic socket proxy. The ordering is critical because:
+# This script does NOT manage other services. Systemd handles ordering via
+# Before=vic-engine.service in vector-streamer.service. The boot sequence:
 #
-#   1. All services must be stopped first to prevent dependency chains
-#      (vic-cloud Wants=vic-engine, vic-engine Wants=vic-anim)
-#   2. vic-anim must start first (creates server sockets)
-#   3. vector-streamer must start next (renames sockets, sends ANKICONN
-#      before any other client connects — DGRAM peer filtering)
-#   4. vic-engine must start (connects through engine proxy)
-#   5. vic-cloud must start last (creates mic_sock_cp_mic client)
+#   vic-anim starts (creates server sockets)
+#   → this script runs (waits for sockets, launches proxy, verifies ready)
+#   → script exits (Type=forking → systemd knows we're ready)
+#   → systemd starts vic-engine (connects through our proxy)
+#   → systemd starts vic-cloud (connects through our mic proxy)
 #
 # Usage:
-#   vector-streamer-start.sh [--stop]
+#   vector-streamer-start.sh          # Start proxy
+#   vector-streamer-start.sh --stop   # Stop proxy, clean up sockets
 #
 # Environment:
-#   STREAMER_OPTS  Additional options for vector-streamer (e.g., "-v")
-#
+#   STREAMER_OPTS  Additional options for vector-streamer (default: "-e -v")
 
 STREAMER_BIN="/anki/bin/vector-streamer"
 STREAMER_LOG="/tmp/streamer.log"
+STREAMER_PID_FILE="/tmp/vector-streamer.pid"
 STREAMER_OPTS="${STREAMER_OPTS:--e -v}"
 
 ENGINE_ANIM_SOCK="/dev/socket/_engine_anim_server_0"
 MIC_SOCK="/dev/socket/mic_sock"
-MIC_SOCK_CP="/dev/socket/mic_sock_cp_mic"
+
+PROXY_SOCKETS="
+/dev/socket/_engine_anim_server_0_orig
+/dev/socket/_engine_anim_client_vs
+/dev/socket/_engine_anim_client_0
+/dev/socket/mic_sock_orig
+/dev/socket/mic_sock_vs
+"
 
 log() {
     echo "[streamer-mgr] $(date '+%H:%M:%S') $*" >&2
@@ -37,178 +43,122 @@ wait_socket() {
     local timeout="$2"
     local waited=0
     while [ ! -S "$path" ] && [ $waited -lt $timeout ]; do
-        sleep 0.5
+        sleep 1
         waited=$((waited + 1))
     done
     [ -S "$path" ]
 }
 
-cleanup() {
+# ── Stop ────────────────────────────────────────────────────────
+do_stop() {
     log "Stopping vector-streamer..."
     killall vector-streamer 2>/dev/null
     sleep 1
+    rm -f "$STREAMER_PID_FILE"
 
-    # Clean up proxy sockets
-    rm -f /dev/socket/_engine_anim_server_0_orig
-    rm -f /dev/socket/_engine_anim_client_vs
-    rm -f /dev/socket/mic_sock_orig
-    rm -f /dev/socket/mic_sock_vs
+    # Remove proxy sockets so services reconnect directly on next boot
+    for sock in $PROXY_SOCKETS; do
+        rm -f "$sock"
+    done
 
-    # Restart services to normal state (order matters: anim first)
-    log "Restarting services..."
-    systemctl stop vic-engine 2>/dev/null
-    systemctl stop vic-cloud 2>/dev/null
-    systemctl stop vic-anim 2>/dev/null
-    sleep 1
-    systemctl start vic-anim
-    sleep 3
-    systemctl start vic-engine
-    sleep 2
-    systemctl start vic-cloud
-    log "Cleanup complete"
+    log "Stopped"
 }
 
-# Handle --stop flag
 if [ "$1" = "--stop" ]; then
-    cleanup
+    do_stop
     exit 0
 fi
 
-# Check binary exists
+# ── Start ───────────────────────────────────────────────────────
+
+# Preflight
 if [ ! -x "$STREAMER_BIN" ]; then
     log "FATAL: $STREAMER_BIN not found or not executable"
     exit 1
 fi
 
-# Kill any existing instance
+# Kill any stale instance
 killall vector-streamer 2>/dev/null
 sleep 1
+rm -f "$STREAMER_PID_FILE"
 
-# Clean up stale proxy sockets from previous runs
-rm -f /dev/socket/_engine_anim_server_0_orig
-rm -f /dev/socket/_engine_anim_client_vs
-rm -f /dev/socket/mic_sock_orig
-rm -f /dev/socket/mic_sock_vs
+# Clean stale proxy sockets from a previous run
+for sock in $PROXY_SOCKETS; do
+    rm -f "$sock"
+done
 
-log "=== Starting vector-streamer startup sequence ==="
+log "=== vector-streamer startup ==="
 
-# Step 1: Stop ALL services to prevent dependency chains.
-# vic-cloud Wants=vic-engine, vic-engine Wants=vic-anim — if we restart
-# any service, systemd may pull in others via Wants= directives.
-# Stopping all first gives us full control over startup order.
-log "Step 1: Stopping all services..."
-systemctl stop vic-engine 2>/dev/null
-systemctl stop vic-cloud 2>/dev/null
-systemctl stop vic-anim 2>/dev/null
-sleep 2
+# ── Wait for vic-anim sockets ──────────────────────────────────
+# vic-anim creates these on startup. Systemd's After=vic-anim.service
+# ensures vic-anim's unit is started, but the sockets may take a moment.
 
-# Clean any leftover sockets from the stopped services
-rm -f "$ENGINE_ANIM_SOCK"
-rm -f /dev/socket/_engine_anim_client_0
-rm -f "$MIC_SOCK"
-rm -f "$MIC_SOCK_CP"
-
-# Step 2: Start vic-anim ONLY. It has no Wants= on other services,
-# so systemd won't pull in anything else.
-log "Step 2: Starting vic-anim..."
-systemctl start vic-anim
-sleep 3
-
-# Wait for vic-anim to create its sockets
 log "Waiting for vic-anim sockets..."
-if ! wait_socket "$ENGINE_ANIM_SOCK" 30; then
-    log "FATAL: vic-anim didn't create $ENGINE_ANIM_SOCK"
-    systemctl start vic-engine
-    systemctl start vic-cloud
+if ! wait_socket "$ENGINE_ANIM_SOCK" 60; then
+    log "FATAL: $ENGINE_ANIM_SOCK not created after 60s"
     exit 1
 fi
-if ! wait_socket "$MIC_SOCK" 10; then
-    log "WARNING: mic_sock not created"
+if ! wait_socket "$MIC_SOCK" 30; then
+    log "WARNING: $MIC_SOCK not created (mic proxy won't work)"
 fi
 log "vic-anim sockets ready"
 
-# Verify no other service snuck in
-if systemctl is-active vic-engine >/dev/null 2>&1; then
-    log "WARNING: vic-engine is running — stopping"
-    systemctl stop vic-engine
-    sleep 1
-fi
+# ── Launch vector-streamer ──────────────────────────────────────
+# The binary renames the original sockets and creates proxy sockets
+# in their place. vic-engine/vic-cloud will connect to the proxies.
 
-# Step 3: Start vector-streamer.
-# Engine proxy: renames _engine_anim_server_0, sends ANKICONN
-# Mic proxy: renames mic_sock, creates proxy at mic_sock + forwarder at mic_sock_vs
-log "Step 3: Starting vector-streamer..."
+log "Launching vector-streamer..."
 LD_LIBRARY_PATH=/anki/lib nohup "$STREAMER_BIN" $STREAMER_OPTS > "$STREAMER_LOG" 2>&1 &
 STREAMER_PID=$!
-sleep 3
+echo $STREAMER_PID > "$STREAMER_PID_FILE"
 
-# Verify it's running
-if ! kill -0 $STREAMER_PID 2>/dev/null; then
-    log "FATAL: vector-streamer failed to start. Log:"
-    cat "$STREAMER_LOG"
-    systemctl start vic-engine
-    systemctl start vic-cloud
-    exit 1
-fi
+# ── Verify proxy is ready ──────────────────────────────────────
+# Wait for the binary to set up proxy sockets.
+# ANKICONN is deferred — it happens when vic-engine starts (after this
+# script exits and systemd proceeds via Before= ordering).
+# We just need to see "vector-streamer ready" in the log.
 
-# Check engine proxy status
-if grep -q "FATAL: Failed to send ANKICONN" "$STREAMER_LOG"; then
-    log "FATAL: Engine proxy failed to send ANKICONN. Cleaning up..."
-    kill $STREAMER_PID 2>/dev/null
-    cleanup
-    exit 1
-fi
-
-if grep -q "Sent ANKICONN handshake to vic-anim" "$STREAMER_LOG"; then
-    log "Engine proxy ANKICONN successful"
-else
-    log "WARNING: ANKICONN status unclear — waiting 2s more..."
-    sleep 2
-    if grep -q "Sent ANKICONN handshake to vic-anim" "$STREAMER_LOG"; then
-        log "Engine proxy ANKICONN successful (delayed)"
-    else
-        log "WARNING: ANKICONN may have failed"
+log "Verifying proxy setup..."
+ready=0
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    # Check process is alive
+    if ! kill -0 "$STREAMER_PID" 2>/dev/null; then
+        log "FATAL: vector-streamer died during startup"
+        cat "$STREAMER_LOG" >&2
+        rm -f "$STREAMER_PID_FILE"
+        exit 1
     fi
-fi
 
-# Step 4: Start vic-engine. It has Wants=vic-anim, but vic-anim
-# is already running so no restart. vic-engine connects to our
-# proxy at _engine_anim_server_0.
-log "Step 4: Starting vic-engine..."
-systemctl start vic-engine
-sleep 3
-
-# Verify vic-engine connected through proxy
-if grep -q "vic-engine connected" "$STREAMER_LOG"; then
-    log "vic-engine connected through proxy"
-else
-    log "WARNING: vic-engine may not be connected through proxy yet"
-    sleep 3
-    if grep -q "vic-engine connected" "$STREAMER_LOG"; then
-        log "vic-engine connected through proxy (delayed)"
+    # Check for fatal errors
+    if grep -q "FATAL" "$STREAMER_LOG" 2>/dev/null; then
+        log "FATAL: error in streamer log"
+        cat "$STREAMER_LOG" >&2
+        kill "$STREAMER_PID" 2>/dev/null
+        rm -f "$STREAMER_PID_FILE"
+        exit 1
     fi
-fi
 
-# Step 5: Start vic-cloud. It has Wants=vic-engine, but vic-engine
-# is already running. vic-cloud creates mic_sock_cp_mic and connects
-# to mic_sock.
-log "Step 5: Starting vic-cloud..."
-systemctl start vic-cloud
+    # Check for ready signal
+    if grep -q "vector-streamer ready" "$STREAMER_LOG" 2>/dev/null; then
+        ready=1
+        break
+    fi
 
-# Wait for vic-cloud to create its mic socket
-log "Waiting for vic-cloud mic socket..."
-if wait_socket "$MIC_SOCK_CP" 30; then
-    log "vic-cloud mic socket ready"
-else
-    log "WARNING: vic-cloud didn't create $MIC_SOCK_CP (mic proxy may not work)"
-fi
-
-log "=== vector-streamer startup complete ==="
-log "PID: $STREAMER_PID"
-log "Log: $STREAMER_LOG"
-log "TCP port: 5555"
-
-# Print summary from log
-grep -E "Proxy|ANKICONN|connected|Injected|FATAL|ERROR|Audio chunk|CloudMic" "$STREAMER_LOG" | while read line; do
-    log "  $line"
+    sleep 1
 done
+
+if [ $ready -eq 0 ]; then
+    log "WARNING: ready signal not seen after 10s (continuing anyway)"
+fi
+
+# Check engine proxy status (ANKICONN is deferred until vic-engine starts)
+if grep -q "ANKICONN deferred" "$STREAMER_LOG" 2>/dev/null; then
+    log "Engine proxy ready (ANKICONN deferred until vic-engine starts)"
+elif grep -q "Engine proxy:   disabled" "$STREAMER_LOG" 2>/dev/null; then
+    log "Engine proxy disabled"
+fi
+
+log "=== vector-streamer ready (PID $STREAMER_PID, port 5555) ==="
+
+# Exit — Type=forking means systemd now considers us "active"
+# and proceeds to start vic-engine, vic-cloud via Before= ordering.

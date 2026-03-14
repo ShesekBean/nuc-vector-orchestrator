@@ -1,42 +1,52 @@
-# vector-streamer.service — Audio/video streamer daemon for LiveKit bridge
+# vector-streamer.service — Mic/engine proxy + TCP bridge to NUC
 #
-# Runs on Vector. Streams mic audio (Opus) to NUC over TCP.
-# NUC connects to port 5555 to receive audio and send speaker PCM.
+# Uses systemd's native ordering to insert socket proxies between services:
+#
+#   vic-anim → vector-streamer → vic-engine → vic-cloud
+#
+# Before= ensures systemd won't start vic-engine or vic-cloud until
+# vector-streamer has finished setting up its socket proxies (Type=forking,
+# so "ready" = startup script exits after verifying proxies are live).
+#
+# If vector-streamer is not enabled, Before= has no effect — services
+# boot normally without proxies.
 #
 # Install:
-#   scp vector-streamer root@vector:/anki/bin/
+#   ssh vector 'mount -o remount,rw /'
+#   scp vector-streamer-start.sh root@vector:/anki/bin/
 #   scp vector-streamer.service root@vector:/etc/systemd/system/
+#   ssh vector 'chmod +x /anki/bin/vector-streamer-start.sh'
 #   ssh vector 'systemctl daemon-reload && systemctl enable vector-streamer'
+#   ssh vector 'mount -o remount,ro /'
 #
 # Logs:
-#   ssh vector 'journalctl -u vector-streamer -f'
+#   ssh vector 'cat /tmp/streamer.log'
+#   ssh vector 'journalctl -u vector-streamer'
 
 [Unit]
-Description=Vector LiveKit audio/video streamer
-After=vic-engine.service vic-anim.service
-Wants=vic-engine.service
+Description=Vector streamer — mic/engine proxy + TCP bridge to NUC
+
+# Start after vic-anim (we need its sockets to exist before proxying them)
+After=vic-anim.service
+Wants=vic-anim.service
+
+# Hold vic-engine and vic-cloud until our proxies are ready.
+# This is the key line — systemd delays their startup until our
+# forking script exits, meaning socket proxies are in place.
+Before=vic-engine.service vic-cloud.service
 
 [Service]
-Type=simple
-ExecStart=/anki/bin/vector-streamer -p 5555 -m /dev/socket/mic_sock
+Type=forking
+PIDFile=/tmp/vector-streamer.pid
+ExecStart=/anki/bin/vector-streamer-start.sh
+ExecStop=/anki/bin/vector-streamer-start.sh --stop
+
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 
-# Run as root to access /dev/socket/mic_sock (owned by root:anki)
-User=root
-Group=anki
-
-# Environment
-Environment=LD_LIBRARY_PATH=/anki/lib:/usr/lib
-
-# Resource limits
-LimitNOFILE=1024
-MemoryMax=16M
-
-# Logging to stderr (captured by journald)
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=vector-streamer
+# Startup script waits for vic-anim sockets + verifies proxy setup
+TimeoutStartSec=90
+TimeoutStopSec=30
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=anki-robot.target
