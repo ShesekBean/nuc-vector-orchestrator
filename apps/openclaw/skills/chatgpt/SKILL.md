@@ -84,7 +84,34 @@ Send this expanded prompt to the ChatGPT proxy:
 > 🏁 Success Outcome
 > One sentence: what does a good [TARGET DAY] look like?
 >
-> HARD RULES: All times Pacific. No paragraphs. No bullet explanations longer than one line. No strategy analysis. No sub-bullets. No "want me to also..." No "if you want I can...". Just the brief in this exact format.
+> HERE IS AN EXAMPLE of the EXACT output format I want. Copy this structure exactly, just fill in real data:
+>
+> 🗓 Schedule
+> ⏰ 07:30 James 1:1 – align weekly focus
+> ⏰ 08:00 Manish 1:1 – unblock ERP lane
+> ⏰ 09:00 Product Lead Sync – lock roadmap lanes
+> ⏰ 10:30 ERP/ICP – confirm target vertical
+>
+> 💬 Talking Points
+> James → Q4 goal + blockers?
+> Manish → ERP connector priority?
+> Prod Lead → who owns each lane?
+> ERP/ICP → manuf. vs horizontal decision?
+>
+> 🎯 Top 3 Must-Remember
+> 1️⃣ Roadmap lanes + owners frozen
+> 2️⃣ ERP-ICP path clarified
+> 3️⃣ AI = seller productivity (not tech demo)
+>
+> ✅ Prep Actions
+> ✍️ Write 3-line product thesis
+> ❓ List 3 roadmap questions
+> 📊 Pick seller-experience metric
+>
+> 🏁 Success Outcome
+> Team leaves kickoff with clear lanes, owners, 12-mo milestones.
+>
+> END OF EXAMPLE. Now produce the real brief for [TARGET DAY] using my actual calendar, emails, Slack, and recordings. Same format, same line lengths, same emoji usage. No deviations. No extra sections. No offers.
 
 ## Trigger Words
 

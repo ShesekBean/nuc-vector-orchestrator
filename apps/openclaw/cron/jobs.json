@@ -269,7 +269,7 @@
       "name": "Daily work prep via ChatGPT",
       "enabled": true,
       "createdAtMs": 1773523654020,
-      "updatedAtMs": 1773525594180,
+      "updatedAtMs": 1773525843474,
       "schedule": {
         "kind": "cron",
         "expr": "27 6 * * 1-5",
@@ -279,7 +279,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Daily brief for today. Use EXACTLY this format \u2014 no deviation, no extras, no paragraphs, no strategy essays, no offers to do more. Check my calendar, emails (7 days), Slack (48h), and recordings (7 days).\n\n\ud83d\uddd3 Schedule\n\u23f0 HH:MM Meeting Name \u2013 one-line goal/purpose\n(list every meeting for the day, times in Pacific)\n\n\ud83d\udcac Talking Points\nPerson \u2192 key question or topic to raise (one per meeting, one line each)\n\n\ud83c\udfaf Top 3 Must-Remember\n1\ufe0f\u20e3 thing one\n2\ufe0f\u20e3 thing two\n3\ufe0f\u20e3 thing three\n\n\u2705 Prep Actions\n\u270d\ufe0f/\u2753/\ud83d\udcca concrete thing to do before meetings (max 3)\n\n\ud83c\udfc1 Success Outcome\nOne sentence: what does a good today look like?\n\nHARD RULES: All times Pacific. No paragraphs. No bullet explanations longer than one line. No strategy analysis. No sub-bullets. No offers. Just the brief in this exact format.\""
+        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Daily brief for today. Use EXACTLY this format \u2014 no deviation, no extras, no paragraphs, no strategy essays, no offers. Check my calendar, emails (7 days), Slack (48h), and recordings (7 days).\n\n\ud83d\uddd3 Schedule\n\u23f0 HH:MM Meeting Name \u2013 one-line goal/purpose\n(list every meeting, times in Pacific)\n\n\ud83d\udcac Talking Points\nPerson \u2192 key question or topic (one per meeting, one line)\n\n\ud83c\udfaf Top 3 Must-Remember\n1\ufe0f\u20e3 thing one\n2\ufe0f\u20e3 thing two\n3\ufe0f\u20e3 thing three\n\n\u2705 Prep Actions\n\u270d\ufe0f/\u2753/\ud83d\udcca concrete thing to do before meetings (max 3)\n\n\ud83c\udfc1 Success Outcome\nOne sentence: what does a good today look like?\n\nHERE IS AN EXAMPLE of the EXACT output format. Copy this structure exactly, just fill in real data:\n\n\ud83d\uddd3 Schedule\n\u23f0 07:30 James 1:1 \u2013 align weekly focus\n\u23f0 08:00 Manish 1:1 \u2013 unblock ERP lane\n\u23f0 09:00 Product Lead Sync \u2013 lock roadmap lanes\n\u23f0 10:30 ERP/ICP \u2013 confirm target vertical\n\n\ud83d\udcac Talking Points\nJames \u2192 Q4 goal + blockers?\nManish \u2192 ERP connector priority?\nProd Lead \u2192 who owns each lane?\nERP/ICP \u2192 manuf. vs horizontal decision?\n\n\ud83c\udfaf Top 3 Must-Remember\n1\ufe0f\u20e3 Roadmap lanes + owners frozen\n2\ufe0f\u20e3 ERP-ICP path clarified\n3\ufe0f\u20e3 AI = seller productivity (not tech demo)\n\n\u2705 Prep Actions\n\u270d\ufe0f Write 3-line product thesis\n\u2753 List 3 roadmap questions\n\ud83d\udcca Pick seller-experience metric\n\n\ud83c\udfc1 Success Outcome\nTeam leaves kickoff with clear lanes, owners, 12-mo milestones.\n\nEND OF EXAMPLE. Now produce the real brief for today. Same format, same line lengths, same emoji usage. No deviations. No extra sections. No offers.\""
       },
       "delivery": {
         "mode": "announce",
