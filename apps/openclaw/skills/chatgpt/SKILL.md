@@ -79,6 +79,8 @@ Send this expanded prompt to the ChatGPT proxy:
 >
 > 5. **TOP 3 PRIORITIES**: Based on everything above, what are the 3 most important things I should focus on [TARGET DAY]? Be specific.
 >
+> IMPORTANT: Show ALL times in Pacific Time (PT/PST/PDT). Convert from UTC if needed. Ophir is in California.
+>
 > Format for quick phone reading — headers, bullets, minimal emoji. Actionable, no fluff.
 
 ## Trigger Words
