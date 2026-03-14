@@ -73,15 +73,16 @@ typedef const char *(*pv_strerr_fn)(pv_status_t status);
 
 static volatile int g_running = 1;
 static int g_server_fd = -1;
+static volatile int g_client_fd = -1;
 
 static void signal_handler(int sig) {
     (void)sig;
     g_running = 0;
-    /* Close server socket to unblock accept() */
-    if (g_server_fd >= 0) {
-        close(g_server_fd);
-        g_server_fd = -1;
-    }
+    /* Shutdown sockets to unblock accept() and read() */
+    if (g_client_fd >= 0)
+        shutdown(g_client_fd, SHUT_RDWR);
+    if (g_server_fd >= 0)
+        shutdown(g_server_fd, SHUT_RDWR);
 }
 
 /* ---- I/O helpers ---- */
@@ -211,6 +212,7 @@ int main(void) {
             break;
         }
         syslog(LOG_INFO, "pv_worker: client connected");
+        g_client_fd = client_fd;
 
         /* Command loop for this client */
         while (g_running) {
@@ -331,6 +333,7 @@ int main(void) {
         }
 
 client_done:
+        g_client_fd = -1;
         close(client_fd);
     }
 
