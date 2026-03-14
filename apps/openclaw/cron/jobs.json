@@ -16,7 +16,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "\ud83c\udfca 6:30 \u2014 time to swim. Go."
+        "message": "🏊 6:30 — time to swim. Go."
       },
       "delivery": {
         "mode": "announce",
@@ -47,7 +47,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring \u2014 remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together \u2014 e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down \u2014 great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
+        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring — remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together — e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down — great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
       },
       "delivery": {
         "mode": "announce",
@@ -246,7 +246,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '\ud83e\udd16 AI Daily Brief' header."
+        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '🤖 AI Daily Brief' header."
       },
       "delivery": {
         "mode": "announce",
@@ -269,7 +269,7 @@
       "name": "Daily work prep via ChatGPT",
       "enabled": true,
       "createdAtMs": 1773523654020,
-      "updatedAtMs": 1773523654020,
+      "updatedAtMs": 1773524300862,
       "schedule": {
         "kind": "cron",
         "expr": "27 6 * * 1-5",
@@ -279,7 +279,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Give me my daily work prep briefing. Cover ALL of the following:\n\n1. **TODAY'S CALENDAR**: List every meeting/event for today. For each: time, title, attendees, and any prep needed. Flag conflicts or back-to-backs.\n\n2. **TOMORROW PREVIEW**: Same for tomorrow \u2014 so I can prep ahead.\n\n3. **EMAIL TRIAGE (last 7 days)**: Scan my inbox from the past week. Group into:\n   - \ud83d\udd34 ACTION REQUIRED: emails I need to respond to or act on (include sender, subject, what's needed)\n   - \ud83d\udfe1 FYI/AWARENESS: important updates I should know about but don't need to act on\n   - Skip automated notifications, digests, and spam\n\n4. **SLACK HIGHLIGHTS (last 48 hours)**: Scan recent Slack messages. Surface:\n   - Direct messages or mentions I haven't responded to\n   - Important threads in channels I follow\n   - Any decisions or announcements that affect me\n\n5. **RECORDINGS & MEETING NOTES (last 7 days)**: Check for any meeting recordings, transcripts, or shared notes. Summarize key decisions, action items assigned to me, and follow-ups.\n\n6. **TOP 3 PRIORITIES**: Based on everything above, what are the 3 most important things I should focus on today? Be specific.\n\nFormat the whole thing for quick phone reading \u2014 use headers, bullets, and emoji sparingly. Keep it actionable, skip fluff.\""
+        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Daily brief for today. STRICT FORMAT — no deviation, no extras, no strategy advice, no mental models, no offers to do more. Just the facts.\n\nSECTION 1 — TOP 3\nThree things I must get done today. One sentence each. Based on emails, Slack, calendar.\n\nSECTION 2 — MEETINGS\nEach meeting: time (Pacific), title.\nUnder each: 1-3 lines max — what I need to know going IN to that meeting. Context from emails/Slack/recordings. Skip meetings needing no prep.\n\nSECTION 3 — RESPOND TO\nEmails or Slack I need to reply to. Format: sender — one line. Max 5 items. Skip if nothing.\n\nHARD RULES: All times Pacific. Max 25 lines total output. No headers beyond the three sections. No strategy analysis. No suggestions. No offers. Just the brief.\""
       },
       "delivery": {
         "mode": "announce",
@@ -287,10 +287,14 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 0,
-        "lastRunAtMs": 0,
-        "lastRunStatus": null,
-        "consecutiveErrors": 0
+        "nextRunAtMs": 1773667620000,
+        "lastRunAtMs": 1773523712409,
+        "lastRunStatus": "ok",
+        "consecutiveErrors": 0,
+        "lastStatus": "ok",
+        "lastDurationMs": 176325,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered"
       }
     }
   ]

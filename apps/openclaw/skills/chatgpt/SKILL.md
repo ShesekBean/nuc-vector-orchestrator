@@ -64,24 +64,19 @@ When the user says "daily brief", "daily prep", "work brief", or "brief for tomo
 
 Send this expanded prompt to the ChatGPT proxy:
 
-> Give me my daily work prep briefing for [TARGET DAY]. Cover ALL of the following:
+> Daily brief for [TARGET DAY]. STRICT FORMAT — no deviation, no extras, no strategy advice, no mental models, no offers to do more. Just the facts.
 >
-> 1. **CALENDAR**: List every meeting/event for [TARGET DAY]. For each: time, title, attendees, and any prep needed. Flag conflicts or back-to-backs. Also preview the following day.
+> SECTION 1 — TOP 3
+> Three things I must get done [TARGET DAY]. One sentence each. Based on emails, Slack, calendar.
 >
-> 2. **EMAIL TRIAGE (last 7 days)**: Scan my inbox from the past week. Group into:
->    - 🔴 ACTION REQUIRED: emails I need to respond to or act on (sender, subject, what's needed)
->    - 🟡 FYI/AWARENESS: important updates I should know but don't need to act on
->    - Skip automated notifications, digests, and spam
+> SECTION 2 — MEETINGS
+> Each meeting: time (Pacific), title.
+> Under each: 1-3 lines max — what I need to know going IN to that meeting. Context from emails/Slack/recordings. Skip meetings needing no prep.
 >
-> 3. **SLACK HIGHLIGHTS (last 48 hours)**: Surface DMs or mentions I haven't responded to, important channel threads, and any decisions or announcements that affect me.
+> SECTION 3 — RESPOND TO
+> Emails or Slack I need to reply to. Format: sender — one line. Max 5 items. Skip if nothing.
 >
-> 4. **RECORDINGS & MEETING NOTES (last 7 days)**: Summarize key decisions, action items assigned to me, and follow-ups from recent meetings.
->
-> 5. **TOP 3 PRIORITIES**: Based on everything above, what are the 3 most important things I should focus on [TARGET DAY]? Be specific.
->
-> IMPORTANT: Show ALL times in Pacific Time (PT/PST/PDT). Convert from UTC if needed. Ophir is in California.
->
-> Format for quick phone reading — headers, bullets, minimal emoji. Actionable, no fluff.
+> HARD RULES: All times Pacific. Max 25 lines total output. No headers beyond the three sections. No strategy analysis. No suggestions. No "want me to also..." offers. Just the brief.
 
 ## Trigger Words
 
