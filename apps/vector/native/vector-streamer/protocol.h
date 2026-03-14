@@ -18,6 +18,11 @@
 
 /* Frame types: NUC → Vector */
 #define FRAME_TYPE_PCM     0x10  /* Raw PCM int16 mono 16kHz (speaker) */
+#define FRAME_TYPE_CMD     0x20  /* Command from NUC (1-byte command ID) */
+
+/* Command IDs (payload of FRAME_TYPE_CMD) */
+#define CMD_MIC_STREAM_START  0x01  /* Start continuous mic streaming */
+#define CMD_MIC_STREAM_STOP   0x02  /* Stop continuous mic streaming */
 
 /* Frame types: Control */
 #define FRAME_TYPE_PING    0xF0  /* Keepalive ping */

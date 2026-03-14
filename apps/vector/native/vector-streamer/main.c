@@ -25,6 +25,7 @@
 #include "tcp_server.h"
 #include "camera.h"
 #include "h264_encoder.h"
+#include "engine_proxy.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,15 +41,19 @@
 
 /* Configuration */
 static int         g_port = DEFAULT_TCP_PORT;
-static const char *g_mic_path = "/dev/socket/mic_sock_cp_mic";
+static const char *g_mic_path = "/dev/socket/mic_sock";
+static const char *g_engine_anim_path = "/dev/socket/_engine_anim_server_0";
 static int         g_verbose = 0;
 static int         g_enable_camera = 0;  /* Camera disabled by default (NUC handles it) */
+static int         g_enable_engine_proxy = 0;  /* Engine proxy disabled by default */
 
 /* Thread handles */
 static pthread_t g_mic_thread;
 static pthread_t g_camera_thread;
+static pthread_t g_engine_proxy_thread;
 static int       g_mic_thread_started = 0;
 static int       g_camera_thread_started = 0;
+static int       g_engine_proxy_thread_started = 0;
 
 /* Opus encoding buffer — accumulates PCM until we have a full frame */
 static int16_t g_opus_pcm_buf[OPUS_FRAME_SAMPLES];
@@ -71,6 +76,7 @@ static void signal_handler(int sig)
     tcp_server_stop();
     mic_stop();
     camera_stop();
+    engine_proxy_stop();
 }
 
 
@@ -147,6 +153,33 @@ static void on_tcp_recv(uint8_t type, const uint8_t *data, uint32_t length,
         }
         break;
 
+    case FRAME_TYPE_CMD:
+        if (length >= 1) {
+            uint8_t cmd = data[0];
+            switch (cmd) {
+            case CMD_MIC_STREAM_START:
+                LOG("NUC command: start mic streaming");
+                if (g_enable_engine_proxy) {
+                    engine_proxy_start_mic_stream();
+                } else {
+                    LOG("WARNING: engine proxy not enabled (-e flag)");
+                }
+                break;
+            case CMD_MIC_STREAM_STOP:
+                LOG("NUC command: stop mic streaming");
+                if (g_enable_engine_proxy) {
+                    engine_proxy_stop_mic_stream();
+                } else {
+                    LOG("WARNING: engine proxy not enabled (-e flag)");
+                }
+                break;
+            default:
+                LOG("Unknown command from NUC: 0x%02x", cmd);
+                break;
+            }
+        }
+        break;
+
     default:
         if (g_verbose) {
             LOG("Unknown frame type from NUC: 0x%02x (%u bytes)", type, length);
@@ -193,6 +226,24 @@ static void *camera_thread_func(void *arg)
 }
 
 
+static void *engine_proxy_thread_func(void *arg)
+{
+    (void)arg;
+    LOG("Engine proxy thread started");
+
+    if (engine_proxy_init(g_engine_anim_path) < 0) {
+        LOG("Engine proxy init failed — mic streaming control unavailable");
+        LOG("Hint: ensure vic-anim is running and %s exists", g_engine_anim_path);
+        return NULL;
+    }
+
+    engine_proxy_run();
+    engine_proxy_cleanup();
+    LOG("Engine proxy thread exited");
+    return NULL;
+}
+
+
 /* ── Usage ───────────────────────────────────────────────────── */
 
 static void usage(const char *prog)
@@ -205,13 +256,20 @@ static void usage(const char *prog)
         "Options:\n"
         "  -p PORT    TCP port (default: %d)\n"
         "  -m PATH    mic_sock path (default: %s)\n"
+        "  -e         Enable engine-anim proxy (for mic streaming control)\n"
+        "  -E PATH    engine_anim_server path (default: %s)\n"
         "  -c         Enable camera capture (disabled by default)\n"
         "  -v         Verbose logging\n"
         "  -h         Show this help\n"
         "\n"
         "The NUC connects to this TCP server to receive audio/video\n"
-        "and send speaker PCM for playback.\n",
-        prog, DEFAULT_TCP_PORT, g_mic_path);
+        "and send speaker PCM for playback.\n"
+        "\n"
+        "The -e flag enables proxying the engine-anim socket so the NUC\n"
+        "can trigger continuous mic streaming (for LiveKit calls).\n"
+        "After first enabling, restart vic-engine once:\n"
+        "  systemctl restart vic-engine\n",
+        prog, DEFAULT_TCP_PORT, g_mic_path, g_engine_anim_path);
 }
 
 
@@ -220,13 +278,20 @@ static void usage(const char *prog)
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "p:m:cvh")) != -1) {
+    while ((opt = getopt(argc, argv, "p:m:eE:cvh")) != -1) {
         switch (opt) {
         case 'p':
             g_port = atoi(optarg);
             break;
         case 'm':
             g_mic_path = optarg;
+            break;
+        case 'e':
+            g_enable_engine_proxy = 1;
+            break;
+        case 'E':
+            g_engine_anim_path = optarg;
+            g_enable_engine_proxy = 1;
             break;
         case 'c':
             g_enable_camera = 1;
@@ -244,10 +309,13 @@ int main(int argc, char *argv[])
     }
 
     LOG("vector-streamer starting");
-    LOG("  TCP port:   %d", g_port);
-    LOG("  Mic socket: %s", g_mic_path);
-    LOG("  Camera:     %s", g_enable_camera ? "enabled" : "disabled (NUC handles it)");
-    LOG("  Verbose:    %s", g_verbose ? "yes" : "no");
+    LOG("  TCP port:       %d", g_port);
+    LOG("  Mic socket:     %s", g_mic_path);
+    LOG("  Engine proxy:   %s", g_enable_engine_proxy ? "enabled" : "disabled");
+    if (g_enable_engine_proxy)
+        LOG("  Engine socket:  %s", g_engine_anim_path);
+    LOG("  Camera:         %s", g_enable_camera ? "enabled" : "disabled (NUC handles it)");
+    LOG("  Verbose:        %s", g_verbose ? "yes" : "no");
 
     /* Install signal handlers */
     signal(SIGINT, signal_handler);
@@ -274,6 +342,15 @@ int main(int argc, char *argv[])
         LOG("Failed to create mic thread: %s", strerror(errno));
     }
 
+    /* Start engine proxy thread (optional — for mic streaming control) */
+    if (g_enable_engine_proxy) {
+        if (pthread_create(&g_engine_proxy_thread, NULL, engine_proxy_thread_func, NULL) == 0) {
+            g_engine_proxy_thread_started = 1;
+        } else {
+            LOG("Failed to create engine proxy thread: %s", strerror(errno));
+        }
+    }
+
     /* Start camera thread (optional) */
     if (g_enable_camera) {
         if (pthread_create(&g_camera_thread, NULL, camera_thread_func, NULL) == 0) {
@@ -292,9 +369,13 @@ int main(int argc, char *argv[])
 
     mic_stop();
     camera_stop();
+    engine_proxy_stop();
 
     if (g_mic_thread_started) {
         pthread_join(g_mic_thread, NULL);
+    }
+    if (g_engine_proxy_thread_started) {
+        pthread_join(g_engine_proxy_thread, NULL);
     }
     if (g_camera_thread_started) {
         pthread_join(g_camera_thread, NULL);

@@ -145,6 +145,11 @@ class LiveKitBridge:
         self._video_in_task: asyncio.Task | None = None
         self._video_in_active = False
 
+        # Vector-streamer TCP command constants (match protocol.h)
+        self._FRAME_TYPE_CMD = 0x20
+        self._CMD_MIC_STREAM_START = 0x01
+        self._CMD_MIC_STREAM_STOP = 0x02
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -253,7 +258,7 @@ class LiveKitBridge:
         await self._room.local_participant.publish_track(video_track, video_opts)
         logger.info("Published video track (vector-camera)")
 
-        # Create and publish audio track for mic (fed by wire-pod chipper tap)
+        # Create and publish audio track for mic (fed by MediaService mic channel)
         self._audio_source = rtc.AudioSource(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
         audio_track = rtc.LocalAudioTrack.create_audio_track(
             "vector-mic", self._audio_source
@@ -274,6 +279,9 @@ class LiveKitBridge:
             logger.warning("MediaService mic channel not available -- no mic audio")
 
         self._emit_session_event(active=True, room=room)
+
+        # Request continuous mic streaming from vector-streamer
+        self._start_mic_streaming()
 
         # Start empty-room timer if nobody else is in the room yet
         if not self._room.remote_participants:
@@ -305,6 +313,9 @@ class LiveKitBridge:
         self._mic_task = None
         self._video_in_task = None
 
+        # Stop continuous mic streaming
+        self._stop_mic_streaming()
+
         # Close mic subscription
         if self._mic_sub:
             self._mic_sub.close()
@@ -321,6 +332,45 @@ class LiveKitBridge:
         if was_active:
             self._emit_session_event(active=False, room=self._room_name)
             logger.info("LiveKit session stopped (room=%r)", self._room_name)
+
+    # ------------------------------------------------------------------
+    # Mic streaming control (via vector-streamer TCP commands)
+    # ------------------------------------------------------------------
+
+    def _send_streamer_cmd(self, cmd_id: int) -> None:
+        """Send a command to vector-streamer via the MediaService TCP socket.
+
+        Uses the same TCP connection that MicChannel uses. The command is
+        sent as a framed message: [type=0x20][length=1 LE][cmd_id].
+        """
+        if not self._media_service:
+            logger.warning("No MediaService — cannot send streamer command")
+            return
+
+        mic = self._media_service.mic
+        sock = getattr(mic, "_sock", None)
+        if sock is None:
+            logger.warning("MicChannel not connected — cannot send streamer command")
+            return
+
+        import struct
+        # Frame: [type:1][length:4 LE][payload:1]
+        frame = struct.pack("<BI", self._FRAME_TYPE_CMD, 1) + bytes([cmd_id])
+        try:
+            sock.sendall(frame)
+            logger.info("Sent streamer command 0x%02x", cmd_id)
+        except Exception:
+            logger.warning("Failed to send streamer command 0x%02x", cmd_id, exc_info=True)
+
+    def _start_mic_streaming(self) -> None:
+        """Tell vector-streamer to inject StartWakeWordlessStreaming."""
+        logger.info("Requesting continuous mic streaming from vector-streamer")
+        self._send_streamer_cmd(self._CMD_MIC_STREAM_START)
+
+    def _stop_mic_streaming(self) -> None:
+        """Tell vector-streamer to stop injecting StartWakeWordlessStreaming."""
+        logger.info("Stopping continuous mic streaming")
+        self._send_streamer_cmd(self._CMD_MIC_STREAM_STOP)
 
     # ------------------------------------------------------------------
     # Publishing loops

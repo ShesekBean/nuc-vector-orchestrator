@@ -1,9 +1,13 @@
 /*
- * mic.h -- DGRAM proxy for Vector mic audio.
+ * mic.h -- Server-side DGRAM proxy for Vector mic audio.
  *
- * Intercepts mic_sock_cp_mic by acting as a proxy between vic-anim
- * and vic-cloud. Extracts AudioData PCM and passes to caller via
- * callback while forwarding all packets transparently.
+ * Intercepts mic_sock (vic-anim's MicDataSystem server socket) to
+ * transparently proxy audio between vic-anim and vic-cloud while
+ * extracting PCM samples for Opus encoding and TCP streaming.
+ *
+ * Architecture:
+ *   vic-cloud → proxy(mic_sock) → forwarder(mic_sock_vs) → vic-anim(mic_sock_orig)
+ *   vic-anim  → forwarder → extract PCM + forward to vic-cloud via proxy
  */
 
 #ifndef MIC_H
@@ -18,16 +22,19 @@
  */
 typedef void (*mic_audio_cb)(const int16_t *pcm_data, size_t num_samples, void *user_data);
 
-/* Initialize the DGRAM proxy.
- * socket_path: path to the mic socket (e.g., /dev/socket/mic_sock_cp_mic)
+/* Initialize the server-side DGRAM proxy.
+ * socket_path: path to the mic socket (e.g., /dev/socket/mic_sock)
  *   - Renames existing socket to socket_path + "_orig"
- *   - Creates new DGRAM socket at socket_path
+ *   - Creates proxy server at socket_path (receives from vic-cloud)
+ *   - Creates forwarder at socket_path + "_vs" (relays to/from vic-anim)
  * Returns 0 on success, -1 on error.
  */
 int mic_init(const char *socket_path, mic_audio_cb callback, void *user_data);
 
 /* Run the DGRAM proxy loop (blocks).
- * Receives packets from vic-anim, forwards to vic-cloud, extracts audio.
+ * Multiplexes proxy_fd and forwarder_fd with select():
+ *   - Forwards vic-cloud packets to vic-anim via forwarder
+ *   - Receives audio from vic-anim on forwarder, extracts PCM, forwards to vic-cloud
  * Returns on error or when mic_stop() is called.
  */
 int mic_run(void);

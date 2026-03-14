@@ -21,6 +21,7 @@ set(SOURCES
     tcp_server.c
     camera.c
     h264_encoder.c
+    engine_proxy.c
 )
 
 add_executable(vector-streamer ${SOURCES})
