@@ -50,6 +50,9 @@ class ConnectionManager:
         self._map_store: Any | None = None
         self._waypoint_mgr: Any | None = None
         self._nav_controller: Any | None = None
+        self._intercom: Any | None = None
+        self._explorer: Any | None = None
+        self._auto_charger: Any | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -112,6 +115,21 @@ class ConnectionManager:
     def nav_controller(self) -> Any:
         """NavController instance, or None if not initialised."""
         return self._nav_controller
+
+    @property
+    def explorer(self) -> Any:
+        """AutonomousExplorer instance, or None if not initialised."""
+        return self._explorer
+
+    @property
+    def auto_charger(self) -> Any:
+        """AutoCharger instance, or None if not initialised."""
+        return self._auto_charger
+
+    @property
+    def intercom(self) -> Any:
+        """Intercom instance, or None if not initialised."""
+        return self._intercom
 
     @property
     def livekit_bridge(self) -> Any:
@@ -196,6 +214,30 @@ class ConnectionManager:
             waypoint_mgr=self._waypoint_mgr,
         )
 
+        # Intercom for Signal messaging
+        from apps.vector.src.intercom import Intercom
+        self._intercom = Intercom(event_bus=self._nuc_bus)
+
+        # Autonomous explorer
+        from apps.vector.src.planner.exploration import AutonomousExplorer, AutoCharger
+        self._explorer = AutonomousExplorer(
+            slam=self._visual_slam,
+            motor=self._motor_controller,
+            head=self._head_controller,
+            camera=self._camera_client,
+            nuc_bus=self._nuc_bus,
+            nav_controller=self._nav_controller,
+            intercom=self._intercom,
+        )
+
+        # Auto-charger (starts monitoring immediately)
+        self._auto_charger = AutoCharger(
+            robot=self._robot,
+            nav_controller=self._nav_controller,
+            nuc_bus=self._nuc_bus,
+            intercom=self._intercom,
+        )
+
         self._connected = True
         logger.info("Connected to Vector successfully")
 
@@ -225,6 +267,10 @@ class ConnectionManager:
 
         logger.info("Disconnecting from Vector...")
         try:
+            if self._auto_charger:
+                self._auto_charger.stop()
+            if self._explorer:
+                self._explorer.stop()
             if self._nav_controller:
                 self._nav_controller.stop()
             if self._imu_fusion:
@@ -265,6 +311,9 @@ class ConnectionManager:
         self._audio_client = None
         self._livekit_bridge = None
         self._follow_pipeline = None
+        self._auto_charger = None
+        self._explorer = None
+        self._intercom = None
         self._nav_controller = None
         self._waypoint_mgr = None
         self._map_store = None

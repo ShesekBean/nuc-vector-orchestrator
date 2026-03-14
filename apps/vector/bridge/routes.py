@@ -1286,6 +1286,116 @@ async def nav_mapping_stop(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "state": "idle"})
 
 
+async def explore_start(request: web.Request) -> web.Response:
+    """POST /explore/start — start autonomous room exploration."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    explorer = conn.explorer
+    if explorer is None:
+        return _json_error(503, "Explorer not initialised", "EXPLORER_UNAVAILABLE")
+
+    # Start nav controller first if not running
+    nav = conn.nav_controller
+    if nav and nav.state.value == "idle":
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        map_name = body.get("map", "home")
+        await _run_sync(nav.start, map_name)
+
+    try:
+        await _run_sync(explorer.start)
+        return web.json_response({"status": "ok", "state": "exploring"})
+    except Exception as exc:
+        logger.exception("Failed to start exploration")
+        return _json_error(500, str(exc), "EXPLORE_START_FAILED")
+
+
+async def explore_stop(request: web.Request) -> web.Response:
+    """POST /explore/stop — stop autonomous exploration."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    explorer = conn.explorer
+    if explorer is None:
+        return _json_error(503, "Explorer not initialised", "EXPLORER_UNAVAILABLE")
+
+    try:
+        await _run_sync(explorer.stop)
+        return web.json_response({"status": "ok", "state": "idle"})
+    except Exception as exc:
+        logger.exception("Failed to stop exploration")
+        return _json_error(500, str(exc), "EXPLORE_STOP_FAILED")
+
+
+async def explore_status(request: web.Request) -> web.Response:
+    """GET /explore/status — exploration diagnostics."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    explorer = conn.explorer
+    if explorer is None:
+        return web.json_response({"active": False})
+
+    try:
+        status_data = await _run_sync(explorer.get_status)
+        return web.json_response(status_data)
+    except Exception as exc:
+        logger.exception("Explore status check failed")
+        return _json_error(500, str(exc), "EXPLORE_STATUS_FAILED")
+
+
+async def charger_start(request: web.Request) -> web.Response:
+    """POST /charger/start — start battery monitoring + auto-charge."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    charger = conn.auto_charger
+    if charger is None:
+        return _json_error(503, "AutoCharger not initialised", "CHARGER_UNAVAILABLE")
+
+    # Make sure nav controller is started
+    nav = conn.nav_controller
+    if nav and nav.state.value == "idle":
+        await _run_sync(nav.start, "home")
+
+    try:
+        await _run_sync(charger.start)
+        return web.json_response({"status": "ok", "monitoring": True})
+    except Exception as exc:
+        logger.exception("Failed to start auto-charger")
+        return _json_error(500, str(exc), "CHARGER_START_FAILED")
+
+
+async def charger_stop(request: web.Request) -> web.Response:
+    """POST /charger/stop — stop battery monitoring."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    charger = conn.auto_charger
+    if charger is None:
+        return _json_error(503, "AutoCharger not initialised", "CHARGER_UNAVAILABLE")
+
+    try:
+        await _run_sync(charger.stop)
+        return web.json_response({"status": "ok", "monitoring": False})
+    except Exception as exc:
+        logger.exception("Failed to stop auto-charger")
+        return _json_error(500, str(exc), "CHARGER_STOP_FAILED")
+
+
 async def mode_get(request: web.Request) -> web.Response:
     """GET /mode — get current behavior mode."""
     conn: ConnectionManager = request.app["conn"]
@@ -1360,3 +1470,10 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/nav/maps", nav_maps)
     app.router.add_post("/nav/mapping/start", nav_mapping_start)
     app.router.add_post("/nav/mapping/stop", nav_mapping_stop)
+    # Exploration routes
+    app.router.add_post("/explore/start", explore_start)
+    app.router.add_post("/explore/stop", explore_stop)
+    app.router.add_get("/explore/status", explore_status)
+    # Auto-charger routes
+    app.router.add_post("/charger/start", charger_start)
+    app.router.add_post("/charger/stop", charger_stop)
