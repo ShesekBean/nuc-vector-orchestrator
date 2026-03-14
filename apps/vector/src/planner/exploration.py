@@ -480,11 +480,13 @@ class AutonomousExplorer:
                 no_frontier_count = 0
 
                 # Scan for obstacles before driving
-                if self._scan_for_obstacles():
-                    logger.info("Obstacle ahead — turning away")
+                blocked, turn_dir = self._scan_for_obstacles()
+                if blocked:
+                    angle = -90.0 if turn_dir == "left" else 90.0
+                    logger.info("Obstacle ahead — turning %s", turn_dir or "right")
                     try:
                         self._motor.turn_in_place(
-                            90.0, speed_dps=self._cfg.turn_speed_dps
+                            angle, speed_dps=self._cfg.turn_speed_dps
                         )
                     except Exception:
                         pass
@@ -510,57 +512,75 @@ class AutonomousExplorer:
         self._running = False
         self._state = ExploreState.IDLE
 
-    def _scan_for_obstacles(self) -> bool:
-        """Check if there's an obstacle ahead using camera proximity detection.
+    def _scan_for_obstacles(self) -> tuple[bool, str]:
+        """Check if there's an obstacle ahead using Claude Vision.
 
-        Uses two methods:
-        1. YOLO object detection — detects known objects (people, furniture)
-        2. Camera proximity — detects walls/surfaces by checking if the lower
-           portion of the frame has low texture variance (= close to a surface)
+        Sends the current camera frame to Claude Haiku for a fast obstacle
+        assessment. Returns (is_blocked, turn_direction).
 
-        Returns True if obstacle detected (danger zone), False if clear.
+        Returns:
+            (True, "left"|"right") if obstacle detected.
+            (False, "") if path is clear.
         """
-        frame = self._camera.get_latest_frame()
-        if frame is None:
-            return False
+        jpeg = self._camera.get_latest_jpeg()
+        if jpeg is None:
+            return False, ""
 
-        # Method 1: YOLO detection
-        if self._person_detector is not None and self._obstacle_detector is not None:
-            try:
-                detections = self._person_detector.detect(frame)
-                self._obstacle_detector.update(detections)
-                if self._obstacle_detector.zone == "danger":
-                    logger.info("YOLO obstacle: danger zone (scale=%.2f)",
-                                self._obstacle_detector.speed_scale)
-                    return True
-            except Exception:
-                logger.debug("YOLO scan failed", exc_info=True)
-
-        # Method 2: Camera proximity — check bottom 1/3 of frame
-        # When close to a wall, the bottom portion has uniform color (low variance)
-        # AND high mean brightness (wall surface reflects more than open floor)
         try:
-            import numpy as np
-            h, w = frame.shape[:2]
-            # Bottom third of frame, center strip (avoid edges)
-            strip = frame[h * 2 // 3:, w // 4: w * 3 // 4]
-            # Convert to grayscale
-            gray = np.mean(strip, axis=2)
-            variance = float(np.var(gray))
-            mean_brightness = float(np.mean(gray))
+            import anthropic
+            import base64
 
-            # Low variance + high brightness = close to a wall/surface
-            # Tuned for Vector's dark camera: variance < 200 is very uniform
-            if variance < 150 and mean_brightness > 80:
-                logger.info(
-                    "Camera proximity: wall detected (var=%.0f, brightness=%.0f)",
-                    variance, mean_brightness,
-                )
-                return True
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if not api_key:
+                return False, ""
+
+            b64 = base64.b64encode(jpeg).decode("ascii")
+            client = anthropic.Anthropic(api_key=api_key)
+
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=50,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "You are a small robot's obstacle detector. "
+                                "Is there an obstacle within 30cm directly ahead? "
+                                "Reply ONLY with one word: CLEAR or LEFT or RIGHT. "
+                                "LEFT/RIGHT = which way to turn to avoid it."
+                            ),
+                        },
+                    ],
+                }],
+            )
+
+            answer = response.content[0].text.strip().upper()
+            logger.info("Vision obstacle check: %s", answer)
+
+            if "CLEAR" in answer:
+                return False, ""
+            elif "LEFT" in answer:
+                return True, "left"
+            elif "RIGHT" in answer:
+                return True, "right"
+            else:
+                # Ambiguous — treat as blocked, turn right by default
+                logger.warning("Ambiguous obstacle response: %r", answer)
+                return True, "right"
+
         except Exception:
-            logger.debug("Proximity check failed", exc_info=True)
-
-        return False
+            logger.debug("Vision obstacle check failed", exc_info=True)
+            return False, ""
 
     def _sync_pose_from_imu(self) -> None:
         """Sync SLAM pose with IMU-fused heading for drift correction.
@@ -800,11 +820,13 @@ class AutonomousExplorer:
         distance = min(distance, self._cfg.step_distance_mm)
 
         # Fresh obstacle scan before driving
-        if self._scan_for_obstacles():
-            logger.info("Obstacle ahead in _drive_toward — turning away")
+        blocked, turn_dir = self._scan_for_obstacles()
+        if blocked:
+            angle = -90.0 if turn_dir == "left" else 90.0
+            logger.info("Obstacle in _drive_toward — turning %s", turn_dir or "right")
             try:
                 self._motor.turn_in_place(
-                    90.0, speed_dps=self._cfg.turn_speed_dps
+                    angle, speed_dps=self._cfg.turn_speed_dps
                 )
             except Exception:
                 pass
