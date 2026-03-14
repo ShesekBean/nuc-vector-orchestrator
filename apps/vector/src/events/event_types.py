@@ -35,6 +35,10 @@ USER_INTENT = "user_intent"
 MESSAGE_RELAYED = "message_relayed"
 OBSTACLE_DETECTED = "obstacle_detected"
 HEAD_ANGLE_COMMAND = "head_angle_command"
+IMU_UPDATE = "imu_update"
+NAV_STATE_CHANGED = "nav_state_changed"
+NAV_RESULT = "nav_result"
+WAYPOINT_SAVED = "waypoint_saved"
 
 
 # --- Payload dataclasses ----------------------------------------------------
@@ -258,6 +262,50 @@ class HeadAngleCommandEvent:
 
     angle_deg: float
     source: str = "head_tracker"  # "head_tracker", "search", "manual"
+
+
+@dataclass(frozen=True)
+class ImuUpdateEvent:
+    """Emitted by ImuPoller with raw IMU sensor data from Vector SDK."""
+
+    accel_x: float  # G
+    accel_y: float  # G
+    accel_z: float  # G
+    gyro_x: float  # deg/s
+    gyro_y: float  # deg/s
+    gyro_z: float  # deg/s
+
+
+@dataclass(frozen=True)
+class NavStateChangedEvent:
+    """Emitted by NavController when navigation state changes."""
+
+    state: str  # "idle", "planning", "navigating", "arrived", "blocked", "mapping"
+    previous_state: str | None = None
+    target_waypoint: str | None = None
+
+
+@dataclass(frozen=True)
+class NavResultEvent:
+    """Emitted by NavController when navigation completes or fails."""
+
+    success: bool
+    message: str
+    target_name: str = ""
+    final_x: float = 0.0
+    final_y: float = 0.0
+    final_theta: float = 0.0
+
+
+@dataclass(frozen=True)
+class WaypointSavedEvent:
+    """Emitted when a waypoint is saved."""
+
+    name: str
+    x: float
+    y: float
+    theta: float
+    is_update: bool = False
 
 
 @dataclass(frozen=True)

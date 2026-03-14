@@ -1030,6 +1030,262 @@ async def media_mic_stop(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "MIC_STOP_FAILED")
 
 
+# ---------------------------------------------------------------------------
+# Navigation routes
+# ---------------------------------------------------------------------------
+
+
+async def nav_status(request: web.Request) -> web.Response:
+    """GET /nav/status — navigation controller status (pose, map, waypoints)."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return web.json_response({"active": False, "message": "Navigation not initialised"})
+
+    try:
+        status_data = await _run_sync(nav.get_status)
+        return web.json_response(status_data)
+    except Exception as exc:
+        logger.exception("Nav status check failed")
+        return _json_error(500, str(exc), "NAV_STATUS_FAILED")
+
+
+async def nav_start(request: web.Request) -> web.Response:
+    """POST /nav/start — start navigation controller (SLAM + mapping).
+
+    Body (optional): {"map": "home"}
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    map_name = body.get("map", "default")
+
+    try:
+        await _run_sync(nav.start, map_name)
+        return web.json_response({"status": "ok", "map": map_name})
+    except Exception as exc:
+        logger.exception("Failed to start navigation")
+        return _json_error(500, str(exc), "NAV_START_FAILED")
+
+
+async def nav_stop(request: web.Request) -> web.Response:
+    """POST /nav/stop — stop navigation controller (saves map)."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        await _run_sync(nav.stop)
+        return web.json_response({"status": "ok"})
+    except Exception as exc:
+        logger.exception("Failed to stop navigation")
+        return _json_error(500, str(exc), "NAV_STOP_FAILED")
+
+
+async def nav_goto(request: web.Request) -> web.Response:
+    """POST /nav/goto — navigate to a named waypoint.
+
+    Body: {"waypoint": "kitchen"} or {"x": 1500, "y": 2000}
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
+    waypoint_name = body.get("waypoint")
+    if waypoint_name:
+        started = await _run_sync(nav.navigate_to_waypoint, waypoint_name)
+        if not started:
+            return _json_error(400, f"Cannot navigate to '{waypoint_name}' — not found or already navigating", "NAV_FAILED")
+        return web.json_response({"status": "ok", "target": waypoint_name})
+
+    x = body.get("x")
+    y = body.get("y")
+    if x is not None and y is not None:
+        started = await _run_sync(nav.navigate_to_position, float(x), float(y))
+        if not started:
+            return _json_error(400, "Cannot navigate — already navigating", "NAV_FAILED")
+        return web.json_response({"status": "ok", "target": f"({x}, {y})"})
+
+    return _json_error(400, "Provide 'waypoint' name or 'x'/'y' coordinates", "MISSING_PARAMS")
+
+
+async def nav_cancel(request: web.Request) -> web.Response:
+    """POST /nav/cancel — cancel current navigation."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    await _run_sync(nav.cancel_navigation)
+    return web.json_response({"status": "ok"})
+
+
+async def nav_waypoint_save(request: web.Request) -> web.Response:
+    """POST /nav/waypoint/save — save current position as a named waypoint.
+
+    Body: {"name": "kitchen", "description": "By the fridge"}
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
+    name = body.get("name")
+    if not name:
+        return _json_error(400, "Missing 'name' field", "MISSING_PARAMS")
+
+    description = body.get("description", "")
+    saved = await _run_sync(nav.save_current_position, name, description)
+
+    if saved:
+        return web.json_response({"status": "ok", "waypoint": name})
+    return _json_error(500, "Failed to save waypoint", "SAVE_FAILED")
+
+
+async def nav_waypoint_delete(request: web.Request) -> web.Response:
+    """POST /nav/waypoint/delete — delete a named waypoint.
+
+    Body: {"name": "kitchen"}
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error(400, "Invalid JSON body", "INVALID_JSON")
+
+    name = body.get("name")
+    if not name:
+        return _json_error(400, "Missing 'name' field", "MISSING_PARAMS")
+
+    # Access waypoint manager through nav controller's internal reference
+    deleted = await _run_sync(nav._waypoint_mgr.delete, name)
+    if deleted:
+        return web.json_response({"status": "ok", "deleted": name})
+    return _json_error(404, f"Waypoint '{name}' not found", "NOT_FOUND")
+
+
+async def nav_waypoints(request: web.Request) -> web.Response:
+    """GET /nav/waypoints — list all saved waypoints."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    waypoints = await _run_sync(nav._waypoint_mgr.list_waypoints)
+    return web.json_response({
+        "waypoints": [
+            {
+                "name": wp.name,
+                "x": round(wp.x, 1),
+                "y": round(wp.y, 1),
+                "theta_deg": round(wp.theta * 57.2958, 1),
+                "description": wp.description,
+            }
+            for wp in waypoints
+        ],
+    })
+
+
+async def nav_maps(request: web.Request) -> web.Response:
+    """GET /nav/maps — list all saved maps."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    maps = await _run_sync(nav._map_store.list_maps)
+    return web.json_response({"maps": maps})
+
+
+async def nav_mapping_start(request: web.Request) -> web.Response:
+    """POST /nav/mapping/start — start passive mapping mode."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    await _run_sync(nav.start_mapping)
+    return web.json_response({"status": "ok", "state": "mapping"})
+
+
+async def nav_mapping_stop(request: web.Request) -> web.Response:
+    """POST /nav/mapping/stop — stop mapping mode and save map."""
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    nav = conn.nav_controller
+    if nav is None:
+        return _json_error(503, "Navigation not initialised", "NAV_UNAVAILABLE")
+
+    await _run_sync(nav.stop_mapping)
+    return web.json_response({"status": "ok", "state": "idle"})
+
+
 async def mode_get(request: web.Request) -> web.Response:
     """GET /mode — get current behavior mode."""
     conn: ConnectionManager = request.app["conn"]
@@ -1092,3 +1348,15 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/media/mic/stop", media_mic_stop)
     app.router.add_get("/mode", mode_get)
     app.router.add_post("/mode", mode_set)
+    # Navigation routes
+    app.router.add_get("/nav/status", nav_status)
+    app.router.add_post("/nav/start", nav_start)
+    app.router.add_post("/nav/stop", nav_stop)
+    app.router.add_post("/nav/goto", nav_goto)
+    app.router.add_post("/nav/cancel", nav_cancel)
+    app.router.add_post("/nav/waypoint/save", nav_waypoint_save)
+    app.router.add_post("/nav/waypoint/delete", nav_waypoint_delete)
+    app.router.add_get("/nav/waypoints", nav_waypoints)
+    app.router.add_get("/nav/maps", nav_maps)
+    app.router.add_post("/nav/mapping/start", nav_mapping_start)
+    app.router.add_post("/nav/mapping/stop", nav_mapping_stop)

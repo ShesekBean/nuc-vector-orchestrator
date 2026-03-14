@@ -44,6 +44,12 @@ class ConnectionManager:
         self._livekit_bridge: Any | None = None
         self._nuc_bus: Any | None = None
         self._follow_pipeline: Any | None = None
+        self._imu_poller: Any | None = None
+        self._imu_fusion: Any | None = None
+        self._visual_slam: Any | None = None
+        self._map_store: Any | None = None
+        self._waypoint_mgr: Any | None = None
+        self._nav_controller: Any | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -101,6 +107,11 @@ class ConnectionManager:
     def follow_pipeline(self) -> Any:
         """FollowPipeline instance, or None if not initialised."""
         return self._follow_pipeline
+
+    @property
+    def nav_controller(self) -> Any:
+        """NavController instance, or None if not initialised."""
+        return self._nav_controller
 
     @property
     def livekit_bridge(self) -> Any:
@@ -164,6 +175,27 @@ class ConnectionManager:
             robot=self._robot,
         )
 
+        # Navigation system
+        from apps.vector.src.planner.imu_fusion import ImuFusion, ImuPoller
+        from apps.vector.src.planner.map_store import MapStore
+        from apps.vector.src.planner.visual_slam import VisualSLAM
+        from apps.vector.src.planner.waypoint_manager import WaypointManager
+        from apps.vector.src.planner.nav_controller import NavController
+
+        self._imu_poller = ImuPoller(self._robot, self._nuc_bus)
+        self._imu_fusion = ImuFusion(self._nuc_bus)
+        self._visual_slam = VisualSLAM(self._nuc_bus)
+        self._map_store = MapStore()
+        self._waypoint_mgr = WaypointManager(self._map_store)
+        self._nav_controller = NavController(
+            slam=self._visual_slam,
+            motor=self._motor_controller,
+            head=self._head_controller,
+            nuc_bus=self._nuc_bus,
+            map_store=self._map_store,
+            waypoint_mgr=self._waypoint_mgr,
+        )
+
         self._connected = True
         logger.info("Connected to Vector successfully")
 
@@ -193,6 +225,12 @@ class ConnectionManager:
 
         logger.info("Disconnecting from Vector...")
         try:
+            if self._nav_controller:
+                self._nav_controller.stop()
+            if self._imu_fusion:
+                self._imu_fusion.stop()
+            if self._imu_poller:
+                self._imu_poller.stop()
             if self._follow_pipeline:
                 self._follow_pipeline.stop()
             if self._motor_controller:
@@ -227,6 +265,12 @@ class ConnectionManager:
         self._audio_client = None
         self._livekit_bridge = None
         self._follow_pipeline = None
+        self._nav_controller = None
+        self._waypoint_mgr = None
+        self._map_store = None
+        self._visual_slam = None
+        self._imu_fusion = None
+        self._imu_poller = None
         self._nuc_bus = None
         logger.info("Disconnected from Vector")
 
