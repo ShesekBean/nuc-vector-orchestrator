@@ -220,7 +220,7 @@ class TestLifecycle:
             patch("apps.vector.src.livekit_bridge.rtc.LocalVideoTrack") as mock_vt,
             patch("apps.vector.src.livekit_bridge.rtc.AudioSource"),
             patch("apps.vector.src.livekit_bridge.rtc.LocalAudioTrack") as mock_at,
-            patch("apps.vector.src.livekit_bridge.rtc.AudioProcessingModule"),
+            patch("apps.vector.src.livekit_bridge.rtc.AudioProcessingModule", create=True),
         ):
             mock_vt.create_video_track.return_value = MagicMock()
             mock_at.create_audio_track.return_value = MagicMock()
