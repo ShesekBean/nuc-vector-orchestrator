@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,8 @@ class ConnectionManager:
         self._robot: Any | None = None
         self._connected = False
         self._mode: str = "quiet"  # "quiet" or "playful"
+        self._control_watchdog: threading.Thread | None = None
+        self._control_watchdog_stop = threading.Event()
 
         # Controllers — created on connect
         self._motor_controller: Any | None = None
@@ -185,7 +188,55 @@ class ConnectionManager:
         )
 
         self._connected = True
+
+        # Start behavior control watchdog — re-requests OVERRIDE_BEHAVIORS
+        # whenever the SDK signals control_lost while we're in quiet mode.
+        self._control_watchdog_stop.clear()
+        self._control_watchdog = threading.Thread(
+            target=self._behavior_control_watchdog,
+            daemon=True,
+            name="behavior-control-watchdog",
+        )
+        self._control_watchdog.start()
+
         logger.info("Connected to Vector successfully")
+
+    def _behavior_control_watchdog(self) -> None:
+        """Background thread: re-request OVERRIDE_BEHAVIORS when control is lost.
+
+        The SDK's BehaviorControl gRPC stream can lose control if another client
+        connects or if the stream hiccups. This watchdog waits for the
+        control_lost_event and immediately re-requests control when in quiet mode.
+        """
+        while not self._control_watchdog_stop.is_set():
+            try:
+                if not self._connected or self._robot is None:
+                    self._control_watchdog_stop.wait(5)
+                    continue
+                # Block until control is lost (or stop is signaled)
+                lost_event = self._robot.conn.control_lost_event
+                # Poll with timeout so we can check stop flag
+                while not self._control_watchdog_stop.is_set():
+                    if lost_event.is_set():
+                        break
+                    self._control_watchdog_stop.wait(1)
+                if self._control_watchdog_stop.is_set():
+                    break
+                if self._mode == "quiet":
+                    logger.warning("Behavior control lost — re-requesting OVERRIDE_BEHAVIORS")
+                    from anki_vector.connection import ControlPriorityLevel
+                    try:
+                        self._robot.conn.request_control(
+                            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+                        )
+                        logger.info("Behavior control re-acquired")
+                    except Exception:
+                        logger.exception("Failed to re-request behavior control")
+                else:
+                    logger.debug("Control lost in playful mode — not re-requesting")
+            except Exception:
+                logger.exception("Behavior control watchdog error")
+                self._control_watchdog_stop.wait(5)
 
     def disconnect(self) -> None:
         """Disconnect from Vector and stop all controllers."""
@@ -193,6 +244,13 @@ class ConnectionManager:
             return
 
         logger.info("Disconnecting from Vector...")
+
+        # Stop behavior control watchdog
+        self._control_watchdog_stop.set()
+        if self._control_watchdog and self._control_watchdog.is_alive():
+            self._control_watchdog.join(timeout=3)
+        self._control_watchdog = None
+
         try:
             if self._follow_pipeline:
                 self._follow_pipeline.stop()
@@ -248,9 +306,6 @@ class ConnectionManager:
         """
         if mode not in ("quiet", "playful"):
             raise ValueError(f"Unknown mode: {mode!r} (expected 'quiet' or 'playful')")
-        if mode == self._mode:
-            logger.info("Already in %s mode", mode)
-            return
         if not self._connected or self._robot is None:
             raise ConnectionError("Not connected to Vector")
 
