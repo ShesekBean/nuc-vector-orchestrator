@@ -274,18 +274,31 @@ class ObstacleMap:
         logger.info("ObstacleMap: cliff triggered")
 
     def _on_imu(self, event: Any) -> None:
-        """Handle IMU update — check for collision (sudden deceleration)."""
+        """Handle IMU update — check for collision (sudden deceleration).
+
+        Vector's treads produce significant vibration during normal driving
+        (easily 3-5G spikes). Only trigger on sustained high lateral accel
+        that indicates actual wall contact.
+        """
         accel_x = getattr(event, "accel_x", 0.0)
         accel_y = getattr(event, "accel_y", 0.0)
         accel_z = getattr(event, "accel_z", 0.0)
 
-        # Collision: sudden high lateral acceleration (>3G)
         import math
         lateral_g = math.hypot(accel_x, accel_y)
-        collision = lateral_g > 3.0
+
+        # Track consecutive high-G samples to filter tread vibration
+        if lateral_g > 8.0:
+            self._imu_high_g_count = getattr(self, "_imu_high_g_count", 0) + 1
+        else:
+            self._imu_high_g_count = 0
+
+        # Collision: 3+ consecutive samples above 8G (real impact, not vibration)
+        collision = self._imu_high_g_count >= 3
 
         # Excessive tilt: Z acceleration significantly different from 1G
-        tilt = abs(accel_z - 1.0) > 0.5
+        # (robot picked up or fallen over)
+        tilt = abs(accel_z) < 0.3 or abs(accel_z) > 1.8
 
         if collision or tilt:
             self.update_imu(collision=collision, tilt_excessive=tilt)
