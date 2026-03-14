@@ -315,13 +315,18 @@ class ConnectionManager:
         self._send_quiet_intent()
 
     def start_monitor(self) -> None:
-        """Start the connection monitor — connects in a background thread."""
+        """Start the connection monitor — connects with retry in background."""
         import threading
+        import time as _time
         def _monitor():
-            try:
-                self.connect()
-            except Exception:
-                logger.exception("Initial connection failed — will retry on next request")
+            delay = 5.0
+            while not self._connected:
+                try:
+                    self.connect()
+                except Exception:
+                    logger.warning("Connection failed — retrying in %.0fs", delay)
+                    _time.sleep(delay)
+                    delay = min(delay * 1.5, 30.0)
         self._monitor_thread = threading.Thread(
             target=_monitor, name="conn-monitor", daemon=True
         )
