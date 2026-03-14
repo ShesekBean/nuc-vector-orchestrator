@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-ChatGPT HTTP proxy with persistent browser.
+ChatGPT HTTP proxy with persistent browser and async job queue.
 
-Keeps a Chromium browser open between queries so responses are fast (~10-20s
-instead of 2-4min). The browser launches on first request and stays alive.
+Keeps a Chromium browser open between queries. Uses an async pattern
+so OpenClaw's short exec timeouts don't kill the request:
 
-POST /query  {"message": "..."}  →  {"response": "..."}
-GET  /health                     →  {"status": "ok", "browser": "running"|"idle"}
+POST /query  {"message": "..."}  →  {"job_id": "abc123"}        (instant)
+GET  /result/abc123              →  {"status":"done","response":"..."} (poll)
+GET  /health                     →  {"status": "ok", ...}
 """
 
 import json
 import os
 import sys
 import time
+import uuid
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -28,9 +30,12 @@ _playwright = None
 _context = None
 _page = None
 
+# Job queue for async results
+_jobs = {}  # job_id -> {"status": "pending"|"done"|"error", "response": str}
+_jobs_lock = threading.Lock()
+
 
 def _clean_locks():
-    """Remove stale browser lock files."""
     for lock in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
         path = os.path.join(PROFILE_DIR, lock)
         if os.path.exists(path):
@@ -41,16 +46,13 @@ def _clean_locks():
 
 
 def _ensure_browser():
-    """Launch browser if not already running. Returns the page."""
     global _playwright, _context, _page
 
     if _page is not None:
         try:
-            # Quick check that page is still alive
             _page.title()
             return _page
         except Exception:
-            # Browser died, clean up
             _shutdown_browser()
 
     os.makedirs(PROFILE_DIR, exist_ok=True)
@@ -71,7 +73,6 @@ def _ensure_browser():
     )
     _page = _context.pages[0] if _context.pages else _context.new_page()
 
-    # Navigate to ChatGPT and wait for it to be ready
     _page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30_000)
     _page.wait_for_selector(
         '#prompt-textarea, .ProseMirror[contenteditable="true"]',
@@ -82,7 +83,6 @@ def _ensure_browser():
 
 
 def _shutdown_browser():
-    """Clean up browser resources."""
     global _playwright, _context, _page
     try:
         if _context:
@@ -100,7 +100,6 @@ def _shutdown_browser():
 
 
 def _start_new_chat(page):
-    """Click 'New chat' to start a fresh conversation."""
     try:
         new_chat = page.query_selector(
             'a[href="/"], button[data-testid="create-new-chat-button"], '
@@ -123,22 +122,20 @@ def _start_new_chat(page):
         page.wait_for_timeout(2000)
 
 
-def send_message(message):
+def _send_message_impl(message):
     """Send a message to ChatGPT using the persistent browser."""
     with _browser_lock:
         page = _ensure_browser()
 
-        # Navigate to new chat (skip if input is already visible and empty)
+        # Navigate to new chat (skip if input already visible)
         input_el = page.query_selector('#prompt-textarea, .ProseMirror[contenteditable="true"]')
         if not input_el:
             _start_new_chat(page)
         else:
-            # Clear any leftover text in the input
             input_el.click()
             page.keyboard.press("Control+a")
             page.keyboard.press("Backspace")
 
-        # Find the input
         input_sel = '#prompt-textarea, .ProseMirror[contenteditable="true"]'
         try:
             input_el = page.wait_for_selector(input_sel, timeout=10_000)
@@ -147,12 +144,10 @@ def send_message(message):
             if not input_el:
                 raise RuntimeError("Could not find message input")
 
-        # Count existing assistant messages
         pre_count = len(
             page.query_selector_all('[data-message-author-role="assistant"]')
         )
 
-        # Type and send
         input_el.click()
         page.keyboard.type(message, delay=5)
         page.wait_for_timeout(300)
@@ -165,23 +160,18 @@ def send_message(message):
         else:
             page.keyboard.press("Enter")
 
-        # Wait for response
-        response = _wait_for_response(page, pre_count)
-        return response
+        return _wait_for_response(page, pre_count)
 
 
 def _wait_for_response(page, pre_count):
-    """Wait for ChatGPT to finish and extract the response text."""
     start = time.time()
 
-    # Wait for a new assistant message
     while time.time() - start < 30:
         msgs = page.query_selector_all('[data-message-author-role="assistant"]')
         if len(msgs) > pre_count:
             break
         page.wait_for_timeout(500)
 
-    # Wait for generation to finish (stop button disappears when done)
     while time.time() - start < TIMEOUT_SECONDS:
         stop_btn = page.query_selector(
             'button[data-testid="stop-button"], button[aria-label="Stop generating"]'
@@ -195,7 +185,6 @@ def _wait_for_response(page, pre_count):
                 break
         page.wait_for_timeout(300)
 
-    # Extract last assistant message
     msgs = page.query_selector_all('[data-message-author-role="assistant"]')
     if not msgs:
         return "(No response received)"
@@ -207,11 +196,47 @@ def _wait_for_response(page, pre_count):
     return last_msg.inner_text().strip()
 
 
+def _run_job(job_id, message):
+    """Run a ChatGPT query in a background thread."""
+    try:
+        start = time.time()
+        response = _send_message_impl(message)
+        elapsed = time.time() - start
+        print(f"[query] {elapsed:.1f}s: {message[:60]}...")
+        with _jobs_lock:
+            _jobs[job_id] = {"status": "done", "response": response}
+    except Exception as e:
+        print(f"[error] {e}")
+        _shutdown_browser()
+        with _jobs_lock:
+            _jobs[job_id] = {"status": "error", "response": str(e)[:300]}
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             browser_status = "running" if _page is not None else "idle"
-            self._respond(200, {"status": "ok", "browser": browser_status})
+            with _jobs_lock:
+                pending = sum(1 for j in _jobs.values() if j["status"] == "pending")
+            self._respond(200, {
+                "status": "ok",
+                "browser": browser_status,
+                "pending_jobs": pending,
+            })
+        elif self.path.startswith("/result/"):
+            job_id = self.path[8:]
+            with _jobs_lock:
+                job = _jobs.get(job_id)
+            if not job:
+                self._respond(404, {"error": "job not found"})
+            elif job["status"] == "pending":
+                self._respond(202, {"status": "pending", "message": "Still working..."})
+            else:
+                self._respond(200, job)
+                # Clean up old jobs
+                with _jobs_lock:
+                    if job_id in _jobs and _jobs[job_id]["status"] != "pending":
+                        del _jobs[job_id]
         else:
             self._respond(404, {"error": "not found"})
 
@@ -234,17 +259,16 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(400, {"error": "message required"})
             return
 
-        try:
-            start = time.time()
-            response = send_message(message)
-            elapsed = time.time() - start
-            print(f"[query] {elapsed:.1f}s: {message[:60]}...")
-            self._respond(200, {"response": response})
-        except Exception as e:
-            print(f"[error] {e}")
-            # Try to recover by killing the browser
-            _shutdown_browser()
-            self._respond(502, {"error": str(e)[:300]})
+        # Create job and run in background
+        job_id = uuid.uuid4().hex[:12]
+        with _jobs_lock:
+            _jobs[job_id] = {"status": "pending", "response": ""}
+
+        thread = threading.Thread(target=_run_job, args=(job_id, message), daemon=True)
+        thread.start()
+
+        # Return immediately with job ID
+        self._respond(200, {"job_id": job_id})
 
     def _respond(self, code, data):
         body = json.dumps(data).encode()
@@ -252,10 +276,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            pass  # Client disconnected, ignore
 
     def log_message(self, fmt, *args):
-        pass  # Suppress default HTTP logs
+        pass
 
 
 def main():
@@ -263,7 +290,7 @@ def main():
         os.environ["DISPLAY"] = ":0"
 
     print(f"[chatgpt-server] Starting on {BIND_HOST}:{BIND_PORT}")
-    print(f"[chatgpt-server] Browser will launch on first query")
+    print(f"[chatgpt-server] Async mode: POST /query returns job_id, GET /result/<id> to poll")
 
     server = HTTPServer((BIND_HOST, BIND_PORT), Handler)
     try:
