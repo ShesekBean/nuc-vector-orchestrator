@@ -228,6 +228,7 @@ class ConnectionManager:
             nuc_bus=self._nuc_bus,
             nav_controller=self._nav_controller,
             intercom=self._intercom,
+            robot=self._robot,
         )
 
         # Auto-charger (starts monitoring immediately)

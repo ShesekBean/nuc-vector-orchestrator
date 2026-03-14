@@ -128,6 +128,7 @@ class AutonomousExplorer:
         nuc_bus: NucEventBus,
         nav_controller: NavController,
         intercom: Intercom,
+        robot: Any = None,
         config: ExploreConfig | None = None,
     ) -> None:
         self._slam = slam
@@ -137,6 +138,7 @@ class AutonomousExplorer:
         self._bus = nuc_bus
         self._nav = nav_controller
         self._intercom = intercom
+        self._robot = robot
         self._cfg = config or ExploreConfig()
 
         self._state = ExploreState.IDLE
@@ -149,6 +151,17 @@ class AutonomousExplorer:
         self._last_room_y: float = 0.0
         self._last_prompt_time: float = 0.0
         self._rooms_discovered: int = 0
+
+    def _say(self, text: str) -> None:
+        """Have Vector say something via built-in TTS (non-blocking)."""
+        if self._robot is None:
+            return
+        def _speak():
+            try:
+                self._robot.behavior.say_text(text)
+            except Exception:
+                logger.debug("say_text failed: %s", text)
+        threading.Thread(target=_speak, name="explorer-tts", daemon=True).start()
 
     @property
     def state(self) -> ExploreState:
@@ -334,6 +347,9 @@ class AutonomousExplorer:
         self._state = ExploreState.ASKING_ROOM_NAME
         self._rooms_discovered += 1
 
+        # Voice feedback
+        self._say("I found a new room! Let me take a look around.")
+
         # Send photo of what Vector sees
         self._intercom.send_photo(
             f"I'm in a new area (room #{self._rooms_discovered})! "
@@ -349,16 +365,18 @@ class AutonomousExplorer:
         if room_name:
             # Save waypoint with the name Ophir gave
             self._nav.save_current_position(room_name)
+            self._say(f"Got it! This is the {room_name}.")
             self._intercom.send_text(
-                f"Got it! Saved this spot as '{room_name}'."
+                f"Finished mapping room! Saved this spot as '{room_name}'."
             )
             logger.info("Room named: '%s' at (%.0f, %.0f)", room_name, pose.x, pose.y)
         else:
             # No reply — save with auto-name
             auto_name = f"room-{self._rooms_discovered}"
             self._nav.save_current_position(auto_name)
+            self._say(f"Finished mapping room {self._rooms_discovered}.")
             self._intercom.send_text(
-                f"No reply received. Saved as '{auto_name}' — "
+                f"Finished mapping room! Saved as '{auto_name}' — "
                 "you can rename it later!"
             )
             logger.info("Auto-named room '%s' at (%.0f, %.0f)", auto_name, pose.x, pose.y)
