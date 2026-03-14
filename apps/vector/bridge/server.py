@@ -101,16 +101,6 @@ def main(argv: list[str] | None = None) -> int:
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
 
-    # Ensure clean SDK disconnect on SIGTERM/SIGINT so Vector's gRPC streams
-    # are properly closed (prevents AudioFeed stall on next connection).
-    def _graceful_shutdown(signum, frame):
-        signame = signal.Signals(signum).name
-        logger.info("Received %s — shutting down gracefully", signame)
-        conn.disconnect()
-        raise SystemExit(0)
-
-    signal.signal(signal.SIGTERM, _graceful_shutdown)
-
     # Bind to localhost + Docker bridge IP so OpenClaw container can reach us
     import asyncio
 
@@ -129,9 +119,23 @@ def main(argv: list[str] | None = None) -> int:
         if not sites:
             logger.error("No addresses bound — exiting")
             return
+
+        # Use asyncio event for clean shutdown on SIGTERM/SIGINT
+        loop = asyncio.get_running_loop()
+        stop_event = asyncio.Event()
+
+        def _signal_handler(signum):
+            signame = signal.Signals(signum).name
+            logger.info("Received %s — initiating graceful shutdown", signame)
+            stop_event.set()
+
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, _signal_handler, sig)
+
         try:
-            await asyncio.Event().wait()  # run forever
+            await stop_event.wait()
         finally:
+            # on_shutdown hooks run here (including conn.disconnect)
             await runner.cleanup()
 
     asyncio.run(_run())

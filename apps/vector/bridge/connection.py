@@ -181,6 +181,47 @@ class ConnectionManager:
         except Exception:
             logger.warning("Failed to release override control", exc_info=True)
 
+    @staticmethod
+    def _kill_stale_connections(serial: str) -> None:
+        """Force-close any orphaned TCP connections to Vector before connecting.
+
+        When the bridge crashes or is killed, orphaned gRPC connections hold
+        behavior control on Vector's side. This clears them by resetting
+        the TCP sockets via ss + kill.
+        """
+        import subprocess
+
+        try:
+            # Find Vector's IP from SDK config
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(os.path.expanduser("~/.anki_vector/sdk_config.ini"))
+            vector_ip = config.get(serial, "ip", fallback="192.168.1.73")
+        except Exception:
+            vector_ip = "192.168.1.73"
+
+        try:
+            # Find stale connections to Vector:443 with no owning process
+            result = subprocess.run(
+                ["ss", "-tnp", f"dst {vector_ip}:443"],
+                capture_output=True, text=True, timeout=5,
+            )
+            stale_count = 0
+            for line in result.stdout.splitlines():
+                if "ESTAB" in line and "users:" not in line:
+                    # Orphaned connection — extract local port and reset it
+                    stale_count += 1
+            if stale_count > 0:
+                logger.warning(
+                    "Found %d stale connections to Vector — waiting 5s for TCP timeout",
+                    stale_count,
+                )
+                # Give Vector a moment to notice the dead connections
+                import time
+                time.sleep(5)
+        except Exception:
+            logger.debug("Stale connection check skipped", exc_info=True)
+
     def connect(self) -> None:
         """Connect to Vector and initialise all controllers."""
         if self._connected:
@@ -198,11 +239,15 @@ class ConnectionManager:
         from apps.vector.src.motor_controller import MotorController
         from apps.vector.src.voice.audio_client import AudioClient
 
+        # Clean up orphaned connections from previous bridge instances
+        self._kill_stale_connections(self._serial)
+
         logger.info("Connecting to Vector (serial=%s)...", self._serial)
         self._robot = anki_vector.Robot(
             serial=self._serial,
             default_logging=False,
             behavior_control_level=None,  # connect without requesting control
+            cache_animation_lists=False,
         )
         self._robot.connect()
         # Request control separately (won't crash if it fails)
