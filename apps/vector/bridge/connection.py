@@ -58,6 +58,7 @@ class ConnectionManager:
         self._obstacle_map: Any | None = None
         self._vision_checker: Any | None = None
         self._floor_proximity: Any | None = None
+        self._control_manager: Any | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -132,6 +133,11 @@ class ConnectionManager:
         return self._auto_charger
 
     @property
+    def control_manager(self) -> Any:
+        """ControlManager singleton."""
+        return self._control_manager
+
+    @property
     def obstacle_map(self) -> Any:
         """ObstacleMap instance, or None if not initialised."""
         return self._obstacle_map
@@ -164,26 +170,26 @@ class ConnectionManager:
         ``release_override_control()`` when done — Vector's firmware
         defaults to Wait, so releasing returns to idle automatically.
         """
-        if not self._connected or self._robot is None:
-            return
-        try:
-            from anki_vector.connection import ControlPriorityLevel
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-            )
-            logger.info("Override behavior control granted")
-        except Exception:
-            logger.warning("Failed to request override control", exc_info=True)
+        if self._control_manager is not None:
+            self._control_manager.acquire("bridge")
+        elif self._robot is not None:
+            try:
+                from anki_vector.connection import ControlPriorityLevel
+                self._robot.conn.request_control(
+                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+                )
+            except Exception:
+                logger.warning("Failed to request override control", exc_info=True)
 
     def release_override_control(self) -> None:
         """Release override priority — Vector returns to firmware Wait state."""
-        if not self._connected or self._robot is None:
-            return
-        try:
-            self._robot.conn.release_control()
-            logger.info("Released override control — Vector returns to Wait")
-        except Exception:
-            logger.warning("Failed to release override control", exc_info=True)
+        if self._control_manager is not None:
+            self._control_manager.release("bridge")
+        elif self._robot is not None:
+            try:
+                self._robot.conn.release_control()
+            except Exception:
+                logger.warning("Failed to release override control", exc_info=True)
 
     def connect(self) -> None:
         """Connect to Vector and initialise all controllers."""
@@ -210,6 +216,11 @@ class ConnectionManager:
             cache_animation_lists=False,
         )
         self._robot.connect()
+
+        # Centralized control manager — all services use this instead of
+        # calling robot.conn.request_control() directly
+        from apps.vector.src.control_manager import ControlManager
+        self._control_manager = ControlManager(self._robot)
 
         self._nuc_bus = NucEventBus()
         self._motor_controller = MotorController(self._robot, self._nuc_bus)
@@ -277,7 +288,7 @@ class ConnectionManager:
             map_store=self._map_store,
             waypoint_mgr=self._waypoint_mgr,
             obstacle_map=self._obstacle_map,
-            robot=self._robot,
+            control_manager=self._control_manager,
         )
 
         # Shared obstacle map (fuses all detection tiers)
@@ -316,6 +327,7 @@ class ConnectionManager:
             obstacle_map=self._obstacle_map,
             vision_checker=self._vision_checker,
             floor_proximity=self._floor_proximity,
+            control_manager=self._control_manager,
         )
 
         # Home Guardian (patrol & security system)

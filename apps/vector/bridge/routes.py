@@ -1380,41 +1380,42 @@ async def charger_save(request: web.Request) -> web.Response:
 
     def _charger_maneuver():
         import anki_vector
-        from anki_vector.connection import ControlPriorityLevel
 
         robot = conn.robot
         batt = robot.get_battery_state()
         if not batt.is_on_charger_platform:
             raise RuntimeError("Vector is not on the charger")
 
-        # Override control to take over from charger-sit behavior
-        robot.conn.request_control(
-            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-        )
+        # Acquire control via centralized manager
+        ctrl = conn.control_manager
+        if ctrl:
+            ctrl.acquire("charger_save")
+        else:
+            conn.request_override_control()
+
         try:
             import time as _time
-            # Drive off charger (SDK call — only way to undock)
             robot.behavior.drive_off_charger()
             _time.sleep(3.0)
             robot.motors.set_wheel_motors(0, 0)
             _time.sleep(0.5)
 
-            # Turn 180° to face the charger
             robot.behavior.turn_in_place(anki_vector.util.degrees(180))
             _time.sleep(3.0)
             robot.motors.set_wheel_motors(0, 0)
             _time.sleep(0.5)
 
-            # Save waypoint facing the charger
             nav.save_current_position("charger")
 
-            # Turn 180° again so Vector faces AWAY from charger (ready to explore)
             robot.behavior.turn_in_place(anki_vector.util.degrees(180))
             _time.sleep(3.0)
             robot.motors.set_wheel_motors(0, 0)
             _time.sleep(0.5)
         finally:
-            robot.conn.release_control()
+            if ctrl:
+                ctrl.release("charger_save")
+            else:
+                conn.release_override_control()
 
     try:
         await _run_sync(_charger_maneuver)

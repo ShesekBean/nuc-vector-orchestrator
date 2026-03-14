@@ -139,6 +139,7 @@ class AutonomousExplorer:
         obstacle_map: Any = None,
         vision_checker: Any = None,
         floor_proximity: Any = None,
+        control_manager: Any = None,
         config: ExploreConfig | None = None,
     ) -> None:
         self._slam = slam
@@ -154,6 +155,7 @@ class AutonomousExplorer:
         self._obstacle_map = obstacle_map
         self._vision_checker = vision_checker
         self._floor_proximity = floor_proximity
+        self._control_mgr = control_manager
         self._cfg = config or ExploreConfig()
 
         self._state = ExploreState.IDLE
@@ -184,27 +186,27 @@ class AutonomousExplorer:
         threading.Thread(target=_speak, name="explorer-tts", daemon=True).start()
 
     def _request_control(self) -> None:
-        """Request override behavior control so we can interrupt charger sit etc."""
-        if self._robot is None:
-            return
-        try:
-            from anki_vector.connection import ControlPriorityLevel
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-            )
-            logger.info("Override behavior control granted for exploration")
-        except Exception:
-            logger.warning("Failed to request override control", exc_info=True)
+        """Request behavior control via centralized ControlManager."""
+        if self._control_mgr is not None:
+            self._control_mgr.acquire("explorer")
+        elif self._robot is not None:
+            try:
+                from anki_vector.connection import ControlPriorityLevel
+                self._robot.conn.request_control(
+                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+                )
+            except Exception:
+                logger.warning("Failed to request control", exc_info=True)
 
     def _release_control(self) -> None:
-        """Release override priority back to default."""
-        if self._robot is None:
-            return
-        try:
-            self._robot.conn.release_control()
-            logger.info("Released override control")
-        except Exception:
-            pass
+        """Release behavior control via centralized ControlManager."""
+        if self._control_mgr is not None:
+            self._control_mgr.release("explorer")
+        elif self._robot is not None:
+            try:
+                self._robot.conn.release_control()
+            except Exception:
+                pass
 
     def _drive_off_charger(self) -> None:
         """Drive off charger if Vector is currently docked.

@@ -57,6 +57,7 @@ class FollowPipeline:
         robot: Any = None,
         obstacle_map: Any = None,
         floor_proximity: Any = None,
+        control_manager: Any = None,
     ) -> None:
         self._camera = camera_client
         self._motor = motor_controller
@@ -65,6 +66,7 @@ class FollowPipeline:
         self._robot = robot
         self._obstacle_map = obstacle_map
         self._floor_proximity = floor_proximity
+        self._control_mgr = control_manager
 
         self._detector = PersonDetector(event_bus=nuc_bus)
         self._tracker = KalmanTracker()
@@ -263,19 +265,35 @@ class FollowPipeline:
                 time.sleep(sleep_time)
 
     def _request_control(self) -> None:
-        """Request SDK behavior control for motor/speech access."""
-        if self._robot is None:
-            return
-        try:
-            from anki_vector.connection import ControlPriorityLevel
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-            )
-            logger.info("Behavior control acquired for follow pipeline")
-        except Exception:
-            logger.exception("Failed to request behavior control")
+        """Request behavior control via centralized ControlManager."""
+        if self._control_mgr is not None:
+            self._control_mgr.acquire("follow")
+        elif self._robot is not None:
+            try:
+                from anki_vector.connection import ControlPriorityLevel
+                self._robot.conn.request_control(
+                    behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+                )
+            except Exception:
+                logger.exception("Failed to request behavior control")
 
     def _release_control(self) -> None:
+        """Release behavior control via centralized ControlManager."""
+        if self._control_mgr is not None:
+            self._control_mgr.release("follow")
+            # Also re-send quiet intent
+            if self._robot is not None:
+                try:
+                    import urllib.request, urllib.parse
+                    serial = getattr(self._robot, '_serial', '0dd1cdcf')
+                    url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
+                        "serial": serial, "intent": "intent_imperative_quiet",
+                    })
+                    with urllib.request.urlopen(url, timeout=5) as resp:
+                        resp.read()
+                except Exception:
+                    pass
+            return
         """Release SDK behavior control — Vector returns to firmware Wait."""
         if self._robot is None:
             return
