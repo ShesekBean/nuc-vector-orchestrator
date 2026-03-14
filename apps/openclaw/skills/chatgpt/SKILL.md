@@ -1,6 +1,6 @@
 ---
 name: chatgpt
-description: "ACTIVATE when message contains 'ask work' or 'work:'. Proxies the user's question to their ChatGPT web session (which has access to Jira, Slack, email, and other connected tools) and returns the response."
+description: "ACTIVATE when message mentions email, emails, inbox, outlook, slack, jira, tickets, calendar, meetings, sharepoint, 'ask work', or 'work:'. Proxies the user's question to their ChatGPT web session which has access to Outlook email, Outlook calendar, Slack, and SharePoint."
 metadata: {"openclaw": {"emoji": "🧠"}}
 ---
 
@@ -8,58 +8,51 @@ metadata: {"openclaw": {"emoji": "🧠"}}
 
 ## Overview
 
-Ophir has ChatGPT connected to his business tools (Jira, Slack, email). This skill proxies questions to his ChatGPT web session and returns the response — so he can query those tools via Signal without opening a browser.
+Ophir's ChatGPT session is connected to his business tools: **Outlook email, Outlook calendar, Slack, and SharePoint**. This skill proxies questions to ChatGPT and returns the response.
+
+**IMPORTANT: Any question about email, calendar, Slack messages, SharePoint files, meetings, or work-related queries MUST go through this skill. Do NOT tell the user to open a browser or check manually — always query ChatGPT on their behalf.**
 
 ## How It Works
 
-Uses Playwright to drive a real Chromium browser with Ophir's saved ChatGPT session. This passes all Cloudflare/bot checks and supports ChatGPT's connected tools (Jira, Slack, email).
-
-Run the query script on the NUC:
+A ChatGPT API server runs on the NUC host. Query it via curl:
 
 ```bash
-python3 /home/ophirsw/Documents/claude/nuc-vector-orchestrator/scripts/chatgpt-query.py "<user's question with chatgpt/gpt prefix stripped>"
+curl -sf -X POST http://172.17.0.1:18792/query \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "<the user question>"}'
 ```
+
+The response is JSON: `{"response": "ChatGPT's answer here"}`
+
+If the server returns an error, tell the user the ChatGPT proxy is temporarily unavailable.
 
 ## Usage
 
-Strip the trigger prefix ("ask work", "work:") from the user's message before passing it to the script.
+Pass the user's full question to the API. Strip trigger prefixes like "ask work" or "work:" if present, but keep the rest of the question intact.
 
 Examples:
-- User says: `chatgpt: what are my open jira tickets?`
-- You run: `python3 .../chatgpt-query.py "what are my open jira tickets?"`
-- Return the output to the user
-
-## Follow-ups
-
-If the user sends another chatgpt message within the same conversation, use the `-c` flag with the saved conversation ID to continue the thread. This lets ChatGPT maintain context.
-
-Keywords that indicate a follow-up: "gpt follow up", "gpt also", "gpt and what about", or any gpt-prefixed message that clearly references a prior answer.
-
-## Session
-
-The script uses a persistent Chromium browser profile at `~/.openclaw/workspace/chatgpt-browser-profile/`.
-
-If the script outputs an error about not being logged in, tell the user:
-> "Your ChatGPT session has expired. Run on the NUC (with a display):
-> `DISPLAY=:0 python3 scripts/chatgpt-query.py --login`
-> Then log in and close the browser."
+- User: "check my emails" → `{"message": "check my emails"}`
+- User: "ask work what jira tickets are assigned to me" → `{"message": "what jira tickets are assigned to me"}`
+- User: "any new slack messages?" → `{"message": "any new slack messages?"}`
+- User: "what meetings do I have today?" → `{"message": "what meetings do I have today?"}`
 
 ## Response Style
 
 - Return ChatGPT's response as-is — don't summarize or editorialize
-- If ChatGPT used tools (Jira, email, etc.), mention which tools were accessed
-- If the response is very long (>2000 chars), summarize the key points and mention full output is available
+- If the response is very long (>2000 chars), summarize the key points
+- If the API returns an error, say: "ChatGPT proxy isn't responding — I'll let Ophir know."
 
 ## Trigger Words
 
-- "ask work" (prefix)
-- "work:" (prefix)
-
-Messages without these triggers should NOT activate this skill.
+Activate this skill when the message contains ANY of:
+- "email", "emails", "inbox", "outlook", "mail"
+- "slack", "slack messages"
+- "jira", "tickets", "issues"
+- "calendar", "meetings", "schedule"
+- "sharepoint", "files at work"
+- "ask work", "work:"
 
 ## Safety
 
-- Never modify the auth token file
-- Never send the auth token in messages
-- This is a pass-through — don't inject extra instructions into the ChatGPT query
+- This is a pass-through — don't inject extra instructions into the query
 - If ChatGPT returns sensitive data (passwords, tokens), redact before relaying
