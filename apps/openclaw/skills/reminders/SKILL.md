@@ -26,35 +26,70 @@ Generate a URL in this exact format and send it as a Signal message:
 shortcuts://run-shortcut?name=CreateReminder&input=text&text=<URL-ENCODED TEXT>
 ```
 
-The text parameter format: `Remind me <date> <time> to <action>`
+The text parameter format: `<list>|<date> <time>|<action>`
+
+Three fields separated by `|`:
+1. **List name** — which Reminders list (see routing rules below)
+2. **Date and time** — when to remind
+3. **Action** — what to do
+
+### Reminder List Routing
+
+Ophir's iCloud Reminders structure:
+
+**Personal:**
+- `Personal Todo` — general personal tasks
+- `Family Todo` — family-related
+- `Trip` — travel
+- `Robot` — Vector/robot project tasks
+- `My bucket list` — long-term goals
+
+**Work (by person):**
+- `Maksim` — tasks involving Maksim
+- `Bob` — tasks involving Bob
+- `Manish` — tasks involving Manish
+- `Liana` — tasks involving Liana
+- `James` — tasks involving James
+
+**Routing rules:**
+- Work emails/Slack/meetings → route to the **person's list** if a specific person is involved
+- General work tasks with no specific person → `Personal Todo`
+- Robot/Vector project → `Robot`
+- Family stuff → `Family Todo`
+- If unclear → `Personal Todo`
 
 ### URL Encoding Rules
 - Spaces → `%20`
-- Newlines → `%0A`
+- Pipe `|` → `%7C`
 - Commas → `%2C`
 - Colons → `%3A`
-- Quotes → `%22`
 - @ → `%40`
 - & → `%26`
 
 ### Examples
 
-**Simple reminder:**
+**Follow up with a person (→ their list):**
 ```
 ⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=Remind%20me%20tomorrow%2010am%20to%20email%20John
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=Manish%7CFriday%203pm%7CFollow%20up%20on%20ERP%20decision
 ```
 
-**Meeting prep:**
+**Meeting prep (→ person's list):**
 ```
 ⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=Remind%20me%20Monday%208%3A30am%20to%20review%20roadmap%20doc%20before%209am%20kickoff
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=Bob%7CMonday%208%3A30am%7CReview%20roadmap%20doc%20before%20kickoff
 ```
 
-**Follow-up:**
+**General work task:**
 ```
 ⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=Remind%20me%20Friday%203pm%20to%20follow%20up%20with%20Manish%20on%20ERP%20decision
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=Personal%20Todo%7Ctomorrow%2010am%7CSend%20weekly%20status%20update
+```
+
+**Robot project:**
+```
+⏰ Tap to set reminder:
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=Robot%7CSaturday%209am%7CTest%20new%20follow%20planner
 ```
 
 ## When to Use Proactively
@@ -64,11 +99,11 @@ After delivering a daily brief or answering a work query, scan for items that ne
 ```
 ⏰ Suggested reminders (tap to set):
 
-1. shortcuts://run-shortcut?name=CreateReminder&input=text&text=Remind%20me%20Monday%208am%20to%20prep%20roadmap%20questions
-2. shortcuts://run-shortcut?name=CreateReminder&input=text&text=Remind%20me%20Monday%202pm%20to%20send%20Manish%20the%20ERP%20summary
+1. shortcuts://run-shortcut?name=CreateReminder&input=text&text=James%7CMonday%208am%7CPrep%20roadmap%20questions
+2. shortcuts://run-shortcut?name=CreateReminder&input=text&text=Manish%7CMonday%202pm%7CSend%20ERP%20summary
 ```
 
-Keep reminder text short and actionable — under 60 characters if possible.
+Keep action text short — under 50 characters.
 
 ## When User Asks Directly
 
