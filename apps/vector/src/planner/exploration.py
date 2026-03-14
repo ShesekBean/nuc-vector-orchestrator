@@ -503,7 +503,10 @@ class AutonomousExplorer:
                         )
                     except Exception:
                         pass
-                    time.sleep(0.5)
+                    time.sleep(1.0)
+                    # Invalidate stale vision so next check is fresh
+                    if self._obstacle_map is not None:
+                        self._obstacle_map.update_vision(blocked=False)
                     continue
 
                 # Drive toward frontier
