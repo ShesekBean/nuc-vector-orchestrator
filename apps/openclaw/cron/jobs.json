@@ -1,8 +1,5 @@
-{
-  "version": 1,
-  "jobs": [
-    {
-      "id": "swim-reminder",
+Updated work-daily-prep: sessionTarget = persistent
+m-reminder",
       "name": "Morning swim push",
       "enabled": true,
       "createdAtMs": 1772257198837,
@@ -269,13 +266,13 @@
       "name": "Daily work prep via ChatGPT",
       "enabled": true,
       "createdAtMs": 1773523654020,
-      "updatedAtMs": 1773525843474,
+      "updatedAtMs": 1773527095591,
       "schedule": {
         "kind": "cron",
         "expr": "27 6 * * 1-5",
         "tz": "America/Los_Angeles"
       },
-      "sessionTarget": "isolated",
+      "sessionTarget": "persistent",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
