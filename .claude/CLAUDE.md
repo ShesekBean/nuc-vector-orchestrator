@@ -385,14 +385,29 @@ Without wire-pod running, vic-gateway fails → fault code 921 → cascade crash
 
 ---
 
-## MD File Consistency Rule
+## Code + Docs Must Ship Together
 
-**CRITICAL: Whenever you modify ANY `.md` file, cross-check for contradictions across ALL related MD files before committing.**
+**CRITICAL: Every code push MUST include documentation updates in the same commit or immediately after.**
 
-Checklist:
-1. Search the repo for any other MD file that mentions the same topic
-2. Verify all claims are consistent
-3. Fix any contradictions in the same commit
+When you add, change, or remove functionality:
+1. Update `REPO_MAP.md` if files were added/removed/renamed
+2. Update `docs/00-project-overview.md` if architecture, pipelines, or APIs changed
+3. Update relevant `SKILL.md` files if bridge endpoints were added/changed (workspace + sandbox sync)
+4. Update `.claude/CLAUDE.md` if hardware specs, safety rules, or agent behavior changed (with Ophir's approval)
+5. Cross-check ALL `.md` files that mention the same topic — fix contradictions in the same commit
+6. Search: `grep -r "<feature keyword>" docs/ REPO_MAP.md .claude/ apps/openclaw/skills/`
+
+**Never push code without updating docs. If you forget, fix it before moving on.**
+
+## CLAUDE.md Improvement Process
+
+**At the end of each working day**, the Orchestrator should:
+1. Review lessons learned, new patterns, and behavioral insights from the day's work
+2. Draft improvements to `.claude/CLAUDE.md` as a PR (branch: `claude-md-update-YYYY-MM-DD`)
+3. Push the PR for Ophir to review and approve on GitHub
+4. Do NOT commit CLAUDE.md changes directly to main — always use a PR for Ophir's review
+
+This ensures CLAUDE.md stays current without bypassing Ophir's oversight.
 
 ---
 
