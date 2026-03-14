@@ -142,7 +142,7 @@ Vector mic → Porcupine PV wake word → wire-pod (Vosk STT)
 - **wire-pod** (`wire-pod.service`, root): Replaces Anki cloud. Handles wake word detection, STT (Vosk), and intent routing.
 - **Voice proxy** (`scripts/openclaw-voice-proxy.py`): Standalone script bridging wire-pod to OpenClaw via OpenAI-compatible API. Serializes requests to prevent double-trigger abort. 60s timeout for tool-heavy queries.
 - **Built-in intents disabled**: All wire-pod intents set to `requiresexact=True` in `en-US.json` — conversational queries route to OpenClaw, not intercepted by built-in handlers.
-- **Quiet mode**: Bridge releases SDK behavior control, sends `intent_imperative_quiet` via wire-pod `cloud_intent` API. Vector sits still with head down. TriggerWordDetected stays active. Keepalive thread re-sends every 15s (voice interactions deactivate the intent). Switch to playful mode: `POST /mode {"mode": "playful"}`.
+- **Sit-still default**: Vector sits still via firmware config — `highLevelAI.json` stripped to Wait-only (1 state, 0 transitions), `quietMode.json` set to 24h active time. Bridge connects with `behavior_control_level=None` (no SDK behavior control). Wake word, voice commands, and SDK commands all still work (they interrupt Wait at higher priority in the behavior tree). Playful mode: `POST /mode {"mode":"playful"}` grants override control for up to 8 min, then auto-reverts to quiet.
 - **Voice context prefix**: Prepends context to every message telling OpenClaw the speaker is Ophir.
 - **Dual-path routing**: wire-pod intents → bridge HTTP for hardware commands; conversational queries → OpenClaw agent.
 - **Echo cancellation** (`EchoSuppressor`): Pauses mic during `say_text()` output + holdoff period to prevent feedback loops.
@@ -397,7 +397,8 @@ Build: Docker cross-compile (`./build/build-v.sh`)
 Two patches deployed to Vector:
 
 1. **DisplayFaceImageRGB stride fix** (`engine/components/animationComponent.cpp`) — Static buffer + stride 184→160 conversion for Xray display. Deployed as `/anki/lib/libcozmo_engine.so`.
-2. **HighLevelAI default to Wait** (`highLevelAI.json`) — Vector sits still on boot instead of wandering. Deployed to `/anki/data/assets/cozmo_resources/config/`.
+2. **HighLevelAI Wait-only** (`highLevelAI.json`) — Stripped to single Waiting state with zero transitions. Vector never leaves Wait at the HighLevelAI level. Deployed to `/anki/data/assets/cozmo_resources/config/`. Source in `deploy/vector/behavior-configs/`.
+3. **QuietMode 24h** (`quietMode.json`) — `activeTime_s: 86400` as belt-and-suspenders backup. Same deploy path.
 
 ---
 

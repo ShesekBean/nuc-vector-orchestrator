@@ -71,6 +71,8 @@ The day of hardest hardware problems and most ambitious features:
 - **Dead reckoning:** Odometry from motor commands, auto-save charger waypoint, resume after charge
 - **Explorer improvements:** Drive off charger, override control on demand, seed start area, initial 360-degree scan
 - **SDK connection fix:** OVERRIDE_BEHAVIORS_PRIORITY for reliable behavior control
+- **Firmware sit-still:** Replaced SDK behavior control with firmware config — stripped `highLevelAI.json` to Wait-only (1 state, 0 transitions), set `quietMode.json` to 24h. Bridge no longer requests control at startup. Eliminates: stale TCP connections on crash, behavior control timeouts, camera feed dying during say_text, QuietMode keepalive thread, and Vector roaming on disconnect
+- **Enrollment script:** Close + far range with Vector speech, two rounds (5 close poses + 3 far captures)
 - **Documentation and retrospective**
 
 ---
