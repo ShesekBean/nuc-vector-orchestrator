@@ -5,7 +5,7 @@ Before=vic-anim.service
 [Service]
 Type=simple
 Environment=LD_LIBRARY_PATH=/anki/lib/hf
-Environment=HOME=/root
+Environment=HOME=/data
 ExecStart=/anki/bin/pv_worker
 Restart=always
 RestartSec=2
