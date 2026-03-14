@@ -142,6 +142,39 @@ class ConnectionManager:
         """LiveKitBridge instance, or None if not initialised."""
         return self._livekit_bridge
 
+    def request_override_control(self) -> None:
+        """Escalate to OVERRIDE_BEHAVIORS_PRIORITY.
+
+        Call this before commands that must interrupt Vector's internal
+        behaviors (e.g. explore, patrol, follow).  The robot keeps this
+        priority until ``release_override_control()`` is called or the
+        connection drops.
+        """
+        if not self._connected or self._robot is None:
+            return
+        try:
+            from anki_vector.connection import ControlPriorityLevel
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
+            logger.info("Override behavior control granted")
+        except Exception:
+            logger.warning("Failed to request override control", exc_info=True)
+
+    def release_override_control(self) -> None:
+        """Release override priority back to default."""
+        if not self._connected or self._robot is None:
+            return
+        try:
+            self._robot.conn.release_control()
+            from anki_vector.connection import ControlPriorityLevel
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.DEFAULT_PRIORITY,
+            )
+            logger.info("Released override control, back to default")
+        except Exception:
+            logger.warning("Failed to release override control", exc_info=True)
+
     def connect(self) -> None:
         """Connect to Vector and initialise all controllers."""
         if self._connected:
@@ -159,14 +192,8 @@ class ConnectionManager:
         from apps.vector.src.motor_controller import MotorController
         from apps.vector.src.voice.audio_client import AudioClient
 
-        from anki_vector.connection import ControlPriorityLevel
-
         logger.info("Connecting to Vector (serial=%s)...", self._serial)
-        self._robot = anki_vector.Robot(
-            serial=self._serial,
-            default_logging=False,
-            behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-        )
+        self._robot = anki_vector.Robot(serial=self._serial, default_logging=False)
         self._robot.connect()
 
         self._nuc_bus = NucEventBus()

@@ -163,6 +163,44 @@ class AutonomousExplorer:
                 logger.debug("say_text failed: %s", text)
         threading.Thread(target=_speak, name="explorer-tts", daemon=True).start()
 
+    def _request_control(self) -> None:
+        """Request override behavior control so we can interrupt charger sit etc."""
+        if self._robot is None:
+            return
+        try:
+            from anki_vector.connection import ControlPriorityLevel
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
+            logger.info("Override behavior control granted for exploration")
+        except Exception:
+            logger.warning("Failed to request override control", exc_info=True)
+
+    def _release_control(self) -> None:
+        """Release override priority back to default."""
+        if self._robot is None:
+            return
+        try:
+            self._robot.conn.release_control()
+            logger.info("Released override control")
+        except Exception:
+            pass
+
+    def _drive_off_charger(self) -> None:
+        """Drive off charger if Vector is currently docked."""
+        if self._robot is None:
+            return
+        try:
+            batt = self._robot.get_battery_state()
+            if batt.is_on_charger_platform:
+                logger.info("Vector is on charger — driving off")
+                self._say("Driving off charger.")
+                self._robot.behavior.drive_off_charger()
+                time.sleep(2.0)  # wait for him to clear the charger
+                logger.info("Drove off charger successfully")
+        except Exception:
+            logger.warning("drive_off_charger failed", exc_info=True)
+
     @property
     def state(self) -> ExploreState:
         return self._state
@@ -179,6 +217,12 @@ class AutonomousExplorer:
 
         self._running = True
         self._state = ExploreState.EXPLORING
+
+        # Override behavior control so we can move even if Vector is on charger
+        self._request_control()
+
+        # Drive off charger if needed
+        self._drive_off_charger()
 
         # Start SLAM if not already running
         self._slam.start()
@@ -230,6 +274,9 @@ class AutonomousExplorer:
 
         # Save map
         self._nav._save_map()
+
+        # Release override control
+        self._release_control()
 
         grid = self._slam.get_grid()
         self._intercom.send_text(
