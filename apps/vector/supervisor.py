@@ -273,8 +273,11 @@ class VectorSupervisor:
         """
         from apps.vector.src.camera.camera_client import CameraClient
         from apps.vector.src.companion import CompanionSystem
+        from apps.vector.src.companion.presence_loop import PresenceDetectionLoop
         from apps.vector.src.detector.person_detector import PersonDetector
         from apps.vector.src.display_controller import DisplayController
+        from apps.vector.src.face_recognition.face_detector import FaceDetector
+        from apps.vector.src.face_recognition.face_recognizer import FaceRecognizer
         from apps.vector.src.led_controller import LedController
         from apps.vector.src.lift_controller import LiftController
         from apps.vector.src.motor_controller import MotorController
@@ -310,6 +313,17 @@ class VectorSupervisor:
 
         def _make_detector() -> PersonDetector:
             return PersonDetector(bus)
+
+        def _make_presence_loop() -> PresenceDetectionLoop:
+            camera = self._get_component("camera_client")
+            detector = self._get_component("person_detector")
+            return PresenceDetectionLoop(
+                camera_client=camera,
+                person_detector=detector,
+                face_detector=FaceDetector(),
+                face_recognizer=FaceRecognizer(event_bus=bus),
+                event_bus=bus,
+            )
 
         def _make_audio() -> AudioClient:
             return AudioClient(robot, bus)
@@ -353,26 +367,31 @@ class VectorSupervisor:
             ComponentInfo(
                 "person_detector", _make_detector, 9, requires_connection=False
             ),
-            # Order 10: Audio client (mic stream)
-            ComponentInfo("audio_client", _make_audio, 10),
-            # Order 11: Wake word detector
+            # Order 10: Background presence detection (camera → YOLO → face)
             ComponentInfo(
-                "wake_word", _make_wake_word, 11, requires_connection=False
-            ),
-            # Order 12: Speech output (TTS)
-            ComponentInfo("speech_output", _make_speech_output, 12),
-            # Order 13: Echo suppressor
-            ComponentInfo(
-                "echo_suppressor", _make_echo_suppressor, 13,
+                "presence_loop", _make_presence_loop, 10,
                 requires_connection=False,
             ),
-            # Order 14: Voice bridge (wake word → STT → agent → TTS)
-            ComponentInfo("voice_bridge", _make_voice_bridge, 14),
-            # Order 15: Follow planner (idle, waiting for trigger)
-            ComponentInfo("follow_planner", _make_follow_planner, 15),
-            # Order 16: Companion system (presence tracking + OpenClaw signals)
+            # Order 11: Audio client (mic stream)
+            ComponentInfo("audio_client", _make_audio, 11),
+            # Order 12: Wake word detector
             ComponentInfo(
-                "companion", _make_companion, 16, requires_connection=False,
+                "wake_word", _make_wake_word, 12, requires_connection=False
+            ),
+            # Order 13: Speech output (TTS)
+            ComponentInfo("speech_output", _make_speech_output, 13),
+            # Order 14: Echo suppressor
+            ComponentInfo(
+                "echo_suppressor", _make_echo_suppressor, 14,
+                requires_connection=False,
+            ),
+            # Order 15: Voice bridge (wake word → STT → agent → TTS)
+            ComponentInfo("voice_bridge", _make_voice_bridge, 15),
+            # Order 16: Follow planner (idle, waiting for trigger)
+            ComponentInfo("follow_planner", _make_follow_planner, 16),
+            # Order 17: Companion system (presence tracking + OpenClaw signals)
+            ComponentInfo(
+                "companion", _make_companion, 17, requires_connection=False,
             ),
         ]
 
@@ -537,7 +556,7 @@ class VectorSupervisor:
     def _enter_low_battery_mode(self) -> None:
         """Reduce functionality to conserve battery."""
         # Stop non-essential components: detection, follow planner, voice
-        for name in ("follow_planner", "person_detector", "voice_bridge"):
+        for name in ("follow_planner", "presence_loop", "person_detector", "voice_bridge"):
             comp = self._find_component(name)
             if comp and comp._started:
                 logger.info("Low battery — stopping %s", name)
@@ -550,7 +569,7 @@ class VectorSupervisor:
 
     def _exit_low_battery_mode(self) -> None:
         """Restore full functionality after battery recovers."""
-        for name in ("person_detector", "voice_bridge", "follow_planner"):
+        for name in ("person_detector", "presence_loop", "voice_bridge", "follow_planner"):
             comp = self._find_component(name)
             if comp and not comp._started:
                 logger.info("Battery OK — restarting %s", name)
