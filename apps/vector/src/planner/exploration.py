@@ -479,29 +479,17 @@ class AutonomousExplorer:
 
                 no_frontier_count = 0
 
-                # Scan for obstacles with YOLO before driving
-                self._scan_for_obstacles()
-                if self._obstacle_detector:
-                    zone = self._obstacle_detector.zone
-                    if zone == "danger":
-                        logger.info("Obstacle in danger zone — backing up and turning")
-                        try:
-                            self._motor.turn_then_drive(
-                                angle_deg=0,
-                                distance_mm=-50,
-                                drive_speed_mmps=40,
-                                turn_speed_dps=self._cfg.turn_speed_dps,
-                            )
-                        except Exception:
-                            pass
-                        try:
-                            self._motor.turn_in_place(
-                                90.0, speed_dps=self._cfg.turn_speed_dps
-                            )
-                        except Exception:
-                            pass
-                        time.sleep(0.5)
-                        continue
+                # Scan for obstacles before driving
+                if self._scan_for_obstacles():
+                    logger.info("Obstacle ahead — turning away")
+                    try:
+                        self._motor.turn_in_place(
+                            90.0, speed_dps=self._cfg.turn_speed_dps
+                        )
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
+                    continue
 
                 # Drive toward frontier
                 self._state = ExploreState.NAVIGATING_TO_FRONTIER
@@ -522,28 +510,57 @@ class AutonomousExplorer:
         self._running = False
         self._state = ExploreState.IDLE
 
-    def _scan_for_obstacles(self) -> None:
-        """Run YOLO on the current camera frame and feed results to ObstacleDetector.
+    def _scan_for_obstacles(self) -> bool:
+        """Check if there's an obstacle ahead using camera proximity detection.
 
-        This gives the obstacle detector real vision data to determine
-        zone (clear/caution/danger) and speed_scale.
+        Uses two methods:
+        1. YOLO object detection — detects known objects (people, furniture)
+        2. Camera proximity — detects walls/surfaces by checking if the lower
+           portion of the frame has low texture variance (= close to a surface)
+
+        Returns True if obstacle detected (danger zone), False if clear.
         """
-        if self._person_detector is None or self._obstacle_detector is None:
-            return
+        frame = self._camera.get_latest_frame()
+        if frame is None:
+            return False
+
+        # Method 1: YOLO detection
+        if self._person_detector is not None and self._obstacle_detector is not None:
+            try:
+                detections = self._person_detector.detect(frame)
+                self._obstacle_detector.update(detections)
+                if self._obstacle_detector.zone == "danger":
+                    logger.info("YOLO obstacle: danger zone (scale=%.2f)",
+                                self._obstacle_detector.speed_scale)
+                    return True
+            except Exception:
+                logger.debug("YOLO scan failed", exc_info=True)
+
+        # Method 2: Camera proximity — check bottom 1/3 of frame
+        # When close to a wall, the bottom portion has uniform color (low variance)
+        # AND high mean brightness (wall surface reflects more than open floor)
         try:
-            frame = self._camera.get_latest_frame()
-            if frame is None:
-                return
-            detections = self._person_detector.detect(frame)
-            self._obstacle_detector.update(detections)
-            zone = self._obstacle_detector.zone
-            if zone != "clear":
+            import numpy as np
+            h, w = frame.shape[:2]
+            # Bottom third of frame, center strip (avoid edges)
+            strip = frame[h * 2 // 3:, w // 4: w * 3 // 4]
+            # Convert to grayscale
+            gray = np.mean(strip, axis=2)
+            variance = float(np.var(gray))
+            mean_brightness = float(np.mean(gray))
+
+            # Low variance + high brightness = close to a wall/surface
+            # Tuned for Vector's dark camera: variance < 200 is very uniform
+            if variance < 150 and mean_brightness > 80:
                 logger.info(
-                    "Obstacle scan: zone=%s scale=%.2f (%d detections)",
-                    zone, self._obstacle_detector.speed_scale, len(detections),
+                    "Camera proximity: wall detected (var=%.0f, brightness=%.0f)",
+                    variance, mean_brightness,
                 )
+                return True
         except Exception:
-            logger.debug("Obstacle scan failed", exc_info=True)
+            logger.debug("Proximity check failed", exc_info=True)
+
+        return False
 
     def _sync_pose_from_imu(self) -> None:
         """Sync SLAM pose with IMU-fused heading for drift correction.
@@ -783,23 +800,15 @@ class AutonomousExplorer:
         distance = min(distance, self._cfg.step_distance_mm)
 
         # Fresh obstacle scan before driving
-        self._scan_for_obstacles()
-
-        # Apply obstacle detector speed scaling
-        if self._obstacle_detector:
-            scale = self._obstacle_detector.speed_scale
-            if scale <= 0.0:
-                logger.info("Obstacle ahead — full stop, turning away")
-                try:
-                    self._motor.turn_in_place(
-                        90.0, speed_dps=self._cfg.turn_speed_dps
-                    )
-                except Exception:
-                    pass
-                return
-            if scale < 1.0:
-                distance *= scale
-                logger.info("Obstacle speed scale %.2f → distance %.0fmm", scale, distance)
+        if self._scan_for_obstacles():
+            logger.info("Obstacle ahead in _drive_toward — turning away")
+            try:
+                self._motor.turn_in_place(
+                    90.0, speed_dps=self._cfg.turn_speed_dps
+                )
+            except Exception:
+                pass
+            return
 
         # Compute bearing
         bearing = math.atan2(dy, dx)
