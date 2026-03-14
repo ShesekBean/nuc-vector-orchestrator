@@ -13,9 +13,9 @@ Two-way streaming architecture::
     Video IN:   LiveKit remote video -> downscale 160x80 -> DisplayFaceImageRGB -> Vector OLED
 
 The mic audio pipeline uses vector-streamer (native binary on Vector) which
-acts as a DGRAM proxy on mic_sock_cp_mic, intercepts audio from vic-anim,
-Opus-encodes it, and streams via TCP to the NUC where MicChannel decodes
-it back to PCM for LiveKit publishing.
+acts as a DGRAM proxy on mic_sock_cp_mic, intercepts audio from vic-anim
+during voice sessions, Opus-encodes it, and streams via TCP to the NUC
+where MicChannel decodes it back to PCM for LiveKit publishing.
 
 Usage::
 
@@ -260,7 +260,7 @@ class LiveKitBridge:
         )
         audio_opts = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE)
         await self._room.local_participant.publish_track(audio_track, audio_opts)
-        logger.info("Published audio track (vector-mic) — fed by chipper tap")
+        logger.info("Published audio track (vector-mic) — fed by MediaService mic channel")
 
         # Start publishing loops
         self._video_task = asyncio.create_task(self._video_publish_loop())

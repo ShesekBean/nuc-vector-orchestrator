@@ -1,19 +1,12 @@
-"""MicChannel -- dual-source mic audio channel.
+"""MicChannel -- connects to vector-streamer TCP on Vector:5555.
 
-Supports two audio sources:
+Reads framed Opus packets (protocol.h format: [type:1][length:4 LE][data:N]),
+decodes Opus to 16kHz S16LE mono PCM using opuslib, and publishes decoded
+PCM chunks to subscribers via _publish().
 
-1. **Wire-pod audio tap** (localhost:5556) -- raw 16kHz S16LE mono PCM
-   streamed during voice sessions (after "Hey Vector"). This is the
-   working path. The wire-pod chipper decodes Opus from vic-cloud and
-   taps decoded PCM to connected TCP clients.
-
-2. **vector-streamer** (Vector:5555) -- Opus-encoded mic audio from
-   the DGRAM proxy on Vector. This requires vector-streamer to be
-   running on the robot. Decodes Opus to PCM using opuslib.
-   (Currently limited: mic_sock_cp_mic proxy doesn't work because
-   vic-cloud recreates the socket.)
-
-The channel tries both sources and uses whichever connects.
+vector-streamer runs on Vector as a DGRAM proxy on mic_sock_cp_mic,
+intercepting audio from vic-anim, Opus-encoding it, and streaming via TCP.
+Mic audio flows during voice sessions (after "Hey Vector" wake word).
 
 Auto-reconnects with exponential backoff if the connection drops.
 """
@@ -30,27 +23,22 @@ from apps.vector.src.media.channel import MediaChannel
 
 logger = logging.getLogger(__name__)
 
-# Frame types from protocol.h (for vector-streamer source)
+# Frame types from protocol.h
 FRAME_TYPE_OPUS = 0x02
 FRAME_TYPE_PING = 0xF0
 FRAME_TYPE_PONG = 0xF1
-FRAME_HEADER_SIZE = 5
+FRAME_HEADER_SIZE = 5  # type:1 + length:4 LE
 MAX_FRAME_SIZE = 512 * 1024
 
-# Audio settings
-AUDIO_SAMPLE_RATE = 16000
-AUDIO_CHANNELS = 1
+# Opus decode settings (must match vector-streamer encoder)
+OPUS_SAMPLE_RATE = 16000
+OPUS_CHANNELS = 1
 OPUS_FRAME_MS = 20
-OPUS_FRAME_SAMPLES = AUDIO_SAMPLE_RATE * OPUS_FRAME_MS // 1000  # 320
+OPUS_FRAME_SAMPLES = OPUS_SAMPLE_RATE * OPUS_FRAME_MS // 1000  # 320
 
-# Wire-pod audio tap (raw PCM over TCP, no framing)
-WIREPOD_TAP_HOST = "127.0.0.1"
-WIREPOD_TAP_PORT = 5556
-PCM_CHUNK_SIZE = 640  # 20ms of 16kHz mono int16 = 320 samples = 640 bytes
-
-# Vector-streamer (Opus over TCP with framing)
-DEFAULT_STREAMER_HOST = "192.168.1.73"
-DEFAULT_STREAMER_PORT = 5555
+# Default vector-streamer address
+DEFAULT_HOST = "192.168.1.73"
+DEFAULT_PORT = 5555
 
 # Reconnect backoff
 INITIAL_RECONNECT_DELAY = 1.0
@@ -58,32 +46,24 @@ MAX_RECONNECT_DELAY = 30.0
 
 
 class MicChannel(MediaChannel):
-    """Mic audio channel with dual-source support.
+    """Mic audio channel that connects to vector-streamer on Vector.
 
-    Connects to wire-pod audio tap (primary) or vector-streamer (secondary)
-    and publishes decoded 16kHz S16LE mono PCM to subscribers.
+    Receives Opus-encoded mic audio over TCP, decodes to PCM, and
+    publishes to subscribers.
 
     Args:
-        host: Vector IP address (for vector-streamer source).
-        port: TCP port for vector-streamer (default 5555).
-        use_wirepod_tap: If True, connect to wire-pod audio tap first.
+        host: Vector IP address.
+        port: TCP port (default 5555).
     """
 
-    def __init__(
-        self,
-        host: str = DEFAULT_STREAMER_HOST,
-        port: int = DEFAULT_STREAMER_PORT,
-        use_wirepod_tap: bool = True,
-    ) -> None:
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
         super().__init__("mic")
-        self._streamer_host = host
-        self._streamer_port = port
-        self._use_wirepod_tap = use_wirepod_tap
+        self._host = host
+        self._port = port
         self._thread: threading.Thread | None = None
-        self._opus_decoder = None
+        self._decoder = None
         self._sock: socket.socket | None = None
-        self._source: str = "none"
-        self._frames_decoded = 0
+        self._opus_frames_decoded = 0
 
     def start(self) -> None:
         """Start the mic channel background thread."""
@@ -98,7 +78,7 @@ class MicChannel(MediaChannel):
             daemon=True,
         )
         self._thread.start()
-        logger.info("MicChannel started")
+        logger.info("MicChannel started (connecting to %s:%d)", self._host, self._port)
 
     def stop(self) -> None:
         """Stop the mic channel."""
@@ -115,157 +95,111 @@ class MicChannel(MediaChannel):
             self._thread.join(timeout=5.0)
         self._thread = None
 
-        logger.info("MicChannel stopped (decoded %d frames, source=%s)",
-                    self._frames_decoded, self._source)
+        logger.info("MicChannel stopped (decoded %d Opus frames)",
+                    self._opus_frames_decoded)
 
     def get_status(self) -> dict:
         status = super().get_status()
         status.update({
-            "source": self._source,
-            "streamer_host": self._streamer_host,
-            "streamer_port": self._streamer_port,
-            "wirepod_tap": f"{WIREPOD_TAP_HOST}:{WIREPOD_TAP_PORT}",
+            "host": self._host,
+            "port": self._port,
             "connected": self._sock is not None,
-            "frames_decoded": self._frames_decoded,
+            "opus_frames_decoded": self._opus_frames_decoded,
         })
         return status
 
-    # -- Main loop ----------------------------------------------------------
+    # -- Internal -----------------------------------------------------------
+
+    def _init_decoder(self) -> None:
+        """Initialize the Opus decoder (lazy import)."""
+        if self._decoder is not None:
+            return
+
+        try:
+            from opuslib import Decoder
+            self._decoder = Decoder(OPUS_SAMPLE_RATE, OPUS_CHANNELS)
+            logger.info("Opus decoder initialized (%d Hz, %d ch)",
+                        OPUS_SAMPLE_RATE, OPUS_CHANNELS)
+        except ImportError:
+            logger.error(
+                "opuslib not installed. Install with: pip install opuslib"
+            )
+            raise
 
     def _run_loop(self) -> None:
-        """Try connecting to audio sources with reconnect logic."""
+        """Main loop: connect, read frames, decode, publish. Reconnect on error."""
+        self._init_decoder()
         delay = INITIAL_RECONNECT_DELAY
 
         while self._running:
             try:
-                connected = False
-
-                # Try wire-pod audio tap first (primary source)
-                if self._use_wirepod_tap:
-                    try:
-                        self._connect_wirepod_tap()
-                        connected = True
-                        delay = INITIAL_RECONNECT_DELAY
-                        self._read_wirepod_pcm()
-                    except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
-                        logger.debug("Wire-pod tap not available: %s", e)
-
-                # Try vector-streamer (secondary source)
-                if not connected:
-                    try:
-                        self._connect_streamer()
-                        connected = True
-                        delay = INITIAL_RECONNECT_DELAY
-                        self._read_streamer_frames()
-                    except (ConnectionRefusedError, ConnectionResetError, OSError) as e:
-                        logger.debug("vector-streamer not available: %s", e)
-
+                self._connect()
+                delay = INITIAL_RECONNECT_DELAY  # Reset on successful connect
+                self._read_frames()
             except Exception as exc:
                 if not self._running:
                     break
-                logger.warning("MicChannel error: %s", exc)
+                logger.warning("MicChannel connection error: %s", exc)
             finally:
                 self._disconnect()
 
             if not self._running:
                 break
 
-            logger.debug("MicChannel reconnecting in %.1fs...", delay)
+            logger.info("MicChannel reconnecting in %.1fs...", delay)
+            # Sleep with early exit check
             end = time.monotonic() + delay
             while self._running and time.monotonic() < end:
                 time.sleep(0.25)
+
             delay = min(delay * 2, MAX_RECONNECT_DELAY)
 
-    # -- Wire-pod audio tap -------------------------------------------------
-
-    def _connect_wirepod_tap(self) -> None:
-        """Connect to wire-pod chipper audio tap on localhost:5556."""
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.settimeout(5.0)
-        self._sock.connect((WIREPOD_TAP_HOST, WIREPOD_TAP_PORT))
-        self._source = "wirepod-tap"
-        logger.info("Connected to wire-pod audio tap at %s:%d",
-                    WIREPOD_TAP_HOST, WIREPOD_TAP_PORT)
-
-    def _read_wirepod_pcm(self) -> None:
-        """Read raw PCM from wire-pod audio tap (no framing)."""
-        logger.info("Reading PCM from wire-pod audio tap...")
-
-        while self._running:
-            try:
-                pcm_data = self._sock.recv(PCM_CHUNK_SIZE)
-                if not pcm_data:
-                    logger.debug("Wire-pod tap: EOF")
-                    break
-
-                if len(pcm_data) < 2:
-                    continue
-
-                self._frames_decoded += 1
-                if self._frames_decoded <= 3 or self._frames_decoded % 1000 == 0:
-                    logger.info(
-                        "Wire-pod tap PCM #%d: %d bytes (%d samples)",
-                        self._frames_decoded, len(pcm_data), len(pcm_data) // 2,
-                    )
-
-                self._publish(pcm_data)
-
-            except socket.timeout:
-                # No data -- wire-pod only sends during voice sessions
-                continue
-            except ConnectionError:
-                raise
-            except Exception as exc:
-                if not self._running:
-                    break
-                logger.warning("Wire-pod tap read error: %s", exc)
-                break
-
-    # -- Vector-streamer (Opus) ---------------------------------------------
-
-    def _connect_streamer(self) -> None:
-        """Connect to vector-streamer TCP on Vector."""
+    def _connect(self) -> None:
+        """Connect to vector-streamer TCP server."""
+        logger.info("Connecting to vector-streamer at %s:%d", self._host, self._port)
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._sock.settimeout(10.0)
-        self._sock.connect((self._streamer_host, self._streamer_port))
-        self._sock.settimeout(5.0)
-        self._source = "vector-streamer"
-        logger.info("Connected to vector-streamer at %s:%d",
-                    self._streamer_host, self._streamer_port)
+        self._sock.connect((self._host, self._port))
+        self._sock.settimeout(5.0)  # Read timeout for keepalive detection
+        logger.info("Connected to vector-streamer")
 
-    def _init_opus_decoder(self) -> None:
-        """Initialize the Opus decoder (lazy)."""
-        if self._opus_decoder is not None:
-            return
-        from opuslib import Decoder
-        self._opus_decoder = Decoder(AUDIO_SAMPLE_RATE, AUDIO_CHANNELS)
-        logger.info("Opus decoder initialized")
+    def _disconnect(self) -> None:
+        """Close the TCP connection."""
+        if self._sock:
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+            self._sock = None
 
     def _recv_exact(self, n: int) -> bytes:
-        """Read exactly n bytes from the socket."""
+        """Read exactly *n* bytes from the socket."""
         buf = bytearray()
         while len(buf) < n:
-            chunk = self._sock.recv(n - len(buf))
+            remaining = n - len(buf)
+            chunk = self._sock.recv(remaining)
             if not chunk:
-                raise ConnectionError("vector-streamer disconnected")
+                raise ConnectionError("vector-streamer disconnected (EOF)")
             buf.extend(chunk)
         return bytes(buf)
 
-    def _read_streamer_frames(self) -> None:
-        """Read framed Opus packets from vector-streamer."""
-        self._init_opus_decoder()
-        logger.info("Reading Opus frames from vector-streamer...")
+    def _read_frames(self) -> None:
+        """Read framed packets from vector-streamer and decode Opus audio."""
+        logger.info("Reading frames from vector-streamer...")
 
         while self._running:
             try:
+                # Read frame header: [type:1][length:4 LE]
                 hdr_data = self._recv_exact(FRAME_HEADER_SIZE)
                 frame_type = hdr_data[0]
                 frame_length = struct.unpack_from("<I", hdr_data, 1)[0]
 
                 if frame_length > MAX_FRAME_SIZE:
-                    logger.warning("Frame too large: %d", frame_length)
+                    logger.warning("Frame too large: %d bytes, disconnecting",
+                                   frame_length)
                     break
 
+                # Handle ping/pong
                 if frame_type == FRAME_TYPE_PING:
                     pong = struct.pack("<BI", FRAME_TYPE_PONG, 0)
                     self._sock.sendall(pong)
@@ -274,45 +208,47 @@ class MicChannel(MediaChannel):
                 if frame_type == FRAME_TYPE_PONG:
                     continue
 
-                if frame_length == 0:
+                # Read frame payload
+                if frame_length > 0:
+                    payload = self._recv_exact(frame_length)
+                else:
                     continue
 
-                payload = self._recv_exact(frame_length)
-
+                # Handle Opus audio
                 if frame_type == FRAME_TYPE_OPUS:
-                    try:
-                        pcm = self._opus_decoder.decode(payload, OPUS_FRAME_SAMPLES)
-                        self._frames_decoded += 1
-                        if self._frames_decoded <= 3 or self._frames_decoded % 1000 == 0:
-                            logger.info(
-                                "Opus frame #%d: %d->%d bytes",
-                                self._frames_decoded, len(payload), len(pcm),
-                            )
-                        self._publish(pcm)
-                    except Exception:
-                        logger.debug("Opus decode error", exc_info=True)
+                    self._decode_and_publish(payload)
 
             except socket.timeout:
+                # No data for a while -- send a ping to check connection
                 try:
                     ping = struct.pack("<BI", FRAME_TYPE_PING, 0)
                     self._sock.sendall(ping)
                 except Exception:
+                    logger.debug("Ping send failed, disconnecting")
                     break
             except ConnectionError:
                 raise
             except Exception as exc:
                 if not self._running:
                     break
-                logger.warning("Streamer read error: %s", exc)
+                logger.warning("Frame read error: %s", exc)
                 break
 
-    # -- Common -------------------------------------------------------------
+    def _decode_and_publish(self, opus_data: bytes) -> None:
+        """Decode an Opus frame to PCM and publish to subscribers."""
+        try:
+            # opuslib.Decoder.decode() returns bytes (PCM S16LE)
+            pcm = self._decoder.decode(opus_data, OPUS_FRAME_SAMPLES)
+            self._opus_frames_decoded += 1
 
-    def _disconnect(self) -> None:
-        if self._sock:
-            try:
-                self._sock.close()
-            except Exception:
-                pass
-            self._sock = None
-        self._source = "none"
+            if self._opus_frames_decoded <= 3 or self._opus_frames_decoded % 1000 == 0:
+                logger.info(
+                    "Decoded Opus frame #%d: %d bytes opus -> %d bytes PCM (%d samples)",
+                    self._opus_frames_decoded, len(opus_data), len(pcm),
+                    len(pcm) // 2,
+                )
+
+            self._publish(pcm)
+
+        except Exception:
+            logger.debug("Opus decode error", exc_info=True)
