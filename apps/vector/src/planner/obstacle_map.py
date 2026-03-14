@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Vision results expire after this many seconds
-VISION_TTL_S = 10.0
+VISION_TTL_S = 4.0
 
 # Cliff events expire after this many seconds (cliff is instantaneous)
 CLIFF_TTL_S = 2.0
