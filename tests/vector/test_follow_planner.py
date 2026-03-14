@@ -390,7 +390,7 @@ class TestFollowConfig:
     def test_default_config(self):
         cfg = FollowConfig()
         assert cfg.max_wheel_speed == 140.0
-        assert cfg.target_height_frac == 0.35
+        assert cfg.target_height_frac == 0.70
         assert cfg.loop_hz == 15.0
 
     def test_custom_config(self):

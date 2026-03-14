@@ -77,6 +77,8 @@ class FollowPipeline:
                     logger.warning("say_text failed: %s", text)
             say_func = _say
 
+        self._conn_manager = None  # set externally if available
+
         self._planner = FollowPlanner(
             motor_controller, head_controller, nuc_bus,
             say_func=say_func,
@@ -103,6 +105,15 @@ class FollowPipeline:
         if self._running:
             logger.warning("FollowPipeline already running")
             return
+
+        # Request behavior control — needed for motors and say_text
+        self._request_control()
+
+        # Set head to natural position before starting
+        try:
+            self._head.set_angle(10.0)  # neutral angle
+        except Exception:
+            logger.warning("Failed to set head to neutral on follow start")
 
         # Boost camera exposure for low-light following
         self._boost_camera_exposure()
@@ -143,6 +154,9 @@ class FollowPipeline:
 
         # Restore auto exposure
         self._restore_camera_exposure()
+
+        # Release behavior control and restore quiet mode
+        self._release_control()
 
         logger.info("FollowPipeline stopped")
 
@@ -223,6 +237,35 @@ class FollowPipeline:
             sleep_time = period - elapsed
             if sleep_time > 0:
                 time.sleep(sleep_time)
+
+    def _request_control(self) -> None:
+        """Request SDK behavior control for motor/speech access."""
+        if self._robot is None:
+            return
+        try:
+            from anki_vector.connection import ControlPriorityLevel
+            # Stop quiet keepalive if ConnectionManager is available
+            if self._conn_manager is not None:
+                self._conn_manager._stop_quiet_keepalive()
+            self._robot.conn.request_control(
+                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
+            )
+            logger.info("Behavior control acquired for follow pipeline")
+        except Exception:
+            logger.exception("Failed to request behavior control")
+
+    def _release_control(self) -> None:
+        """Release SDK behavior control and restore quiet mode."""
+        if self._robot is None:
+            return
+        try:
+            self._robot.conn.release_control()
+            logger.info("Behavior control released after follow pipeline")
+            # Restore quiet mode if ConnectionManager is available
+            if self._conn_manager is not None:
+                self._conn_manager._activate_quiet_mode()
+        except Exception:
+            logger.exception("Failed to release behavior control")
 
     def _boost_camera_exposure(self) -> None:
         """Ensure camera auto-exposure is enabled for best low-light performance."""

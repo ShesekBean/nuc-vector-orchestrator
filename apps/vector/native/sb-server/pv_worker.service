@@ -1,14 +1,15 @@
 [Unit]
 Description=Porcupine v4 wake word worker daemon
 Before=vic-anim.service
+After=chronyd.service
+Wants=chronyd.service
 
 [Service]
 Type=simple
-Environment=LD_LIBRARY_PATH=/anki/lib/hf
 Environment=HOME=/data
-ExecStart=/anki/bin/pv_worker
+ExecStart=/bin/sh -c 'for i in $(seq 1 60); do chronyc waitsync 1 0.5 0 0 2>/dev/null && break; sleep 1; done; LD_LIBRARY_PATH=/anki/lib/hf exec /anki/bin/pv_worker'
 Restart=always
-RestartSec=2
+RestartSec=5
 TimeoutStopSec=5
 
 [Install]

@@ -60,14 +60,14 @@ class FollowConfig:
     """Tunable follow parameters."""
 
     # --- P gain for turning (horizontal centering) ---
-    kp_turn: float = 0.4
-    turn_dead_zone_frac: float = 0.08  # fraction of frame width — no turn if error < this
+    kp_turn: float = 0.2
+    turn_dead_zone_frac: float = 0.15  # fraction of frame width — no turn if error < this (±120px)
 
     # --- P gain for driving (distance control via bbox height) ---
-    kp_drive: float = 0.4
-    target_height_frac: float = 0.35  # target bbox height as fraction of frame height (~1.5m)
-    drive_dead_zone_frac: float = 0.05  # fraction of frame height — no drive if error < this
-    too_close_frac: float = 0.55  # bbox height > this fraction → stop (don't reverse)
+    kp_drive: float = 2.5
+    target_height_frac: float = 0.70  # target bbox height as fraction of frame height (420px — close)
+    drive_dead_zone_frac: float = 0.03  # fraction of frame height — no drive if error < this
+    too_close_frac: float = 0.85  # bbox height > this fraction → stop (person filling frame)
 
     # --- P gain for head pitch (vertical tracking) ---
     kp_head: float = 0.10
@@ -429,62 +429,32 @@ class FollowPlanner:
             self._last_vx = track.cx - self._prev_track_cx
         self._prev_track_cx = track.cx
 
-        # --- Turn-first-then-drive ---
-        turn_dead = cfg.turn_dead_zone_frac
-        drive_dead = cfg.drive_dead_zone_frac
+        # --- Drive forward + gentle steering ---
+        # Always compute both drive and turn independently, then combine.
+        # Drive: forward only when person is far, stop when close. Never reverse.
+        # Turn: gentle proportional correction to keep person centered.
+        # Too close (person fills frame): stop everything.
 
-        if abs(error_x_frac) > cfg.turn_first_threshold_frac:
-            # Person is significantly off-center → TURN ONLY
+        # Drive component: forward only, never reverse
+        drive_speed = 0.0
+        if track.height > cfg.too_close_frac * fh:
+            # Too close — stop
+            drive_speed = 0.0
+        elif error_h_frac > cfg.drive_dead_zone_frac:
+            # Person is far — drive forward
+            drive_speed = cfg.kp_drive * error_h * (cfg.max_wheel_speed / (fh / 2.0))
+            drive_speed = max(0.0, min(cfg.max_wheel_speed, drive_speed))
+
+        # Turn component: gentle correction
+        turn_speed = 0.0
+        if abs(error_x_frac) > cfg.turn_dead_zone_frac:
             turn_speed = cfg.kp_turn * error_x * (cfg.max_turn_speed / (fw / 2.0))
             turn_speed = max(-cfg.max_turn_speed, min(cfg.max_turn_speed, turn_speed))
-            left = turn_speed
-            right = -turn_speed
-            logger.debug("TURN: error_x=%.0f (%.1f%%) → L=%.0f R=%.0f",
-                         error_x, error_x_frac * 100, left, right)
 
-        elif abs(error_x_frac) > turn_dead:
-            # Person is slightly off-center → gentle turn + gentle drive
-            turn_speed = cfg.kp_turn * error_x * (cfg.max_turn_speed / (fw / 2.0))
-            turn_speed = max(-cfg.max_turn_speed * 0.5, min(cfg.max_turn_speed * 0.5, turn_speed))
-
-            # Only add drive if not too close
-            drive_speed = 0.0
-            if track.height < cfg.too_close_frac * fh and abs(error_h_frac) > drive_dead:
-                drive_speed = cfg.kp_drive * error_h * (cfg.max_wheel_speed / (fh / 2.0))
-                drive_speed = max(0.0, min(cfg.max_wheel_speed * 0.5, drive_speed))  # forward only when turning
-
-            left = drive_speed + turn_speed
-            right = drive_speed - turn_speed
-            left = max(-cfg.max_wheel_speed, min(cfg.max_wheel_speed, left))
-            right = max(-cfg.max_wheel_speed, min(cfg.max_wheel_speed, right))
-            logger.debug("TURN+DRIVE: err_x=%.0f err_h=%.0f → L=%.0f R=%.0f",
-                         error_x, error_h, left, right)
-
-        elif track.height > cfg.too_close_frac * fh:
-            # Person is too close → STOP (don't reverse — reversing while
-            # turning is a known cause of circles on diff drive)
-            left = 0.0
-            right = 0.0
-            logger.debug("TOO CLOSE: h=%.0f (%.0f%% of frame) → STOP",
-                         track.height, (track.height / fh) * 100)
-
-        elif abs(error_h_frac) > drive_dead:
-            # Person is centered horizontally → DRIVE ONLY
-            drive_speed = cfg.kp_drive * error_h * (cfg.max_wheel_speed / (fh / 2.0))
-            # Limit reverse to 30% of max
-            if drive_speed < 0:
-                drive_speed = max(-cfg.max_wheel_speed * 0.3, drive_speed)
-            else:
-                drive_speed = min(cfg.max_wheel_speed, drive_speed)
-            left = drive_speed
-            right = drive_speed
-            logger.debug("DRIVE: error_h=%.0f (%.1f%%) → L=%.0f R=%.0f",
-                         error_h, error_h_frac * 100, left, right)
-
-        else:
-            # Person is centered and at target distance → stop
-            left = 0.0
-            right = 0.0
+        left = drive_speed + turn_speed
+        right = drive_speed - turn_speed
+        left = max(-cfg.max_wheel_speed, min(cfg.max_wheel_speed, left))
+        right = max(-cfg.max_wheel_speed, min(cfg.max_wheel_speed, right))
 
         # Emit event
         self._bus.emit(
@@ -494,6 +464,11 @@ class FollowPlanner:
 
         # Send to motors
         try:
+            logger.info(
+                "Motor cmd: L=%.0f R=%.0f (cx=%.0f cy=%.0f h=%.0f conf=%.2f frame=%dx%d)",
+                left, right, track.cx, track.cy, track.height,
+                track.confidence, track.frame_width, track.frame_height,
+            )
             self._motor.drive_wheels(left, right)
         except Exception:
             logger.exception("Motor command failed during following")

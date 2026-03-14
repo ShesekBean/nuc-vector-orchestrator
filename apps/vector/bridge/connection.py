@@ -187,16 +187,94 @@ class ConnectionManager:
             nuc_bus=self._nuc_bus,
             robot=self._robot,
         )
+        self._follow_pipeline._conn_manager = self
 
         self._connected = True
         logger.info("Connected to Vector successfully")
+
+        # Release SDK behavior control so Vector's native behavior tree runs.
+        # This enables wake word detection and voice commands.
+        # For "quiet" mode, we then send the imperative_quiet intent which
+        # activates the built-in QuietMode behavior (sits still, wake word works).
+        logger.info("Releasing SDK behavior control")
+        self._robot.conn.release_control()
+
+        if self._mode == "quiet":
+            self._activate_quiet_mode()
+
+    def _send_quiet_intent(self) -> bool:
+        """Send imperative_quiet intent via wire-pod's cloud_intent API.
+
+        Returns True on success, False on failure.
+        """
+        import urllib.request
+        import urllib.parse
+
+        try:
+            url = "http://localhost:8080/api-sdk/cloud_intent?" + urllib.parse.urlencode({
+                "serial": self._serial,
+                "intent": "intent_imperative_quiet",
+            })
+            with urllib.request.urlopen(url, timeout=5) as resp:
+                resp.read()
+            return True
+        except Exception:
+            logger.exception("Failed to send QuietMode intent via wire-pod")
+            return False
+
+    def _activate_quiet_mode(self) -> None:
+        """Activate Vector's built-in QuietMode and start keepalive.
+
+        QuietMode makes Vector sit still with head down, but keeps the
+        TriggerWordDetected behavior active so wake word detection works.
+        Voice interactions deactivate the imperative_quiet intent, so a
+        keepalive thread re-sends it every 15 seconds.
+        """
+        import time
+
+        # Small delay to let the behavior tree stabilize after release
+        time.sleep(2)
+        if self._send_quiet_intent():
+            logger.info("Activated built-in QuietMode via wire-pod")
+        self._start_quiet_keepalive()
+
+    def _start_quiet_keepalive(self) -> None:
+        """Start background thread that re-sends quiet intent every 15s."""
+        self._stop_quiet_keepalive()
+        self._quiet_keepalive_stop = threading.Event()
+        self._quiet_keepalive_thread = threading.Thread(
+            target=self._quiet_keepalive_loop,
+            daemon=True,
+            name="quiet-keepalive",
+        )
+        self._quiet_keepalive_thread.start()
+
+    def _stop_quiet_keepalive(self) -> None:
+        """Stop the quiet keepalive thread if running."""
+        stop_evt = getattr(self, "_quiet_keepalive_stop", None)
+        if stop_evt:
+            stop_evt.set()
+        thread = getattr(self, "_quiet_keepalive_thread", None)
+        if thread and thread.is_alive():
+            thread.join(timeout=3)
+        self._quiet_keepalive_thread = None
+        self._quiet_keepalive_stop = None
+
+    def _quiet_keepalive_loop(self) -> None:
+        """Re-send quiet intent every 15s while in quiet mode."""
+        while not self._quiet_keepalive_stop.is_set():
+            self._quiet_keepalive_stop.wait(15)
+            if self._quiet_keepalive_stop.is_set():
+                break
+            if self._mode == "quiet" and self._connected:
+                self._send_quiet_intent()
 
     def start_monitor(self) -> None:
         """Start the connection monitor thread.
 
         Monitors the connection to Vector and auto-reconnects on failure.
-        Since connect() always requests OVERRIDE_BEHAVIORS, reconnecting
-        automatically puts Vector in sit/quiet mode.
+        connect() requests OVERRIDE_BEHAVIORS then releases control if in
+        playful mode (default), so wake word detection works after reconnect.
         """
         if self._monitor_thread and self._monitor_thread.is_alive():
             return
@@ -272,6 +350,8 @@ class ConnectionManager:
 
         logger.info("Disconnecting from Vector...")
 
+        self._stop_quiet_keepalive()
+
         try:
             if self._follow_pipeline:
                 self._follow_pipeline.stop()
@@ -321,26 +401,31 @@ class ConnectionManager:
     def set_mode(self, mode: str) -> None:
         """Switch between 'quiet' (still) and 'playful' (autonomous behaviors).
 
-        In quiet mode, the bridge holds OVERRIDE_BEHAVIORS_PRIORITY so Vector
-        stays still. In playful mode, control is released and vic-engine runs
-        its behavior tree (exploring, looking around, reacting).
+        Both modes release SDK behavior control so the native behavior tree
+        runs (enabling wake word detection and voice commands).
+
+        In quiet mode, the imperative_quiet intent activates Vector's built-in
+        QuietMode behavior — Vector sits still with head down but responds to
+        wake word. In playful mode, the normal behavior tree runs (exploring,
+        looking around, reacting).
         """
         if mode not in ("quiet", "playful"):
             raise ValueError(f"Unknown mode: {mode!r} (expected 'quiet' or 'playful')")
         if not self._connected or self._robot is None:
             raise ConnectionError("Not connected to Vector")
 
-        from anki_vector.connection import ControlPriorityLevel
+        # Ensure control is released so behavior tree runs
+        try:
+            self._robot.conn.release_control()
+        except Exception:
+            pass  # may already be released
 
         if mode == "quiet":
-            logger.info("Switching to quiet mode (OVERRIDE_BEHAVIORS)")
-            self._robot.conn.request_control(
-                behavior_control_level=ControlPriorityLevel.OVERRIDE_BEHAVIORS_PRIORITY,
-            )
-            self._robot.motors.set_wheel_motors(0, 0)
-        else:  # playful
-            logger.info("Switching to playful mode (releasing control)")
-            self._robot.conn.release_control()
+            logger.info("Switching to quiet mode (built-in QuietMode behavior)")
+            self._activate_quiet_mode()
+        else:
+            logger.info("Switching to playful mode (normal behavior tree)")
+            self._stop_quiet_keepalive()
 
         self._mode = mode
 
