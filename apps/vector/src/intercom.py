@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INTERCOM_URL = "http://127.0.0.1:8095"
+DEFAULT_INTERCOM_URL = "http://127.0.0.1:8096"
 _TIMEOUT_SECONDS = 10
 
 
