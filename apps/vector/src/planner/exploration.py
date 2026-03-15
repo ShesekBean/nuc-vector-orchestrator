@@ -75,8 +75,8 @@ class ExploreConfig:
     """Exploration configuration."""
 
     # How far to travel before checking for a new room (mm)
-    # Rooms are ~4m x 4m — only trigger after crossing ~3.5m
-    room_check_distance_mm: float = 3500.0
+    # Rooms are ~4m x 4m — only trigger after crossing a full room diagonal (~6m)
+    room_check_distance_mm: float = 6000.0
 
     # SLAM frame processing rate during exploration
     slam_hz: float = 10.0
