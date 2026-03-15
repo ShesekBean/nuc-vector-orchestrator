@@ -467,19 +467,42 @@ class AutonomousExplorer:
                 # Check if we've moved enough to potentially be in a new room
                 self._check_room_transition()
 
-                # Find nearest frontier
+                # Find best frontier (info-gain scored)
                 frontier = self._find_frontier()
                 if frontier is None:
                     no_frontier_count += 1
-                    if no_frontier_count >= 3:
+                    if no_frontier_count >= 5:
                         logger.info("No more frontiers — exploration complete!")
                         self._say("Exploration complete!")
                         self._intercom.send_text(
                             "I've explored everywhere I can reach! No more unexplored areas."
                         )
                         break
-                    # Sometimes SLAM just needs more frames — wait and retry
-                    time.sleep(1.0)
+                    # Random bounce: drive forward a random amount, turn random angle
+                    # This prevents the robot from sitting still and discovers new areas
+                    import random
+                    logger.info("No frontier — random bounce (attempt %d/5)", no_frontier_count)
+                    try:
+                        rand_dist = random.randint(200, 800)
+                        self._motor.turn_then_drive(
+                            angle_deg=0,
+                            distance_mm=rand_dist,
+                            drive_speed_mmps=self._cfg.drive_speed_mmps,
+                            turn_speed_dps=self._cfg.turn_speed_dps,
+                        )
+                        # Update dead reckoning
+                        pose = self._slam.get_pose()
+                        self._slam.update_pose_dead_reckoning(
+                            delta_x=rand_dist * math.cos(pose.theta),
+                            delta_y=rand_dist * math.sin(pose.theta),
+                        )
+                        self._mark_area_free()
+                        # Random turn
+                        rand_angle = random.randint(90, 270)
+                        self._motor.turn_in_place(rand_angle, speed_dps=self._cfg.turn_speed_dps)
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
                     continue
 
                 no_frontier_count = 0
@@ -743,12 +766,19 @@ class AutonomousExplorer:
     # -- Frontier detection --------------------------------------------------
 
     def _find_frontier(self) -> tuple[float, float] | None:
-        """Find the nearest frontier cell (boundary between FREE and UNKNOWN).
+        """Find the best frontier using information-gain scoring.
 
-        A frontier is a FREE cell adjacent to at least one UNKNOWN cell.
-        Returns world coordinates (x_mm, y_mm) of the nearest frontier,
+        Instead of picking the nearest frontier (which causes circling),
+        scores each frontier by how many UNKNOWN cells are visible from it.
+        Frontiers near doorways score high because entire rooms of UNKNOWN
+        are behind them.
+
+        utility = info_gain / (distance ^ 0.6)
+
+        Returns world coordinates (x_mm, y_mm) of the best frontier,
         or None if no frontiers exist.
         """
+        import numpy as np
         from apps.vector.src.planner.visual_slam import CellState
 
         grid = self._slam.get_grid()
@@ -759,34 +789,93 @@ class AutonomousExplorer:
         dim = grid.grid_dim
         radius = self._cfg.frontier_search_radius_cells
 
-        best_dist = float("inf")
-        best_r, best_c = -1, -1
-
-        # Search in a radius around robot position
+        # Step 1: Find all frontier cells
+        frontier_cells = []
         r_min = max(0, robot_r - radius)
         r_max = min(dim, robot_r + radius)
         c_min = max(0, robot_c - radius)
         c_max = min(dim, robot_c + radius)
 
+        free_val = int(CellState.FREE)
+        unknown_val = int(CellState.UNKNOWN)
+
         for r in range(r_min, r_max):
             for c in range(c_min, c_max):
-                if raw[r, c] != int(CellState.FREE):
+                if raw[r, c] != free_val:
                     continue
-
-                # Check if this FREE cell borders any UNKNOWN cell
-                is_frontier = False
+                # Check 4-connectivity for UNKNOWN neighbor
                 for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                     nr, nc = r + dr, c + dc
                     if 0 <= nr < dim and 0 <= nc < dim:
-                        if raw[nr, nc] == int(CellState.UNKNOWN):
-                            is_frontier = True
+                        if raw[nr, nc] == unknown_val:
+                            frontier_cells.append((r, c))
                             break
 
-                if is_frontier:
-                    dist = math.hypot(r - robot_r, c - robot_c)
-                    if dist < best_dist and dist > 2:  # don't pick self
-                        best_dist = dist
-                        best_r, best_c = r, c
+        if not frontier_cells:
+            return None
+
+        # Step 2: Cluster nearby frontier cells (simple grid-based grouping)
+        # Group cells within 3-cell radius of each other
+        clusters: list[list[tuple[int, int]]] = []
+        used = set()
+        for cell in frontier_cells:
+            if cell in used:
+                continue
+            cluster = [cell]
+            used.add(cell)
+            # BFS to find connected frontier cells
+            queue = [cell]
+            while queue:
+                cr, cc = queue.pop(0)
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if (nr, nc) in used:
+                        continue
+                    if (nr, nc) in frontier_cells:
+                        cluster.append((nr, nc))
+                        used.add((nr, nc))
+                        queue.append((nr, nc))
+            if len(cluster) >= 1:  # include all frontier clusters
+                clusters.append(cluster)
+
+        if not clusters:
+            # Fall back: use individual frontier cells
+            clusters = [[(r, c)] for r, c in frontier_cells[:20]]
+
+        # Step 3: Score each cluster by information gain
+        best_utility = -1.0
+        best_r, best_c = -1, -1
+
+        for cluster in clusters:
+            # Cluster centroid
+            cr = sum(r for r, c in cluster) // len(cluster)
+            cc = sum(c for r, c in cluster) // len(cluster)
+
+            # Distance from robot (in cells)
+            dist = math.hypot(cr - robot_r, cc - robot_c)
+            if dist < 1:
+                continue  # robot is on this cell
+
+            # Information gain: count UNKNOWN cells in a radius around the centroid
+            info_gain = 0
+            scan_radius = 10  # 10 cells = 500mm
+            for dr in range(-scan_radius, scan_radius + 1, 2):
+                for dc in range(-scan_radius, scan_radius + 1, 2):
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < dim and 0 <= nc < dim:
+                        if raw[nr, nc] == unknown_val:
+                            info_gain += 1
+
+            # Utility: info_gain / distance^0.6 (sub-linear cost)
+            # High info-gain distant frontiers (doorways) beat low-gain nearby ones
+            utility = info_gain / (max(dist, 1) ** 0.6)
+
+            # Bonus: larger clusters = more frontier = more likely a real boundary
+            utility *= (1.0 + len(cluster) * 0.1)
+
+            if utility > best_utility:
+                best_utility = utility
+                best_r, best_c = cr, cc
 
         if best_r < 0:
             return None
@@ -795,6 +884,11 @@ class AutonomousExplorer:
         origin = dim // 2
         x_mm = (best_c - origin) * grid.cell_size_mm
         y_mm = (best_r - origin) * grid.cell_size_mm
+
+        logger.info(
+            "Best frontier: (%.0f, %.0f) utility=%.1f, %d clusters found",
+            x_mm, y_mm, best_utility, len(clusters),
+        )
         return (float(x_mm), float(y_mm))
 
     def _drive_toward(self, target_x: float, target_y: float) -> None:
