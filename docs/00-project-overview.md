@@ -65,9 +65,8 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Voice Proxy (scripts/openclaw-voice-proxy.py, default port 8095)
 │   └── Bridges wire-pod STT → OpenClaw LLM agent
 │
-├── Intercom Server (scripts/intercom-server.py, default port 8095)
-│   └── HTTP relay → Signal DM (photo + text to Ophir)
-│   └── Note: shares default port with voice proxy — run one at a time or override PORT env var
+├── Signal Messaging (merged into Bridge Server on port 8081)
+│   └── /signal/send, /signal/send-image, /signal/send-camera → Signal DM to Ophir
 │
 ├── LiveKit Bridge (apps/vector/src/livekit_bridge.py)
 │   └── WebRTC: camera out + mic out (Opus) + audio in (speaker) + video in (OLED)
@@ -275,9 +274,10 @@ All skills are hot-deployable directories under `~/.openclaw/workspace/skills/<n
 3. **fitness** (`apps/openclaw/skills/fitness/SKILL.md`) — Strava, Withings, Oura Ring data tracking and reporting
 4. **monarch-money** (`apps/openclaw/skills/monarch-money/SKILL.md`) — Financial queries via Monarch Money API (read-only)
 
-### Intercom (`src/intercom.py` + `scripts/intercom-server.py`)
-- `Intercom` class sends text + JPEG photos to Ophir via HTTP POST to intercom-server
-- Intercom server relays to Signal DM via OpenClaw gateway
+### Signal Messaging (`src/intercom.py` + bridge `/signal/*` routes)
+- `Intercom` class sends text + JPEG photos to Ophir via bridge HTTP endpoints
+- Bridge relays to Signal DM via JSON-RPC to openclaw-gateway signal-cli
+- Endpoints: `/signal/send` (text), `/signal/send-image` (file), `/signal/send-camera` (capture+send)
 - Used by: HomeGuardian alerts, exploration room naming, scene descriptions
 
 ### Voice-to-Signal Relay

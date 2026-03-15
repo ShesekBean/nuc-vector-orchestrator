@@ -112,7 +112,7 @@ nuc-vector-orchestrator/
 │       │   │   ├── display_channel.py ← PIL image → Vector 160x80 OLED
 │       │   │   └── service.py       ← MediaService lifecycle manager
 │       │   ├── expression_engine.py ← coordinated face + LED + sound expressions (emotion states)
-│       │   ├── intercom.py        ← Signal messaging client (photo + text to Ophir via intercom-server)
+│       │   ├── intercom.py        ← Signal messaging client (photo + text to Ophir via bridge /signal/* routes)
 │       │   ├── sensor_handler.py  ← cliff detection + touch event handler (safety-critical)
 │       │   └── events/            ← hybrid event system (SDK events + NUC bus)
 │       │       ├── event_types.py ← event type definitions + priorities
@@ -160,7 +160,7 @@ nuc-vector-orchestrator/
 │   ├── sprint-end.sh             ← end-of-sprint test/backup workflow
 │   ├── pgm-signal-gate.sh        ← rate-limited Signal notifications
 │   ├── signal-interactive.sh     ← interactive test Signal library
-│   ├── intercom-server.py        ← DEPRECATED: Signal intercom (merged into bridge /signal/* routes)
+│   ├── intercom-server.py        ← REMOVED: migrated to bridge /signal/* routes
 │   ├── monarch-login.py          ← Monarch Money auth → saves token for OpenClaw
 │   ├── chatgpt-server.py         ← ChatGPT HTTP proxy (Playwright persistent browser, async job queue)
 │   ├── chatgpt-query.py          ← ChatGPT CLI query + login flow (Playwright)
