@@ -6,7 +6,7 @@
       "name": "Morning swim push",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773495031742,
+      "updatedAtMs": 1773581406237,
       "schedule": {
         "kind": "cron",
         "expr": "30 6 * * *",
@@ -24,11 +24,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773581400000,
-        "lastRunAtMs": 1773495000010,
+        "nextRunAtMs": 1773667800000,
+        "lastRunAtMs": 1773581400016,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 31732,
+        "lastDurationMs": 6221,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -55,23 +55,23 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773585900000,
-        "lastRunAtMs": 1773499500010,
+        "nextRunAtMs": 1773672300000,
+        "lastRunAtMs": 1773585900016,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 66993,
+        "lastDurationMs": 82875,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
       },
-      "updatedAtMs": 1773499567003
+      "updatedAtMs": 1773585982891
     },
     {
       "id": "weight-checkin",
       "name": "Morning weight check-in",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773500446412,
+      "updatedAtMs": 1773586837171,
       "schedule": {
         "kind": "cron",
         "expr": "0 8 * * *",
@@ -89,11 +89,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773586800000,
-        "lastRunAtMs": 1773500400010,
+        "nextRunAtMs": 1773673200000,
+        "lastRunAtMs": 1773586800011,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 46402,
+        "lastDurationMs": 37160,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -236,7 +236,7 @@
       "name": "Daily AI shipping brief",
       "enabled": true,
       "createdAtMs": 1773011375086,
-      "updatedAtMs": 1773496914954,
+      "updatedAtMs": 1773583294093,
       "schedule": {
         "kind": "cron",
         "expr": "0 7 * * *",
@@ -254,11 +254,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773583200000,
-        "lastRunAtMs": 1773496800010,
+        "nextRunAtMs": 1773669600000,
+        "lastRunAtMs": 1773583200014,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 114944,
+        "lastDurationMs": 94079,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -304,7 +304,7 @@
       "name": "Meeting prep 6 minutes before (PT)",
       "enabled": true,
       "createdAtMs": 1773542904149,
-      "updatedAtMs": 1773547201620,
+      "updatedAtMs": 1773588142040,
       "schedule": {
         "kind": "cron",
         "expr": "*/2 6-20 * * *",
@@ -314,21 +314,21 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are running a proactive meeting-prep check for Ophir.\n\nGoal:\n- Detect meetings starting about 6 minutes from now (treat 4-8 minutes as eligible) in America/Los_Angeles time.\n- For each eligible meeting, prepare a concise prep brief by querying connected work context via the ChatGPT proxy skill (Outlook email, calendar, Slack, SharePoint) and add lightweight web context when useful.\n\nVIP contacts (high-priority):\n- Maksim\n- James\n- Manish\n- Liana\n- Minh\n- Stephen\n- Joe\n- Raphael / Rafael\n- Robert Gonzalaz\n\nRequired behavior:\n1) First, determine current PT time.\n2) Query work context to find meetings starting soon.\n3) For each eligible meeting, gather:\n   - latest relevant emails (last 7 days)\n   - recent Slack context (48h)\n   - relevant SharePoint/docs hints\n   - optional internet background (only if it materially helps)\n4) External-person rule:\n   - If the key person appears external (not from Sugar / not internal), run public-web research and include a short person brief.\n   - Prefer public LinkedIn profile context when available (title, company, recent role history/themes), plus one supporting public source.\n   - Do not fabricate details; if uncertain, label uncertainty.\n5) VIP depth rule:\n   - If any attendee matches a VIP name (including close spelling variants), produce a deeper prep:\n     - 5 talking points (instead of 3)\n     - 2 risks/blind spots (instead of 1)\n     - include \"Decision asks\" (up to 2 bullets)\n   - For non-VIP meetings keep standard concise format.\n6) Send a concise prep message to the user containing:\n   - Meeting name + start time (PT)\n   - Goal in one line\n   - Talking points (3 standard, 5 VIP)\n   - Risk/blind spot (1 standard, 2 VIP)\n   - 1 suggested opening line\n   - For external people: \"Who they are\" mini-brief from public sources\n   - For VIP meetings: \"Decision asks\" (up to 2)\n   - 1 reminder suggestion candidate (short task + due)\n7) Avoid duplicate prep for the same meeting start time/title; if already sent recently, skip.\n8) If no meeting is in 4-8 minutes, do not send anything.\n\nStyle:\n- Brief, practical, no fluff.\n- PT (PST/PDT) only; do not use UTC in user-facing text."
+        "message": "You are running a proactive meeting-prep check for Ophir.\n\nGoal:\n- Detect meetings starting about 6 minutes from now (treat 4-8 minutes as eligible) in America/Los_Angeles time.\n- For each eligible meeting, prepare a concise prep brief by querying connected work context via the ChatGPT proxy skill (Outlook email, calendar, Slack, SharePoint) and add lightweight web context when useful.\n\nVIP contacts (high-priority):\n- Maksim\n- James\n- Manish\n- Liana\n- Minh\n- Stephen\n- Joe\n- Raphael / Rafael\n- Robert Gonzalaz\n\nRequired behavior:\n1) First, determine current PT time.\n2) Query work context to find meetings starting soon.\n3) For each eligible meeting, gather:\n   - latest relevant emails (last 7 days)\n   - recent Slack context (48h)\n   - relevant SharePoint/docs hints\n   - optional internet background (only if it materially helps)\n4) External-person rule:\n   - If the key person appears external (not from Sugar / not internal), run public-web research and include a short person brief.\n   - Prefer public LinkedIn profile context when available (title, company, recent role history/themes), plus one supporting public source.\n   - Do not fabricate details; if uncertain, label uncertainty.\n5) VIP depth rule:\n   - If any attendee matches a VIP name (including close spelling variants), produce a deeper prep:\n     - 5 talking points (instead of 3)\n     - 2 risks/blind spots (instead of 1)\n     - include \"Decision asks\" (up to 2 bullets)\n   - For non-VIP meetings keep standard concise format.\n6) Send a concise prep message to the user containing:\n   - Meeting name + start time (PT)\n   - Goal in one line\n   - Talking points (3 standard, 5 VIP)\n   - Risk/blind spot (1 standard, 2 VIP)\n   - 1 suggested opening line\n   - For external people: \"Who they are\" mini-brief from public sources\n   - For VIP meetings: \"Decision asks\" (up to 2)\n   - 1 reminder suggestion candidate (short task + due)\n7) Avoid duplicate prep for the same meeting start time/title; if already sent recently, skip.\n8) If no meeting is in 4-8 minutes, produce ABSOLUTELY ZERO output. No \"no meetings\" message, no status report, no explanation. Literally empty response.\n\nStyle:\n- Brief, practical, no fluff.\n- PT (PST/PDT) only; do not use UTC in user-facing text."
       },
       "delivery": {
         "mode": "announce"
       },
       "state": {
-        "nextRunAtMs": 1773579600000,
-        "lastRunAtMs": 1773547080008,
+        "nextRunAtMs": 1773588240000,
+        "lastRunAtMs": 1773588000019,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 121612,
-        "lastDelivered": false,
+        "lastDurationMs": 142021,
         "lastDeliveryStatus": "not-delivered",
         "consecutiveErrors": 0,
-        "runningAtMs": 1773579600010
+        "lastDelivered": false,
+        "runningAtMs": 1773588240011
       }
     },
     {
@@ -348,7 +348,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Create an end-of-day close loop for Ophir.\n\nTime context:\n- Run at 5:30 PM America/Los_Angeles on weekdays.\n\nGoal:\n- Provide a concise daily wrap only if there were meaningful work signals today.\n\nRequired:\n1) Gather today's relevant work context from connected sources (calendar, email, Slack, SharePoint) via available skills/tools.\n2) If there are no meaningful work signals, send nothing.\n3) Otherwise send this exact structure:\n   - Done today (max 3 bullets)\n   - Open loops (max 3 bullets)\n   - Tomorrow top 2\n   - Up to 2 high-signal reminder suggestions (tap-to-add style if available)\n4) Keep concise and practical, no fluff.\n5) Use PT for all time references."
+        "message": "Create an end-of-day close loop for Ophir.\n\nTime context:\n- Run at 5:30 PM America/Los_Angeles on weekdays.\n\nGoal:\n- Provide a concise daily wrap only if there were meaningful work signals today.\n\nRequired:\n1) Gather today's relevant work context from connected sources (calendar, email, Slack, SharePoint) via available skills/tools.\n2) If there are no meaningful work signals, produce ABSOLUTELY ZERO output. No status message, no explanation. Literally empty response.\n3) Otherwise send this exact structure:\n   - Done today (max 3 bullets)\n   - Open loops (max 3 bullets)\n   - Tomorrow top 2\n   - Up to 2 high-signal reminder suggestions (tap-to-add style if available)\n4) Keep concise and practical, no fluff.\n5) Use PT for all time references."
       },
       "delivery": {
         "mode": "announce"
@@ -374,7 +374,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run a missed-meeting rescue check for Ophir.\n\nVIP contacts (high-priority): Maksim, James, Manish, Liana, Minh, Stephen, Joe, Raphael/Rafael, Robert Gonzalaz.\n\nGoal:\n- If a meeting is starting now (or started within the last 2 minutes) and no prep brief was sent in the prior 10 minutes, send a 60-second rescue brief.\n\nRequired behavior:\n1) Use America/Los_Angeles time.\n2) Detect active/just-started meetings from calendar context.\n3) Check recent chat context to avoid duplicates.\n4) For each qualifying meeting send a compact brief with:\n   - Meeting name + start time (PT)\n   - Goal (one line)\n   - Who matters (key people)\n   - One suggested opening line\n   - One risk/blind spot\n5) VIP rescue depth rule:\n   - If attendee matches VIP list (including close spelling variants), add:\n     - \"Decision asks\" (up to 2 bullets)\n     - \"Watchouts\" (one extra bullet)\n6) If no qualifying meeting, send nothing.\n7) Keep it short and immediately usable."
+        "message": "Run a missed-meeting rescue check for Ophir.\n\nVIP contacts (high-priority): Maksim, James, Manish, Liana, Minh, Stephen, Joe, Raphael/Rafael, Robert Gonzalaz.\n\nGoal:\n- If a meeting is starting now (or started within the last 2 minutes) and no prep brief was sent in the prior 10 minutes, send a 60-second rescue brief.\n\nRequired behavior:\n1) Use America/Los_Angeles time.\n2) Detect active/just-started meetings from calendar context.\n3) Check recent chat context to avoid duplicates.\n4) For each qualifying meeting send a compact brief with:\n   - Meeting name + start time (PT)\n   - Goal (one line)\n   - Who matters (key people)\n   - One suggested opening line\n   - One risk/blind spot\n5) VIP rescue depth rule:\n   - If attendee matches VIP list (including close spelling variants), add:\n     - \"Decision asks\" (up to 2 bullets)\n     - \"Watchouts\" (one extra bullet)\n6) If no qualifying meeting, produce ABSOLUTELY ZERO output. No \"no meetings\" message, no status report. Literally empty response.\n7) Keep it short and immediately usable."
       },
       "delivery": {
         "mode": "announce"
@@ -390,7 +390,7 @@
       "name": "Monarch daily yesterday-spending anomaly check (PT)",
       "enabled": true,
       "createdAtMs": 1773543413758,
-      "updatedAtMs": 1773543413758,
+      "updatedAtMs": 1773587799959,
       "schedule": {
         "kind": "cron",
         "expr": "10 8 * * *",
@@ -406,7 +406,14 @@
         "mode": "announce"
       },
       "state": {
-        "nextRunAtMs": 1773587400000
+        "nextRunAtMs": 1773673800000,
+        "lastRunAtMs": 1773587692285,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 107674,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
       }
     },
     {
@@ -518,7 +525,7 @@
       "name": "Robot morning reflection prompts (PT)",
       "enabled": true,
       "createdAtMs": 1773545269475,
-      "updatedAtMs": 1773545365766,
+      "updatedAtMs": 1773588211005,
       "schedule": {
         "kind": "cron",
         "expr": "*/10 6-10 * * *",
@@ -528,14 +535,20 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run a morning reflection trigger for Ophir.\n\nGoal:\n- Ask morning reflection questions ONLY when a robot \"saw Ophir\" event exists.\n\nQuestions to speak:\n1) \"What are your intentions for today?\"\n2) \"What are you grateful for?\"\n\nStrict trigger conditions:\n1) Use America/Los_Angeles time.\n2) Morning window only: 6:00-10:59 AM PT.\n3) Oura wake check: wake-up appears recent (~within 30 minutes).\n4) Presence event check: confirm a recent robot presence event indicating it saw Ophir (from chat/system context), within the last ~10 minutes.\n5) Fire once per day max.\n6) If any condition is missing, do nothing.\n\nAction when all conditions pass:\n- POST http://172.17.0.1:8081/audio/play\n- JSON: {\"text\":\"Good morning Ophir. What are your intentions for today? What are you grateful for?\"}\n\nFailure behavior:\n- If robot bridge unavailable, send one short failure note once; no spam.\n- Otherwise no message when skipped."
+        "message": "Morning reflection trigger for Ophir.\n\nCRITICAL OUTPUT RULE: If ANY condition below is not met, produce ABSOLUTELY ZERO output. No status reports, no condition checks, no explanations, no \"skipped\" messages. Literally empty response. The user must NEVER see a message about why you didn't fire.\n\nConditions (ALL must pass):\n1) America/Los_Angeles time, 6:00-10:59 AM.\n2) Oura wake-up appears recent (~within 30 minutes).\n3) Recent robot presence event showing it saw Ophir (within ~10 minutes).\n4) Not already fired today.\n\nIf ALL conditions pass:\n- POST http://172.17.0.1:8081/audio/play\n- JSON: {\"text\":\"Good morning Ophir. What are your intentions for today? What are you grateful for?\"}\n- If bridge is down, send ONE short failure note. That's it."
       },
       "delivery": {
         "mode": "announce"
       },
       "state": {
-        "nextRunAtMs": 1773579600000,
-        "runningAtMs": 1773579600010
+        "nextRunAtMs": 1773588600000,
+        "lastRunAtMs": 1773588142040,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 68965,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "lastDelivered": true
       }
     },
     {
@@ -555,7 +568,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "Run a bedtime reflection prompt for Ophir.\n\nGoal:\n- Ask bedtime reflection questions ONLY when a robot \"saw Ophir\" event exists recently.\n\nQuestions to speak:\n1) \"What did you learn today?\"\n2) \"What are you grateful for?\"\n\nStrict trigger conditions:\n1) Use America/Los_Angeles time.\n2) Evening trigger run at 9:30 PM PT.\n3) Presence event check: confirm a recent robot presence event indicating it saw Ophir (from chat/system context), within the last ~15 minutes.\n4) Fire once per day max.\n5) If presence event is missing, do nothing.\n\nAction when conditions pass:\n- POST http://172.17.0.1:8081/audio/play\n- JSON: {\"text\":\"Good evening Ophir. Before sleep, what did you learn today? What are you grateful for?\"}\n\nFailure behavior:\n- If robot bridge unavailable, send one short failure note once; no spam.\n- Otherwise no message when skipped."
+        "message": "Bedtime reflection trigger for Ophir.\n\nCRITICAL OUTPUT RULE: If ANY condition below is not met, produce ABSOLUTELY ZERO output. No status reports, no condition checks, no explanations. Literally empty response.\n\nConditions (ALL must pass):\n1) America/Los_Angeles time, 9:30 PM.\n2) Recent robot presence event showing it saw Ophir (within ~15 minutes).\n3) Not already fired today.\n\nIf ALL conditions pass:\n- POST http://172.17.0.1:8081/audio/play\n- JSON: {\"text\":\"Good evening Ophir. Before sleep, what did you learn today? What are you grateful for?\"}\n- If bridge is down, send ONE short failure note. That's it."
       },
       "delivery": {
         "mode": "announce"
