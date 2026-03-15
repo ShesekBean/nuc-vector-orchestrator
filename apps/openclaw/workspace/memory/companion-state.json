@@ -1,10 +1,10 @@
 {
-  "is_present": true,
+  "is_present": false,
   "person_name": "ophir",
   "last_seen_at": 1773506638.9113164,
   "first_seen_today": 1773506638.3915389,
   "session_start": 1773506638.3915389,
-  "away_since": 0.0,
+  "away_since": 1773544382.5706856,
   "engagement_score": 0.15,
   "interactions_today": 1,
   "last_greeting_at": 0.0,

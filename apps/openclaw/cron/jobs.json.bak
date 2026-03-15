@@ -170,7 +170,7 @@
       "name": "Dinner diet check-in",
       "enabled": true,
       "createdAtMs": 1772257198837,
-      "updatedAtMs": 1773457221246,
+      "updatedAtMs": 1773543654354,
       "schedule": {
         "kind": "cron",
         "expr": "0 20 * * *",
@@ -188,11 +188,11 @@
         "to": "+14084758230"
       },
       "state": {
-        "nextRunAtMs": 1773543600000,
-        "lastRunAtMs": 1773457200010,
+        "nextRunAtMs": 1773630000000,
+        "lastRunAtMs": 1773543628202,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 21236,
+        "lastDurationMs": 26152,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -295,6 +295,272 @@
         "lastDurationMs": 176325,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered"
+      }
+    },
+    {
+      "id": "618687fd-bb58-4dfa-9466-a2ff11eb2028",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Meeting prep 6 minutes before (PT)",
+      "enabled": true,
+      "createdAtMs": 1773542904149,
+      "updatedAtMs": 1773547201620,
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/2 6-20 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "You are running a proactive meeting-prep check for Ophir.\n\nGoal:\n- Detect meetings starting about 6 minutes from now (treat 4-8 minutes as eligible) in America/Los_Angeles time.\n- For each eligible meeting, prepare a concise prep brief by querying connected work context via the ChatGPT proxy skill (Outlook email, calendar, Slack, SharePoint) and add lightweight web context when useful.\n\nVIP contacts (high-priority):\n- Maksim\n- James\n- Manish\n- Liana\n- Minh\n- Stephen\n- Joe\n- Raphael / Rafael\n- Robert Gonzalaz\n\nRequired behavior:\n1) First, determine current PT time.\n2) Query work context to find meetings starting soon.\n3) For each eligible meeting, gather:\n   - latest relevant emails (last 7 days)\n   - recent Slack context (48h)\n   - relevant SharePoint/docs hints\n   - optional internet background (only if it materially helps)\n4) External-person rule:\n   - If the key person appears external (not from Sugar / not internal), run public-web research and include a short person brief.\n   - Prefer public LinkedIn profile context when available (title, company, recent role history/themes), plus one supporting public source.\n   - Do not fabricate details; if uncertain, label uncertainty.\n5) VIP depth rule:\n   - If any attendee matches a VIP name (including close spelling variants), produce a deeper prep:\n     - 5 talking points (instead of 3)\n     - 2 risks/blind spots (instead of 1)\n     - include \"Decision asks\" (up to 2 bullets)\n   - For non-VIP meetings keep standard concise format.\n6) Send a concise prep message to the user containing:\n   - Meeting name + start time (PT)\n   - Goal in one line\n   - Talking points (3 standard, 5 VIP)\n   - Risk/blind spot (1 standard, 2 VIP)\n   - 1 suggested opening line\n   - For external people: \"Who they are\" mini-brief from public sources\n   - For VIP meetings: \"Decision asks\" (up to 2)\n   - 1 reminder suggestion candidate (short task + due)\n7) Avoid duplicate prep for the same meeting start time/title; if already sent recently, skip.\n8) If no meeting is in 4-8 minutes, do not send anything.\n\nStyle:\n- Brief, practical, no fluff.\n- PT (PST/PDT) only; do not use UTC in user-facing text."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773579600000,
+        "lastRunAtMs": 1773547080008,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 121612,
+        "lastDelivered": false,
+        "lastDeliveryStatus": "not-delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "293bde9d-3320-4f19-8def-688705a97c06",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "End-of-day close loop (weekdays PT)",
+      "enabled": true,
+      "createdAtMs": 1773543135881,
+      "updatedAtMs": 1773543135881,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 17 * * 1-5",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Create an end-of-day close loop for Ophir.\n\nTime context:\n- Run at 5:30 PM America/Los_Angeles on weekdays.\n\nGoal:\n- Provide a concise daily wrap only if there were meaningful work signals today.\n\nRequired:\n1) Gather today's relevant work context from connected sources (calendar, email, Slack, SharePoint) via available skills/tools.\n2) If there are no meaningful work signals, send nothing.\n3) Otherwise send this exact structure:\n   - Done today (max 3 bullets)\n   - Open loops (max 3 bullets)\n   - Tomorrow top 2\n   - Up to 2 high-signal reminder suggestions (tap-to-add style if available)\n4) Keep concise and practical, no fluff.\n5) Use PT for all time references."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773707400000
+      }
+    },
+    {
+      "id": "64bf11c7-fbc9-4ee4-a16b-c4c7d2fe5c96",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Missed-meeting rescue brief (weekdays PT)",
+      "enabled": true,
+      "createdAtMs": 1773543135886,
+      "updatedAtMs": 1773543342662,
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/2 6-20 * * 1-5",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a missed-meeting rescue check for Ophir.\n\nVIP contacts (high-priority): Maksim, James, Manish, Liana, Minh, Stephen, Joe, Raphael/Rafael, Robert Gonzalaz.\n\nGoal:\n- If a meeting is starting now (or started within the last 2 minutes) and no prep brief was sent in the prior 10 minutes, send a 60-second rescue brief.\n\nRequired behavior:\n1) Use America/Los_Angeles time.\n2) Detect active/just-started meetings from calendar context.\n3) Check recent chat context to avoid duplicates.\n4) For each qualifying meeting send a compact brief with:\n   - Meeting name + start time (PT)\n   - Goal (one line)\n   - Who matters (key people)\n   - One suggested opening line\n   - One risk/blind spot\n5) VIP rescue depth rule:\n   - If attendee matches VIP list (including close spelling variants), add:\n     - \"Decision asks\" (up to 2 bullets)\n     - \"Watchouts\" (one extra bullet)\n6) If no qualifying meeting, send nothing.\n7) Keep it short and immediately usable."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773666000000
+      }
+    },
+    {
+      "id": "34a730f3-d2c3-4b75-be57-e47639c0ca79",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Monarch daily yesterday-spending anomaly check (PT)",
+      "enabled": true,
+      "createdAtMs": 1773543413758,
+      "updatedAtMs": 1773543413758,
+      "schedule": {
+        "kind": "cron",
+        "expr": "10 8 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a daily Monarch spending anomaly check for Ophir.\n\nTime:\n- Run every day at 8:10 AM America/Los_Angeles.\n\nTask:\n1) Use Monarch data to analyze YESTERDAY's spending.\n2) Compare yesterday to recent baseline (last 14-30 days same categories/merchants where available).\n3) Identify anything abnormal or very high (e.g., unusually large single transaction, category spike, duplicate-like charges, unexpected merchant).\n4) If nothing notable, send a short \"all normal\" message with headline spend.\n5) If notable items exist, send concise alert with:\n   - Yesterday total spend\n   - 1-3 flagged items\n   - Why it looks abnormal/high\n   - Quick suggested action (review, ignore, dispute, or monitor)\n6) Keep message brief and practical.\n7) Use PT date references in user-facing text.\n\nImportant:\n- Use Monarch read-only queries only.\n- Do not fabricate certainty; label uncertainty clearly."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773587400000
+      }
+    },
+    {
+      "id": "a08c2beb-0e55-4be1-9389-a3c1190f8507",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Monarch Friday weekly spending trend report (PT)",
+      "enabled": true,
+      "createdAtMs": 1773543413764,
+      "updatedAtMs": 1773543413764,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 8 * * 5",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a weekly Monarch spending trend report for Ophir.\n\nTime:\n- Every Friday at 8:30 AM America/Los_Angeles.\n\nTask:\n1) Analyze spending trends for the last 7 days (and compare vs prior 7 days when possible).\n2) Provide concise weekly report including:\n   - Total spend this week\n   - Change vs prior week (amount and %)\n   - Top 5 categories by expense\n   - 2-3 notable trend insights (up/down shifts, unusual merchants, recurring spikes)\n   - One practical next-step suggestion\n3) Keep concise and scannable.\n4) Use PT date references in user-facing text.\n5) If data is incomplete, state that clearly.\n\nImportant:\n- Use Monarch read-only queries only."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1774020600000
+      }
+    },
+    {
+      "id": "7c1ab0a4-ede7-47fd-9db2-2c80a27363b4",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Thursday draft - Weekly update to Maksim (PT)",
+      "enabled": true,
+      "createdAtMs": 1773543574682,
+      "updatedAtMs": 1773543574682,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 12 * * 4",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Create and send Ophir a suggested weekly update draft for Maksim every Thursday at 12:00 PM PT.\n\nRequirements:\n1) Use connected work context (calendar, Outlook email, Slack, SharePoint) to capture relevant updates from the prior week.\n2) Use the saved reference in memory/weekly-updates-maksim.md for preferred structure and style.\n3) Produce a concise draft in this exact section order:\n   1. Operational Progress – ICP Solutions / ERP Roadmap (Liana/Rafael)\n   2. Operational Progress - Market (James)\n   3. Issues under consideration and risks\n   4. Collaboration Needs and Dependencies\n4) Include concrete owners, status, and near-term dates where available.\n5) Preserve accurate terminology (e.g., Enterprise vs Private Cloud where relevant).\n6) If signal is thin, explicitly mark assumptions and keep claims conservative.\n7) Deliver as a suggestion message to Ophir (not auto-send email).\n\nStyle:\n- Brief, practical, no fluff.\n- PT date references only."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773946800000
+      }
+    },
+    {
+      "id": "c840d2af-5c0d-4178-b388-2befdce5fe55",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Robot morning greeting after Oura wake (PT)",
+      "enabled": false,
+      "createdAtMs": 1773544573293,
+      "updatedAtMs": 1773545273917,
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/10 6-10 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a morning wake check for Ophir.\n\nGoal:\n- If Oura data indicates Ophir woke up recently this morning, have the robot say: \"Good morning Ophir\".\n\nRules:\n1) Use America/Los_Angeles time.\n2) Query available fitness/Oura context to determine wake-up time for today.\n3) Trigger only once per day, and only when wake-up appears recent (within ~30 minutes) and current time is between 6:00-10:59 AM PT.\n4) If already triggered today, do nothing.\n5) When triggering, call robot bridge endpoint:\n   POST http://172.17.0.1:8081/audio/play\n   JSON body: {\"text\":\"Good morning Ophir\"}\n6) If robot bridge is unavailable, send a short failure note to user once (do not spam).\n7) Keep user-facing messages brief; no message if no trigger.\n\nSafety:\n- Do not move the robot.\n- Do not trigger during quiet hours outside window."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {}
+    },
+    {
+      "id": "adad9079-7fc3-4d16-8197-b0b100fd73aa",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Deal/Risk radar from Slack+Email (weekdays PT)",
+      "enabled": true,
+      "createdAtMs": 1773545081124,
+      "updatedAtMs": 1773545081124,
+      "schedule": {
+        "kind": "cron",
+        "expr": "50 7 * * 1-5",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a daily deal/risk radar for Ophir.\n\nSchedule context:\n- Weekdays at 7:50 AM America/Los_Angeles.\n\nGoal:\n- Scan recent Slack + email context and send ONLY anomalies (no routine recap).\n\nMethod:\n1) Use connected work context (Outlook email + Slack) via available skills/tools.\n2) Focus window: last ~24h (expand to 48h if needed for context).\n3) Detect only high-signal exceptions:\n   - timeline slips (milestone/date risk)\n   - escalations (urgent/customer/exec pressure)\n   - hidden dependency risk (missing owner, blocked handoff, pending approval)\n4) For each anomaly, include:\n   - Risk title (one line)\n   - Evidence signal (short: source + clue)\n   - Impact level (high/med/low)\n   - Next move (one concrete action)\n5) Keep to max 3 anomalies.\n6) If no anomalies, send one short line: \"No major anomalies detected this morning.\"\n\nStyle:\n- Brief, practical, no fluff.\n- PT references only."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773672600000
+      }
+    },
+    {
+      "id": "c9d555ac-56f7-428a-91c9-b3aa2e5846c0",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Robot morning reflection prompts (PT)",
+      "enabled": true,
+      "createdAtMs": 1773545269475,
+      "updatedAtMs": 1773545365766,
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/10 6-10 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a morning reflection trigger for Ophir.\n\nGoal:\n- Ask morning reflection questions ONLY when a robot \"saw Ophir\" event exists.\n\nQuestions to speak:\n1) \"What are your intentions for today?\"\n2) \"What are you grateful for?\"\n\nStrict trigger conditions:\n1) Use America/Los_Angeles time.\n2) Morning window only: 6:00-10:59 AM PT.\n3) Oura wake check: wake-up appears recent (~within 30 minutes).\n4) Presence event check: confirm a recent robot presence event indicating it saw Ophir (from chat/system context), within the last ~10 minutes.\n5) Fire once per day max.\n6) If any condition is missing, do nothing.\n\nAction when all conditions pass:\n- POST http://172.17.0.1:8081/audio/play\n- JSON: {\"text\":\"Good morning Ophir. What are your intentions for today? What are you grateful for?\"}\n\nFailure behavior:\n- If robot bridge unavailable, send one short failure note once; no spam.\n- Otherwise no message when skipped."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773579600000
+      }
+    },
+    {
+      "id": "4b77d543-1a25-448c-9424-3c23e35722ed",
+      "agentId": "main",
+      "sessionKey": "agent:main:main",
+      "name": "Robot bedtime reflection prompts (PT)",
+      "enabled": true,
+      "createdAtMs": 1773545269481,
+      "updatedAtMs": 1773545374644,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 21 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run a bedtime reflection prompt for Ophir.\n\nGoal:\n- Ask bedtime reflection questions ONLY when a robot \"saw Ophir\" event exists recently.\n\nQuestions to speak:\n1) \"What did you learn today?\"\n2) \"What are you grateful for?\"\n\nStrict trigger conditions:\n1) Use America/Los_Angeles time.\n2) Evening trigger run at 9:30 PM PT.\n3) Presence event check: confirm a recent robot presence event indicating it saw Ophir (from chat/system context), within the last ~15 minutes.\n4) Fire once per day max.\n5) If presence event is missing, do nothing.\n\nAction when conditions pass:\n- POST http://172.17.0.1:8081/audio/play\n- JSON: {\"text\":\"Good evening Ophir. Before sleep, what did you learn today? What are you grateful for?\"}\n\nFailure behavior:\n- If robot bridge unavailable, send one short failure note once; no spam.\n- Otherwise no message when skipped."
+      },
+      "delivery": {
+        "mode": "announce"
+      },
+      "state": {
+        "nextRunAtMs": 1773549000000,
+        "runningAtMs": 1773549000003
       }
     }
   ]

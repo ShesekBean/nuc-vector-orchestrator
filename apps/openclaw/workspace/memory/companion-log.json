@@ -1,0 +1,12 @@
+[
+  {
+    "timestamp": "2026-03-14T20:11:30.619305",
+    "signal": "Signal: DEPARTURE",
+    "response": "Error: missing scope: operator.write"
+  },
+  {
+    "timestamp": "2026-03-14T20:13:02.695835",
+    "signal": "Signal: DEPARTURE",
+    "response": "Error: missing scope: operator.write"
+  }
+]

@@ -41,8 +41,8 @@
     "expires_at": 1773561093
   },
   "withings_token_cache": {
-    "access_token": "e0d50c4fd14b08e2f68b7cb66b6b5371f05160bf",
-    "refresh_token": "67a466252d1aa538d2d9348d306478bc9b8cfc34",
-    "expires_at": 1773543093
+    "access_token": "1d1bbb4b5f4c229c32ca2fc084ca0e1aa63eb8f1",
+    "refresh_token": "7afea42038adbdc5e0c350c01ffedead3dc972c4",
+    "expires_at": 1773557494
   }
 }
