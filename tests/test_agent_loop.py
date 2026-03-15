@@ -69,7 +69,7 @@ openai:
     def test_config_defaults(self):
         from apps.control_plane.agent_loop.config import Config
         cfg = Config()
-        assert cfg.nuc_repo == "ShesekBean/nuc-vector-orchestrator"
+        assert cfg.nuc_repo == "ophir-sw/nuc-vector-orchestrator"
         assert cfg.dispatch_label == "assigned:worker"
         assert cfg.poll_interval == 60
         assert cfg.issue_timeout == 1800
@@ -299,7 +299,7 @@ class TestDispatch:
         self._make_repo_structure(tmp_path)
         cfg = Config(repo_dir=tmp_path)
 
-        prompt = build_worker_prompt(cfg, "ShesekBean/nuc-vector-orchestrator", 42,
+        prompt = build_worker_prompt(cfg, "ophir-sw/nuc-vector-orchestrator", 42,
                                      "Fix the bug", "No comments")
         assert "YOUR ROLE DEFINITION" in prompt
         assert "Issue Worker" in prompt
@@ -318,7 +318,7 @@ class TestDispatch:
         self._make_repo_structure(tmp_path)
         cfg = Config(repo_dir=tmp_path)
 
-        prompt = build_worker_prompt(cfg, "ShesekBean/nuc-vector-orchestrator", 120,
+        prompt = build_worker_prompt(cfg, "ophir-sw/nuc-vector-orchestrator", 120,
                                      "Fix motor code", "No comments")
         assert "VECTOR WORKER CONTEXT" in prompt
         assert "gRPC" in prompt
@@ -333,11 +333,11 @@ class TestDispatch:
         mock_gh.issue_list.return_value = "329\tfalse\n330\ttrue\n120\tfalse"
         cfg = Config(repo_dir=tmp_path)
         issues = get_dispatchable_issues(cfg)
-        assert ("ShesekBean/nuc-vector-orchestrator", 329, False) in issues
-        assert ("ShesekBean/nuc-vector-orchestrator", 330, True) in issues
-        assert ("ShesekBean/nuc-vector-orchestrator", 120, False) in issues
+        assert ("ophir-sw/nuc-vector-orchestrator", 329, False) in issues
+        assert ("ophir-sw/nuc-vector-orchestrator", 330, True) in issues
+        assert ("ophir-sw/nuc-vector-orchestrator", 120, False) in issues
         # All issues come from the single repo
-        assert all(r == "ShesekBean/nuc-vector-orchestrator" for r, _, _ in issues)
+        assert all(r == "ophir-sw/nuc-vector-orchestrator" for r, _, _ in issues)
 
     @patch("apps.control_plane.agent_loop.dispatch.gh")
     def test_get_dispatchable_issues_empty(self, mock_gh, tmp_path):

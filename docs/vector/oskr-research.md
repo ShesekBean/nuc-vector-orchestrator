@@ -112,7 +112,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Intercom Server (NUC HTTP → Signal DM for robot messages/photos)
 ├── Docker: OpenClaw (Signal gateway) [EXISTING — DO NOT TOUCH]
 ├── Docker: openclaw-dns (dnsmasq) [EXISTING — DO NOT TOUCH]
-└── GitHub repo: ShesekBean/nuc-vector-orchestrator
+└── GitHub repo: ophir-sw/nuc-vector-orchestrator
 
 Vector 2.0 (ROBOT — THIN CLIENT ONLY)
 ├── OSKR unlocked Linux (root SSH access)

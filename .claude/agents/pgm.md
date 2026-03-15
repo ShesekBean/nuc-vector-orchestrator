@@ -36,10 +36,10 @@ Every 5 minutes in the agent-loop, AFTER checking for assigned work. PGM does NO
 
 ### 5. GitHub Actions / CI Health
 - Check recent workflow runs on the monorepo:
-  - `gh run list -R ShesekBean/nuc-orchestrator -L 5 --json databaseId,event,headBranch,conclusion,status`
+  - `gh run list -R ophir-sw/nuc-orchestrator -L 5 --json databaseId,event,headBranch,conclusion,status`
 - If the latest run on `main` FAILED → investigate which step failed
 - **AUTO-CREATE FIX ISSUE**: When CI fails on `main`:
-  - `gh issue create -R ShesekBean/nuc-orchestrator --title "Fix CI: <failure summary>" --label "assigned:worker" --body "<failure details>"`
+  - `gh issue create -R ophir-sw/nuc-orchestrator --title "Fix CI: <failure summary>" --label "assigned:worker" --body "<failure details>"`
   - Add `component:vector` label if the failure is in `apps/vector/` code
   - Only create ONE fix issue per failure — check if an open "Fix CI" issue already exists
   - Still send Signal notification: `📊 PGM: CI broken on <repo> — auto-created fix issue #N`
@@ -53,7 +53,7 @@ Every 5 minutes in the agent-loop, AFTER checking for assigned work. PGM does NO
 - Stale PRs open 24+ hours → flag
 
 ### 7. Component Sync
-- Check `component:vector` open issues: `gh issue list -R ShesekBean/nuc-orchestrator -l component:vector --state open`
+- Check `component:vector` open issues: `gh issue list -R ophir-sw/nuc-orchestrator -l component:vector --state open`
 - If a Vector issue references a NUC issue that's already closed → comment on the Vector issue
 - If a NUC issue depends on Vector work that's completed → flag for closure
 
@@ -91,10 +91,10 @@ For each recently closed issue, verify:
 - Check for misuse: if the issue is a software bug/config/package issue → remove blocker, add `assigned:worker`
 
 ### 13. Weekly Retrospective Trigger (NUC PGM only)
-- Check if a `retrospective` label issue was created in the last 7 days: `gh issue list -R ShesekBean/nuc-orchestrator -l retrospective --state all --json createdAt -q '.[0].createdAt'`
+- Check if a `retrospective` label issue was created in the last 7 days: `gh issue list -R ophir-sw/nuc-orchestrator -l retrospective --state all --json createdAt -q '.[0].createdAt'`
 - If no retrospective issue exists OR the most recent one is 7+ days old → create one:
   ```bash
-  gh issue create -R ShesekBean/nuc-orchestrator --title "Weekly Retrospective: $(date -d '7 days ago' +%Y-%m-%d) to $(date +%Y-%m-%d)" --label "assigned:worker,retrospective" --body "Run the retrospective process defined in .claude/agents/retrospective.md. Read docs/lessons-learned.jsonl, .claude/state/review-patterns.jsonl, and recently closed issues. Output proposed checklist changes."
+  gh issue create -R ophir-sw/nuc-orchestrator --title "Weekly Retrospective: $(date -d '7 days ago' +%Y-%m-%d) to $(date +%Y-%m-%d)" --label "assigned:worker,retrospective" --body "Run the retrospective process defined in .claude/agents/retrospective.md. Read docs/lessons-learned.jsonl, .claude/state/review-patterns.jsonl, and recently closed issues. Output proposed checklist changes."
   ```
 - Only the NUC PGM triggers this — Vector retrospectives are created by the NUC retrospective worker if needed
 - Maximum one retrospective issue per 7 days

@@ -69,7 +69,7 @@ class TestParseDependencies:
 def _make_pgm(tmp_path: Path) -> PGMManager:
     """Create a PGMManager with a mocked Config."""
     cfg = MagicMock()
-    cfg.nuc_repo = "ShesekBean/nuc-vector-orchestrator"
+    cfg.nuc_repo = "ophir-sw/nuc-vector-orchestrator"
     cfg.repo_dir = tmp_path
     cfg.state_dir = tmp_path / "state"
     cfg.state_dir.mkdir(exist_ok=True)
@@ -95,7 +95,7 @@ class TestCheckStuckDependencies:
         pgm._check_stuck_dependencies()
 
         mock_gh.issue_edit_labels.assert_called_once_with(
-            "ShesekBean/nuc-vector-orchestrator", 10,
+            "ophir-sw/nuc-vector-orchestrator", 10,
             remove=["stuck"], add=["assigned:worker"],
         )
 

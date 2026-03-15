@@ -58,7 +58,7 @@ git -C "$REPO_DIR" checkout main
 git -C "$REPO_DIR" pull --ff-only
 
 # Check for open sprint issues
-OPEN_ISSUES=$(gh issue list -R ShesekBean/nuc-vector-orchestrator -l "sprint-$SPRINT" -l "component:vector" --state open --json number,title --jq '.[].title' 2>/dev/null || echo "")
+OPEN_ISSUES=$(gh issue list -R ophir-sw/nuc-vector-orchestrator -l "sprint-$SPRINT" -l "component:vector" --state open --json number,title --jq '.[].title' 2>/dev/null || echo "")
 if [[ -n "$OPEN_ISSUES" ]]; then
     echo "WARNING: Open sprint-$SPRINT issues remain:" >&2
     echo "$OPEN_ISSUES" >&2

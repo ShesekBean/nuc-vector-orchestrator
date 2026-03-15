@@ -41,7 +41,7 @@ class BoardManager:
     def fetch_board_json(self) -> dict | None:
         """Fetch all project items."""
         return gh.graphql("""query {
-          user(login: "ShesekBean") {
+          user(login: "ophir-sw") {
             projectV2(number: 1) {
               items(first: 50) {
                 nodes {
@@ -442,7 +442,7 @@ Output ONLY the JSON, nothing else."""
                     msg += f"\n    └ {item['last_author']}: {item['last_comment_preview']}"
 
                 # Auto-move to Inbox if Ophir made last comment
-                if item["last_author"] == "ShesekBean":
+                if item["last_author"] == "ophir-sw":
                     proposed = set(read_file_lines(self.proposed_file)) if self.proposed_file.exists() else set()
                     item_key = f"{item['repo']}#{item['number']}"
                     if not any(item_key in p for p in proposed):

@@ -1106,7 +1106,7 @@ def _move_board_item_done(cfg: Config, issue_num: int, repo: str) -> None:
     # Find board item ID
     board_data = gh.graphql(
         """query {
-          user(login: "ShesekBean") {
+          user(login: "ophir-sw") {
             projectV2(number: 1) {
               items(first: 50) {
                 nodes {

@@ -6,8 +6,8 @@ The Lead AI Meta-Developer for Project Vector — a distributed multi-agent robo
 **Lead Human Engineer:** Ophir (ophirsw@desk)
 **This machine:** NUC "desk" (Intel x86_64, Ubuntu, Linux 6.17)
 **Robot:** Vector 2.0 (Qualcomm Snapdragon 212, OSKR unlocked, WiFi gRPC)
-**Repo:** `ShesekBean/nuc-vector-orchestrator` (monorepo — all code lives here)
-**Parent project:** `ShesekBean/nuc-orchestrator` (R3 robot — reference architecture, archived)
+**Repo:** `ophir-sw/nuc-vector-orchestrator` (monorepo — all code lives here)
+**Parent project:** `ophir-sw/nuc-orchestrator` (R3 robot — reference architecture, archived)
 
 ---
 
@@ -118,7 +118,7 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Docker: NUC OpenClaw (Vector — Signal gateway) [EXISTING — DO NOT TOUCH]
 ├── Docker: openclaw-dns (dnsmasq) [EXISTING — DO NOT TOUCH]
 │
-└── GitHub repo: ShesekBean/nuc-vector-orchestrator (monorepo)
+└── GitHub repo: ophir-sw/nuc-vector-orchestrator (monorepo)
 
 Vector 2.0 (ROBOT — THIN CLIENT ONLY)
 ├── OSKR unlocked Linux (root SSH access)
@@ -156,7 +156,7 @@ Ophir → Orchestrator → Coach (quality gate) → creates assigned:worker Issu
 
 ### Agent Coordination via GitHub Issues
 
-- All issues live on `ShesekBean/nuc-vector-orchestrator`
+- All issues live on `ophir-sw/nuc-vector-orchestrator`
 - Issues labeled `component:vector` are for robot/inference code (at `apps/vector/`)
 - Issue Workers pick up `assigned:worker` issues, handle full lifecycle in one invocation
 - PR Review Hook provides independent security/quality review on every PR
@@ -239,7 +239,7 @@ Vector 2.0 (Xray, HW_VER=0x20) has a 160x80 OLED. The SDK hardcodes 184x96. A pa
 
 ### Firmware Patches (deployed on Vector)
 
-Two patches deployed via `ShesekBean/wire-os-victor` fork (built on Jetson):
+Two patches deployed via `ophir-sw/wire-os-victor` fork (built on Jetson):
 1. **DisplayFaceImageRGB stride fix** — static buffer + 184→160 conversion in `animationComponent.cpp`
 2. **Default HighLevelAI to Wait** — Vector sits still on boot instead of wandering (`highLevelAI.json`)
 
@@ -393,7 +393,7 @@ Robot modifications are allowed now that WireOS provides a safe recovery path (A
 - **Back up before replacing** — copy originals to `.orig` before overwriting binaries
 - **Never copy binaries between boot slots** — different builds have incompatible libraries
 - **Avoid blind `systemctl restart`** on Vector services — cascade crashes happen (fault code 800). Restart specific services only when you understand the dependency chain
-- **Build firmware patches on Jetson** via `ShesekBean/wire-os-victor` fork, deploy via SCP
+- **Build firmware patches on Jetson** via `ophir-sw/wire-os-victor` fork, deploy via SCP
 
 ### Camera Feed Gotchas
 - Image streaming can get **silently disabled** after SDK connect/disconnect cycles. Always call `robot.camera.image_streaming_enabled()` and explicitly enable via `EnableImageStreamingRequest` before `init_camera_feed()`.

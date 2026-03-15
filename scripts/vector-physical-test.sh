@@ -483,7 +483,7 @@ json.dump({
 
     # Post on GitHub if issue specified
     if [[ "$ISSUE_NUM" != "0" ]]; then
-        gh issue comment "$ISSUE_NUM" -R ShesekBean/nuc-vector-orchestrator -b "## Orchestrator: Vector Physical Test Result
+        gh issue comment "$ISSUE_NUM" -R ophir-sw/nuc-vector-orchestrator -b "## Orchestrator: Vector Physical Test Result
 
 **Verdict:** $overall
 **Steps:** $PASSED_STEPS/$TOTAL_STEPS passed | $FAILED_STEPS failed

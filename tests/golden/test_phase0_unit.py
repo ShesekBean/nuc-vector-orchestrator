@@ -20,7 +20,7 @@ class TestAgentLoopConfig:
 
         cfg = Config()
         assert cfg.repo_dir is not None
-        assert cfg.nuc_repo == "ShesekBean/nuc-vector-orchestrator"
+        assert cfg.nuc_repo == "ophir-sw/nuc-vector-orchestrator"
         assert cfg.max_workers >= 1
         assert cfg.max_vector_workers >= 1
         assert cfg.dispatch_label == "assigned:worker"

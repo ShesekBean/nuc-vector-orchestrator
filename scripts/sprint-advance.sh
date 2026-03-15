@@ -18,7 +18,7 @@ STATE_DIR="$REPO_DIR/.claude/state"
 DEFINITIONS="$REPO_DIR/config/sprint-definitions.yaml"
 STATE_FILE="$STATE_DIR/sprint-state.json"
 
-NUC_REPO="ShesekBean/nuc-vector-orchestrator"
+NUC_REPO="ophir-sw/nuc-vector-orchestrator"
 
 DRY_RUN=false
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true

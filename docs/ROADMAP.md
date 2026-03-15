@@ -1,8 +1,8 @@
 # Vector Orchestrator — Roadmap
 
 **Last updated:** 2026-03-14
-**Repo:** `ShesekBean/nuc-vector-orchestrator`
-**Tracking:** [GitHub Issues](https://github.com/ShesekBean/nuc-vector-orchestrator/issues)
+**Repo:** `ophir-sw/nuc-vector-orchestrator`
+**Tracking:** [GitHub Issues](https://github.com/ophir-sw/nuc-vector-orchestrator/issues)
 
 ---
 
@@ -58,12 +58,12 @@ Set up NUC services and tooling before Vector hardware arrives.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 1 | [Set up wire-pod on NUC](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/1) | None | done ✅ | Install wire-pod to replace Anki cloud. Handles auth, intent engine, voice processing. |
-| 2 | [OSKR unlock Vector + SSH access](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/2) | #1 | done ✅ | Unlock Vector's Linux OS for root access. |
-| 29 | [Install OpenVINO on NUC](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/29) | None | done ✅ | Intel's ML runtime for YOLO, face recognition. |
-| 30 | [PGM auto-unstick](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/30) | None | done ✅ | PGM removes `stuck` label when dependency issues close, adds `assigned:worker`. |
-| 36 | [Event bus](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/36) | None | done ✅ | Lightweight NUC pub/sub (~100 lines Python) for inter-component events. |
-| 39 | [Connection config + service discovery](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/39) | #2 | done ✅ | Vector IP, gRPC port, auth config. |
+| 1 | [Set up wire-pod on NUC](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/1) | None | done ✅ | Install wire-pod to replace Anki cloud. Handles auth, intent engine, voice processing. |
+| 2 | [OSKR unlock Vector + SSH access](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/2) | #1 | done ✅ | Unlock Vector's Linux OS for root access. |
+| 29 | [Install OpenVINO on NUC](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/29) | None | done ✅ | Intel's ML runtime for YOLO, face recognition. |
+| 30 | [PGM auto-unstick](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/30) | None | done ✅ | PGM removes `stuck` label when dependency issues close, adds `assigned:worker`. |
+| 36 | [Event bus](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/36) | None | done ✅ | Lightweight NUC pub/sub (~100 lines Python) for inter-component events. |
+| 39 | [Connection config + service discovery](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/39) | #2 | done ✅ | Vector IP, gRPC port, auth config. |
 
 ---
 
@@ -73,16 +73,16 @@ Establish gRPC communication and control each Vector subsystem independently.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 3 | [gRPC connectivity test](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/3) | #1, #2 | done ✅ | NUC ↔ Vector gRPC verified. Health check endpoint. |
-| 4 | [LED control](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/4) | #3 | done ✅ | `SetBackpackLights` — RGB backpack LEDs. |
-| 5 | [Head servo control](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/5) | #3 | done ✅ | `SetHeadAngle` — -22° to 45°. |
-| 6 | [Lift control](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/6) | #3 | done ✅ | `SetLiftHeight` — motorized forklift. |
-| 7 | [Motor control + diff drive planner](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/7) | #3 | done ✅ | `DriveWheels`, `DriveStraight`, `TurnInPlace`. Differential drive (no strafe). |
-| 8 | [Battery monitor](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/8) | #3, #36 | done ✅ | `BatteryState` gRPC — voltage, charging, level. Publishes to event bus. |
-| 9 | [Touch + cliff sensors](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/9) | #3, #36 | done ✅ | `RobotState` stream — capacitive touch, 4 cliff sensors. Safety-critical. |
-| 32 | [HTTP→gRPC bridge](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/32) | #3, #4, #5, #6, #7 | done ✅ | Central dispatcher on NUC. OpenClaw skills and voice both route through this. |
-| 33 | [Standalone test scripts](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/33) | #3 | done ✅ | One script per subsystem for manual verification. |
-| 35 | [Process supervisor](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/35) | #3, #32, #36, #39 | done ✅ | Startup, lifecycle, graceful shutdown for all Vector services. |
+| 3 | [gRPC connectivity test](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/3) | #1, #2 | done ✅ | NUC ↔ Vector gRPC verified. Health check endpoint. |
+| 4 | [LED control](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/4) | #3 | done ✅ | `SetBackpackLights` — RGB backpack LEDs. |
+| 5 | [Head servo control](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/5) | #3 | done ✅ | `SetHeadAngle` — -22° to 45°. |
+| 6 | [Lift control](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/6) | #3 | done ✅ | `SetLiftHeight` — motorized forklift. |
+| 7 | [Motor control + diff drive planner](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/7) | #3 | done ✅ | `DriveWheels`, `DriveStraight`, `TurnInPlace`. Differential drive (no strafe). |
+| 8 | [Battery monitor](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/8) | #3, #36 | done ✅ | `BatteryState` gRPC — voltage, charging, level. Publishes to event bus. |
+| 9 | [Touch + cliff sensors](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/9) | #3, #36 | done ✅ | `RobotState` stream — capacitive touch, 4 cliff sensors. Safety-critical. |
+| 32 | [HTTP→gRPC bridge](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/32) | #3, #4, #5, #6, #7 | done ✅ | Central dispatcher on NUC. OpenClaw skills and voice both route through this. |
+| 33 | [Standalone test scripts](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/33) | #3 | done ✅ | One script per subsystem for manual verification. |
+| 35 | [Process supervisor](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/35) | #3, #32, #36, #39 | done ✅ | Startup, lifecycle, graceful shutdown for all Vector services. |
 
 ---
 
@@ -92,11 +92,11 @@ Stream camera frames to NUC for ML inference.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 10 | [Camera streaming](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/10) | #3, #36 | done ✅ | `CameraFeed` gRPC stream, 800x600 frames at ~15fps. |
-| 11 | [YOLO person detection](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/11) | #10, #29, #36 | done ✅ | YOLO11n via OpenVINO on NUC. ~15fps. Publishes detections to event bus. |
-| 12 | [Face recognition](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/12) | #10 | done ✅ | YuNet detection + SFace embeddings via OpenVINO. Identifies known faces. |
-| 13 | [Scene description](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/13) | #10, #11 | done ✅ | LLM-based scene description from camera frame + YOLO detections. |
-| 14 | [Face display (OLED)](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/14) | #3 | done ✅ | `DisplayFaceImageRGB` with static buffer + stride conversion fix for Vector 2.0 (Xray) 160x80 OLED. Expressions, status, emoji. |
+| 10 | [Camera streaming](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/10) | #3, #36 | done ✅ | `CameraFeed` gRPC stream, 800x600 frames at ~15fps. |
+| 11 | [YOLO person detection](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/11) | #10, #29, #36 | done ✅ | YOLO11n via OpenVINO on NUC. ~15fps. Publishes detections to event bus. |
+| 12 | [Face recognition](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/12) | #10 | done ✅ | YuNet detection + SFace embeddings via OpenVINO. Identifies known faces. |
+| 13 | [Scene description](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/13) | #10, #11 | done ✅ | LLM-based scene description from camera frame + YOLO detections. |
+| 14 | [Face display (OLED)](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/14) | #3 | done ✅ | `DisplayFaceImageRGB` with static buffer + stride conversion fix for Vector 2.0 (Xray) 160x80 OLED. Expressions, status, emoji. |
 
 ---
 
@@ -106,10 +106,10 @@ Autonomous person tracking and following — the flagship feature.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 15 | [Person following](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/15) | #7, #11, #5, #36, #33 | done ✅ | YOLO detection → PD controller (reactive drive+steer, EMA smoothing) → differential drive. Follow pipeline v2. |
-| 16 | [Head tracking](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/16) | #5, #11, #15 | done ✅ | Keep person centered in frame by adjusting head angle during follow. |
-| 17 | [Obstacle avoidance](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/17) | #9, #11, #15 | done ✅ | Camera-based (no LiDAR). Cliff sensors for edges. Safety overlay on follow. |
-| 38 | [Kalman filter](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/38) | #11 | done ✅ | Kalman filter tracker smooths detections at 10Hz. |
+| 15 | [Person following](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/15) | #7, #11, #5, #36, #33 | done ✅ | YOLO detection → PD controller (reactive drive+steer, EMA smoothing) → differential drive. Follow pipeline v2. |
+| 16 | [Head tracking](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/16) | #5, #11, #15 | done ✅ | Keep person centered in frame by adjusting head angle during follow. |
+| 17 | [Obstacle avoidance](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/17) | #9, #11, #15 | done ✅ | Camera-based (no LiDAR). Cliff sensors for edges. Safety overlay on follow. |
+| 38 | [Kalman filter](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/38) | #11 | done ✅ | Kalman filter tracker smooths detections at 10Hz. |
 
 ---
 
@@ -119,12 +119,12 @@ Voice interaction through Porcupine wake word + wire-pod Vosk STT + say_text() T
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 18 | [Mic audio streaming](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/18) | #3 | done ✅ | Mic audio streams to NUC via SDK `signal_power` PCM + wire-pod chipper tap. No custom binary needed. |
-| 19 | [Wake word detection](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/19) | #18 | done ✅ | Porcupine v4 wake word (two-process architecture, free tier). |
-| 20 | [Voice STT integration](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/20) | #18, #19, #3 | done ✅ | Pipes mic audio → wire-pod Vosk STT → Vector agent → say_text(). |
-| 21 | [TTS via say_text()](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/21) | #3, #20 | done ✅ | Vector's built-in say_text() for speech output — no OpenAI TTS or PlayAudio needed. |
-| 22 | [Voice command routing](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/22) | #20, #23, #32 | done ✅ | Vector agent handles all commands via existing skills. Voice and Signal share the same routing. |
-| 37 | [Echo cancellation](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/37) | #18, #19, #21 | done ✅ | Pause mic during say_text() (blocking call) + hold-off. Prevents wake word re-trigger loop. |
+| 18 | [Mic audio streaming](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/18) | #3 | done ✅ | Mic audio streams to NUC via SDK `signal_power` PCM + wire-pod chipper tap. No custom binary needed. |
+| 19 | [Wake word detection](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/19) | #18 | done ✅ | Porcupine v4 wake word (two-process architecture, free tier). |
+| 20 | [Voice STT integration](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/20) | #18, #19, #3 | done ✅ | Pipes mic audio → wire-pod Vosk STT → Vector agent → say_text(). |
+| 21 | [TTS via say_text()](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/21) | #3, #20 | done ✅ | Vector's built-in say_text() for speech output — no OpenAI TTS or PlayAudio needed. |
+| 22 | [Voice command routing](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/22) | #20, #23, #32 | done ✅ | Vector agent handles all commands via existing skills. Voice and Signal share the same routing. |
+| 37 | [Echo cancellation](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/37) | #18, #19, #21 | done ✅ | Pause mic during say_text() (blocking call) + hold-off. Prevents wake word re-trigger loop. |
 
 #### Voice Architecture
 
@@ -150,11 +150,11 @@ Connect Vector to Ophir via Signal messenger through OpenClaw.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 23 | [Port robot-control skill](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/23) | #32 | done ✅ | OpenClaw skill: HTTP curl → NUC bridge (localhost). |
-| 24 | [Intercom: photo + text](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/24) | #32, #13 | done ✅ | Capture photo, send to Ophir via Signal DM with scene description. |
-| 25 | [Intercom: voice to Signal](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/25) | #20, #22, #24 | done ✅ | "Tell Ophir I'm heading out" → Vector agent sends Signal DM. |
-| 31 | [LiveKit WebRTC session](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/31) | #10, #32 | done ✅ | Two-way LiveKit: mic + camera + audio + video in/out. Triggered via "robot call me" or `/call/join-url` endpoint. |
-| 34 | [Physical test framework](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/34) | #32, #23 | done ✅ | Signal-based test checkpoints for physical robot verification. |
+| 23 | [Port robot-control skill](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/23) | #32 | done ✅ | OpenClaw skill: HTTP curl → NUC bridge (localhost). |
+| 24 | [Intercom: photo + text](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/24) | #32, #13 | done ✅ | Capture photo, send to Ophir via Signal DM with scene description. |
+| 25 | [Intercom: voice to Signal](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/25) | #20, #22, #24 | done ✅ | "Tell Ophir I'm heading out" → Vector agent sends Signal DM. |
+| 31 | [LiveKit WebRTC session](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/31) | #10, #32 | done ✅ | Two-way LiveKit: mic + camera + audio + video in/out. Triggered via "robot call me" or `/call/join-url` endpoint. |
+| 34 | [Physical test framework](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/34) | #32, #23 | done ✅ | Signal-based test checkpoints for physical robot verification. |
 
 ---
 
@@ -164,9 +164,9 @@ Nice-to-haves and new capabilities unique to Vector.
 
 | # | Issue | Dependencies | Status | Description |
 |---|-------|-------------|--------|-------------|
-| 26 | [Visual SLAM](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/26) | #10, #7 | done ✅ | Camera-only SLAM. Dead reckoning + visual landmarks + IMU fusion. |
-| 28 | [Multi-modal expressions](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/28) | #14, #4, #21 | done ✅ | Coordinated face display + LEDs + sound for robot emotions/status. |
-| 40 | [Cube interaction](https://github.com/ShesekBean/nuc-vector-orchestrator/issues/40) | #6, #7, #36 | not started | Detect and pick up Vector's light cube. New capability. |
+| 26 | [Visual SLAM](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/26) | #10, #7 | done ✅ | Camera-only SLAM. Dead reckoning + visual landmarks + IMU fusion. |
+| 28 | [Multi-modal expressions](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/28) | #14, #4, #21 | done ✅ | Coordinated face display + LEDs + sound for robot emotions/status. |
+| 40 | [Cube interaction](https://github.com/ophir-sw/nuc-vector-orchestrator/issues/40) | #6, #7, #36 | not started | Detect and pick up Vector's light cube. New capability. |
 
 ---
 

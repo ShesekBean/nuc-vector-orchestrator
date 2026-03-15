@@ -98,9 +98,9 @@ try:
 except: print('Unable to parse')
 " 2>/dev/null || echo "Unable to parse")
 
-NUC_OPEN=$(gh issue list -R ShesekBean/nuc-vector-orchestrator --state open --json number,title,labels \
+NUC_OPEN=$(gh issue list -R ophir-sw/nuc-vector-orchestrator --state open --json number,title,labels \
     --jq '.[] | "- #\(.number): \(.title) [\([.labels[].name] | join(", "))]"' 2>/dev/null || echo "  (unable to fetch)")
-VECTOR_OPEN=$(gh issue list -R ShesekBean/nuc-vector-orchestrator -l "component:vector" --state open --json number,title,labels \
+VECTOR_OPEN=$(gh issue list -R ophir-sw/nuc-vector-orchestrator -l "component:vector" --state open --json number,title,labels \
     --jq '.[] | "- #\(.number): \(.title) [\([.labels[].name] | join(", "))]"' 2>/dev/null || echo "  (unable to fetch)")
 
 cat > "$SUMMARY_DIR/00-PROJECT-OVERVIEW.md" << OVERVIEW
@@ -118,7 +118,7 @@ The NUC orchestrates via GitHub Issues; Vector communicates via gRPC SDK.
 - **NUC "desk"** (Intel x86_64, Ubuntu) — orchestrator, Signal gateway, NUC-side agents
 - **Vector** — robot hardware (gRPC SDK)
 
-**Repo:** \`ShesekBean/nuc-vector-orchestrator\` (monorepo)
+**Repo:** \`ophir-sw/nuc-vector-orchestrator\` (monorepo)
 **Human:** Ophir (communicates via Signal messenger)
 
 ## Completed Sprints

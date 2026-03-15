@@ -10,7 +10,7 @@
 set -euo pipefail
 
 PROJECT_NUMBER=1
-OWNER="ShesekBean"
+OWNER="ophir-sw"
 PROJECT_ID="PVT_kwHOBckgic4BQy5M"
 STATUS_FIELD_ID="PVTSSF_lAHOBckgic4BQy5Mzg-z-B4"
 INBOX_OPTION_ID="c0ffb956"
@@ -72,7 +72,7 @@ fi
 needs_input_replied=$(echo "$items" | jq -r '[.[] |
     select(.fieldValueByName.name == "Needs Input") |
     select(.content.comments.nodes | length > 0) |
-    select(.content.comments.nodes[-1].author.login == "ShesekBean") |
+    select(.content.comments.nodes[-1].author.login == "ophir-sw") |
     .id] | .[]' 2>/dev/null || true)
 
 for item_id in $needs_input_replied; do

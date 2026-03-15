@@ -18,7 +18,7 @@ SPRINT_ID="${1:?Usage: sprint-changelog.sh <sprint_id> <sprint_name> <sprint_lab
 SPRINT_NAME="${2:?Missing sprint name}"
 SPRINT_LABEL="${3:?Missing sprint label}"
 
-NUC_REPO="ShesekBean/nuc-vector-orchestrator"
+NUC_REPO="ophir-sw/nuc-vector-orchestrator"
 NUC_DIR="${REPO_DIR:-$HOME/Documents/claude/nuc-vector-orchestrator}"
 # No separate Jetson directory — Vector code lives in apps/vector/
 

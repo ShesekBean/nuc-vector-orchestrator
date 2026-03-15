@@ -34,7 +34,7 @@ class Config:
     dispatch_enabled: bool = field(default_factory=lambda: os.environ.get("DISPATCH_ENABLED", "1") == "1")
     inbox_poll: int = 10
 
-    nuc_repo: str = "ShesekBean/nuc-vector-orchestrator"
+    nuc_repo: str = "ophir-sw/nuc-vector-orchestrator"
     dispatch_label: str = "assigned:worker"
     max_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_WORKERS", "4")))
     max_vector_workers: int = field(default_factory=lambda: int(os.environ.get("MAX_VECTOR_WORKERS", "2")))

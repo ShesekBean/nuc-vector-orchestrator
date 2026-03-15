@@ -13,8 +13,8 @@ Two machines coordinate via GitHub Issues in a single monorepo:
 - **NUC "desk"** (Intel i7-1360P, 32GB RAM, Ubuntu, Iris Xe iGPU) — runs ALL inference, control, orchestration, and automation
 - **Vector 2.0** (Qualcomm Snapdragon 212, OSKR unlocked) — thin gRPC client, hardware only
 
-**Repo:** `ShesekBean/nuc-vector-orchestrator` (monorepo)
-**Parent:** `ShesekBean/nuc-orchestrator` (R3 robot — reference architecture, archived)
+**Repo:** `ophir-sw/nuc-vector-orchestrator` (monorepo)
+**Parent:** `ophir-sw/nuc-orchestrator` (R3 robot — reference architecture, archived)
 **Human:** Ophir (communicates via Signal messenger, phone +14084758230)
 **Started:** 2026-03-10 — rapid development over 5 days
 **Scale:** ~188 commits, ~168 Python modules, 17 C source files, 5 OpenClaw skills
@@ -395,7 +395,7 @@ Patch to `libcozmo_engine.so` on Vector:
 - Static buffer + stride conversion (184 → 160 columns) for Vector 2.0 (Xray) display
 - Fixes SDK assumption of 184x96 → actual 160x80 hardware
 
-### Firmware Patches (ShesekBean/wire-os-victor fork)
+### Firmware Patches (ophir-sw/wire-os-victor fork)
 
 Source: `/tmp/victor-build/victor/` on Jetson (192.168.1.70)
 Branch: `vector-v4z4-patches`

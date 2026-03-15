@@ -44,14 +44,14 @@ class TestLogTokenUsage:
     def test_parses_claude_result_json(self):
         """Standard Claude CLI result JSON is parsed correctly."""
         stderr = '{"type":"result","subtype":"success","total_cost_usd":0.0523,"model":"claude-sonnet-4-20250514","usage":{"input_tokens":1500,"output_tokens":800,"cache_read_input_tokens":200,"cache_creation_input_tokens":100}}\n'
-        content, tsv_path = self._run_log('worker', 'ShesekBean/nuc-vector-orchestrator#42', stderr)
+        content, tsv_path = self._run_log('worker', 'ophir-sw/nuc-vector-orchestrator#42', stderr)
         try:
             lines = content.strip().split('\n')
             assert len(lines) == 2  # header + data
             assert lines[0].startswith('timestamp')
             fields = lines[1].split('\t')
             assert fields[1] == 'worker'
-            assert fields[2] == 'ShesekBean/nuc-vector-orchestrator#42'
+            assert fields[2] == 'ophir-sw/nuc-vector-orchestrator#42'
             assert fields[3] == 'claude-sonnet-4-20250514'
             assert fields[4] == '1500'  # input_tokens
             assert fields[5] == '800'   # output_tokens
@@ -158,9 +158,9 @@ class TestTokenReport:
     def test_daily_summary(self):
         """Generates summary for a specific date."""
         tsv = self._create_tsv([
-            ['2026-03-05T10:00:00Z', 'worker', 'ShesekBean/nuc-vector-orchestrator#42', 'opus', 1000, 500, 100, 50, 0.05],
+            ['2026-03-05T10:00:00Z', 'worker', 'ophir-sw/nuc-vector-orchestrator#42', 'opus', 1000, 500, 100, 50, 0.05],
             ['2026-03-05T11:00:00Z', 'pgm', 'agent:pgm', 'haiku', 200, 100, 0, 0, 0.001],
-            ['2026-03-04T10:00:00Z', 'worker', 'ShesekBean/nuc-vector-orchestrator#41', 'opus', 5000, 2000, 0, 0, 0.20],
+            ['2026-03-04T10:00:00Z', 'worker', 'ophir-sw/nuc-vector-orchestrator#41', 'opus', 5000, 2000, 0, 0, 0.20],
         ])
         try:
             output, rc = self._run_report(tsv, '2026-03-05')
