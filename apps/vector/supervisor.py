@@ -361,8 +361,8 @@ class VectorSupervisor:
             ComponentInfo("led_controller", _make_led, 6),
             # Order 7: Lift controller
             ComponentInfo("lift_controller", _make_lift, 7),
-            # Order 8: Display controller
-            ComponentInfo("display_controller", _make_display, 8),
+            # Order 8: Display controller — DISABLED to keep native Vector eyes
+            # ComponentInfo("display_controller", _make_display, 8),
             # Order 9: Person detection pipeline
             ComponentInfo(
                 "person_detector", _make_detector, 9, requires_connection=False

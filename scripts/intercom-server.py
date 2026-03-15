@@ -154,6 +154,15 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._respond(502, {"error": "capture failed"})
 
+        elif self.path == "/intercom/send-image":
+            caption = str(data.get("caption", "")).strip()
+            image_path = str(data.get("path", "")).strip()
+            if not image_path or not os.path.isfile(image_path):
+                self._respond(400, {"error": "path required and must exist"})
+                return
+            ok = send_signal(caption or "\U0001f4f8 Image", attachment_path=image_path)
+            self._respond(200 if ok else 502, {"status": "sent" if ok else "failed"})
+
         else:
             self._respond(404, {"error": "not found"})
 
@@ -164,8 +173,12 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(404, {"error": "not found"})
 
 
+class ReusableHTTPServer(HTTPServer):
+    allow_reuse_address = True
+
+
 def main():
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    server = ReusableHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"[intercom] listening on :{PORT}", flush=True)
     try:
         server.serve_forever()

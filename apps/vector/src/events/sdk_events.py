@@ -57,9 +57,11 @@ class SdkEventBridge:
         self._robot.events.subscribe(
             self._on_robot_state, Events.robot_state
         )
-        self._robot.events.subscribe(
-            self._on_connection_lost, Events.connection_lost
-        )
+        # connection_lost doesn't exist in wirepod-vector-sdk 0.8.x
+        if hasattr(Events, "connection_lost"):
+            self._robot.events.subscribe(
+                self._on_connection_lost, Events.connection_lost
+            )
         self._subscribed = True
         logger.info("SDK event bridge active")
 
@@ -74,9 +76,10 @@ class SdkEventBridge:
             self._robot.events.unsubscribe(
                 self._on_robot_state, Events.robot_state
             )
-            self._robot.events.unsubscribe(
-                self._on_connection_lost, Events.connection_lost
-            )
+            if hasattr(Events, "connection_lost"):
+                self._robot.events.unsubscribe(
+                    self._on_connection_lost, Events.connection_lost
+                )
         except Exception:
             logger.exception("Error during SDK event teardown")
 
