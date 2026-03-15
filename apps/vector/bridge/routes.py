@@ -1957,8 +1957,6 @@ async def signal_send(request: web.Request) -> web.Response:
         return _json_error(400, "message required")
 
     ok = await _send_signal(text)
-    status_code = 200 if ok else 429 if not ok else 502
-    # Distinguish cooldown (False from cooldown) vs send failure
     return web.json_response({"status": "sent" if ok else "cooldown_or_failed"}, status=200 if ok else 429)
 
 

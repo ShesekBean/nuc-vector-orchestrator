@@ -278,6 +278,7 @@ class VectorSupervisor:
         from apps.vector.src.display_controller import DisplayController
         from apps.vector.src.face_recognition.face_detector import FaceDetector
         from apps.vector.src.face_recognition.face_recognizer import FaceRecognizer
+        from apps.vector.src.head_controller import HeadController
         from apps.vector.src.led_controller import LedController
         from apps.vector.src.lift_controller import LiftController
         from apps.vector.src.motor_controller import MotorController
@@ -305,6 +306,9 @@ class VectorSupervisor:
         def _make_lift() -> LiftController:
             return LiftController(robot, bus)
 
+        def _make_head_ctrl() -> HeadController:
+            return HeadController(robot)
+
         def _make_display() -> DisplayController:
             return DisplayController(robot, event_bus=bus)
 
@@ -312,7 +316,7 @@ class VectorSupervisor:
             return CameraClient(robot)
 
         def _make_detector() -> PersonDetector:
-            return PersonDetector(bus)
+            return PersonDetector(event_bus=bus)
 
         def _make_presence_loop() -> PresenceDetectionLoop:
             camera = self._get_component("camera_client")
@@ -340,11 +344,12 @@ class VectorSupervisor:
 
         def _make_voice_bridge() -> OpenClawVoiceBridge:
             audio = self._get_component("audio_client")
-            return OpenClawVoiceBridge(robot, bus, audio)
+            return OpenClawVoiceBridge(bus, audio, robot)
 
         def _make_follow_planner() -> FollowPlanner:
             motor = self._get_component("motor_controller")
-            return FollowPlanner(robot, bus, motor)
+            head = self._get_component("head_controller")
+            return FollowPlanner(motor, head, bus)
 
         def _make_companion() -> CompanionSystem:
             return CompanionSystem(bus)
@@ -361,6 +366,8 @@ class VectorSupervisor:
             ComponentInfo("led_controller", _make_led, 6),
             # Order 7: Lift controller
             ComponentInfo("lift_controller", _make_lift, 7),
+            # Order 8: Head controller (needed by follow planner)
+            ComponentInfo("head_controller", _make_head_ctrl, 8),
             # Order 8: Display controller — DISABLED to keep native Vector eyes
             # ComponentInfo("display_controller", _make_display, 8),
             # Order 9: Person detection pipeline
