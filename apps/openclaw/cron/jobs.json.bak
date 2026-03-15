@@ -1,0 +1,301 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "swim-reminder",
+      "name": "Morning swim push",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1773495031742,
+      "schedule": {
+        "kind": "cron",
+        "expr": "30 6 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "🏊 6:30 — time to swim. Go."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773581400000,
+        "lastRunAtMs": 1773495000010,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 31732,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "health-coach",
+      "name": "Morning health coach (Oura sleep + readiness)",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "45 7 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. You are Ophir's personal health coach. Pull last night's sleep and readiness from Oura: GET https://api.ouraring.com/v2/usercollection/daily_sleep?start_date=<yesterday YYYY-MM-DD>&end_date=<today YYYY-MM-DD> and GET https://api.ouraring.com/v2/usercollection/daily_readiness?start_date=<yesterday>&end_date=<today>. Use the OURA_ACCESS_TOKEN from the .env file (personal access token, doesn't expire). Also pull today's weight from Withings (check fitness-log.json withings_token_cache). If no Oura data found, Ophir probably hasn't synced his ring — remind him: 'Open the Oura app to sync, I'll check again.' If data found, give a morning health briefing: (1) Sleep: score, total time, REM/deep/light breakdown, anything unusual. (2) Readiness: score and what it means for today's training intensity. (3) Weight: latest vs goal (86 kg), trend direction. (4) Today's advice: 2-3 lines of specific, actionable coaching based on ALL the data together — e.g., 'Readiness 62 + only 40 min deep sleep = take it easy today, skip the long run, do a recovery swim instead' or 'Sleep score 88, readiness 85, weight trending down — great day for that 8K run.' Connect the dots across sleep, readiness, and weight. Be direct and specific. No generic wellness platitudes."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773585900000,
+        "lastRunAtMs": 1773499500010,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 66993,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      },
+      "updatedAtMs": 1773499567003
+    },
+    {
+      "id": "weight-checkin",
+      "name": "Morning weight check-in",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1773500446412,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 8 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Pull today's weight from Withings using the access_token in memory/fitness-log.json withings_token_cache. Log it and send Ophir his weight with progress toward 86 kg goal and a brief motivating note."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773586800000,
+        "lastRunAtMs": 1773500400010,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 46402,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "swim-check",
+      "name": "Noon swim verification",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1773514844679,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 12 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Check Strava for a swim since midnight today. Use the access_token from memory/fitness-log.json strava_token_cache. If swam: log it and send congrats with current streak. If not: gentle nudge."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773601200000,
+        "lastRunAtMs": 1773514800007,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 44672,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "lunch-checkin",
+      "name": "Lunch diet check-in",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1773518431539,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 13 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Ask Ophir what he had for breakfast and lunch. When he replies, log it and give 1-2 lines of honest dietary feedback."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773604800000,
+        "lastRunAtMs": 1773518400012,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 31527,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "dinner-checkin",
+      "name": "Dinner diet check-in",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1773457221246,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 20 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Ask Ophir what he had for dinner. When he replies, log it, then give a brief end-of-day diet summary (what went well, one thing to improve tomorrow)."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773543600000,
+        "lastRunAtMs": 1773457200010,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 21236,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "run-coordinator",
+      "name": "Wednesday run coordinator",
+      "enabled": true,
+      "createdAtMs": 1772257198837,
+      "updatedAtMs": 1773244839234,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 3",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Load the fitness skill. Check Strava for this week's runs (Mon-today) using access_token from memory/fitness-log.json strava_token_cache. Report: 4K done? 8K done? Then send an outbound Signal message to Mickey (+16502838593) to coordinate a run this week - suggest a day/time. Keep it casual."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773849600000,
+        "lastRunAtMs": 1773244800012,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 39222,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "ai-daily-brief",
+      "name": "Daily AI shipping brief",
+      "enabled": true,
+      "createdAtMs": 1773011375086,
+      "updatedAtMs": 1773496914954,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 7 * * *",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Fetch https://aishipped.dev/ and summarize what shipped in AI coding tools in the last 24 hours. Focus on Claude Code, Cursor, Codex, Windsurf, and any other major AI dev tools. Format as a concise brief: 3-5 bullet points, each with the tool name, what changed, and why it matters. If nothing shipped today, say so. Keep it under 10 lines total. Start with '🤖 AI Daily Brief' header."
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773583200000,
+        "lastRunAtMs": 1773496800010,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 114944,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "work-daily-prep",
+      "name": "Daily work prep via ChatGPT",
+      "enabled": true,
+      "createdAtMs": 1773523654020,
+      "updatedAtMs": 1773525843474,
+      "schedule": {
+        "kind": "cron",
+        "expr": "27 6 * * 1-5",
+        "tz": "America/Los_Angeles"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Use the chatgpt skill to ask work the following (send this ENTIRE prompt as one message to the ChatGPT proxy):\n\n\"Daily brief for today. Use EXACTLY this format — no deviation, no extras, no paragraphs, no strategy essays, no offers. Check my calendar, emails (7 days), Slack (48h), and recordings (7 days).\n\n🗓 Schedule\n⏰ HH:MM Meeting Name – one-line goal/purpose\n(list every meeting, times in Pacific)\n\n💬 Talking Points\nPerson → key question or topic (one per meeting, one line)\n\n🎯 Top 3 Must-Remember\n1️⃣ thing one\n2️⃣ thing two\n3️⃣ thing three\n\n✅ Prep Actions\n✍️/❓/📊 concrete thing to do before meetings (max 3)\n\n🏁 Success Outcome\nOne sentence: what does a good today look like?\n\nHERE IS AN EXAMPLE of the EXACT output format. Copy this structure exactly, just fill in real data:\n\n🗓 Schedule\n⏰ 07:30 James 1:1 – align weekly focus\n⏰ 08:00 Manish 1:1 – unblock ERP lane\n⏰ 09:00 Product Lead Sync – lock roadmap lanes\n⏰ 10:30 ERP/ICP – confirm target vertical\n\n💬 Talking Points\nJames → Q4 goal + blockers?\nManish → ERP connector priority?\nProd Lead → who owns each lane?\nERP/ICP → manuf. vs horizontal decision?\n\n🎯 Top 3 Must-Remember\n1️⃣ Roadmap lanes + owners frozen\n2️⃣ ERP-ICP path clarified\n3️⃣ AI = seller productivity (not tech demo)\n\n✅ Prep Actions\n✍️ Write 3-line product thesis\n❓ List 3 roadmap questions\n📊 Pick seller-experience metric\n\n🏁 Success Outcome\nTeam leaves kickoff with clear lanes, owners, 12-mo milestones.\n\nEND OF EXAMPLE. Now produce the real brief for today. Same format, same line lengths, same emoji usage. No deviations. No extra sections. No offers.\""
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "signal",
+        "to": "+14084758230"
+      },
+      "state": {
+        "nextRunAtMs": 1773667620000,
+        "lastRunAtMs": 1773523712409,
+        "lastRunStatus": "ok",
+        "consecutiveErrors": 0,
+        "lastStatus": "ok",
+        "lastDurationMs": 176325,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered"
+      }
+    }
+  ]
+}

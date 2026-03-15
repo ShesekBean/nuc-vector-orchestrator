@@ -3,6 +3,14 @@
     {
       "date": "2026-02-26",
       "kg": 90.861
+    },
+    {
+      "date": "2026-03-10",
+      "kg": 90.345
+    },
+    {
+      "date": "2026-03-12",
+      "kg": 88.701
     }
   ],
   "food": [
@@ -20,17 +28,21 @@
     {
       "date": "2026-03-06",
       "activity_id": 0
+    },
+    {
+      "date": "2026-03-09",
+      "activity_id": 0
     }
   ],
   "runs": [],
   "strava_token_cache": {
-    "access_token": "4210e7010c4e727d6028cda17482e70edd066101",
-    "refresh_token": "825458535cd4b3f87940533c9c87b07dc0c8fe67",
-    "expires_at": 1772275475
+    "access_token": "7a0294e35f1b5ab9a427c8034ced6d5769ed1304",
+    "refresh_token": "fe5b9ec763c0462c91c7477e33318c13465ecd2e",
+    "expires_at": 1773561093
   },
   "withings_token_cache": {
-    "access_token": "792f5e73424eeca11cec57fe1fee6c42a0abe5d5",
-    "refresh_token": "f0f673b399644687d940c0b9fa14f5945cdc8b33",
-    "expires_at": 1772267840
+    "access_token": "e0d50c4fd14b08e2f68b7cb66b6b5371f05160bf",
+    "refresh_token": "67a466252d1aa538d2d9348d306478bc9b8cfc34",
+    "expires_at": 1773543093
   }
 }

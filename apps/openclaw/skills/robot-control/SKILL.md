@@ -1,6 +1,6 @@
 ---
 name: robot-control
-description: "ACTIVATE when message contains the word 'robot'. Controls a physical robot via HTTP curl commands. Examples: 'robot forward', 'robot stop', 'robot led blue', 'robot follow me', 'robot photo', 'robot status', 'robot lift up', 'robot say hello', 'robot call me'."
+description: "ACTIVATE when message contains the word 'robot' OR when the message is a short imperative command that matches a robot action (e.g. 'sit', 'stop', 'forward', 'back', 'look up', 'follow me', 'call me', 'photo', 'led blue', 'say hello', 'playful', 'quiet', 'lift up', 'spin', 'battery', 'status'). These commands come from Ophir who is physically with the robot — he often skips the 'robot' prefix. Controls a physical robot via HTTP curl commands."
 metadata: {"openclaw": {"emoji": "🤖"}}
 ---
 
@@ -9,7 +9,7 @@ metadata: {"openclaw": {"emoji": "🤖"}}
 ## Overview
 You have DIRECT CONTROL of a physical robot (Anki/DDL Vector 2.0) via HTTP bridge on the NUC. When the user says "robot <command>", you MUST immediately execute the corresponding curl command — do not ask for clarification, do not explain, just DO IT and report the result.
 
-The robot has differential drive (tank treads, NO strafing), an 800x600 camera (120° FOV), eye color LEDs (hue/saturation), a 160x80 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
+The robot has differential drive (tank treads, NO strafing), a 640x360 camera (120° FOV), eye color LEDs (hue/saturation), a 184x96 OLED face display, a lift mechanism, cliff sensors, touch sensor (head), 4-mic beamforming array, and a built-in speaker (say_text() TTS).
 
 ## Bridge API Endpoints
 
@@ -18,7 +18,7 @@ All endpoints are at `http://172.17.0.1:8081`.
 ### Health Check
 ```
 GET /health
-→ {"status": "healthy", "battery": {"voltage": 3.7, "level": 2, "is_charging": false, "is_on_charger": false}, "latency_ms": 45.2}
+→ {"status": "healthy", "battery": {"voltage": 3.7, "percent": 38, "level": 2, "is_charging": false, "is_on_charger": false}, "latency_ms": 45.2}
 ```
 
 ### Full Status
@@ -120,6 +120,38 @@ Content-Type: application/json
 {"expression": "happy"}
 ```
 
+### Display Image on Face
+```
+POST /display/image
+
+Option 1 — Base64 JSON:
+Content-Type: application/json
+{"image": "<base64-encoded-image-data>", "duration": 5}
+
+Option 2 — Multipart form:
+Content-Type: multipart/form-data
+Fields: image (file), duration (optional, default 5)
+
+Option 3 — Raw image bytes in body (duration via ?duration=5 query param)
+```
+Displays an arbitrary image on Vector's 160x80 OLED face. The image is resized to fit (preserving aspect ratio, black letterbox) and held on screen for the specified duration (suppresses eye animations).
+
+### Display Text on Face
+```
+POST /display/text
+Content-Type: application/json
+{"text": "Hello!", "fg_color": "#00FF00", "bg_color": "#000000", "duration": 5}
+```
+Renders centered text on Vector's OLED face. `fg_color` and `bg_color` are optional (default white on black). `duration` is optional (default 5 seconds). Colors can be hex ("#FF0000") or names ("red", "green", "blue", etc).
+
+### Display Solid Color on Face
+```
+POST /display/color
+Content-Type: application/json
+{"color": "#FF0000", "duration": 5}
+```
+Fills Vector's OLED face with a solid color. Color can be hex ("#FF0000") or name ("red"). Duration is optional (default 5 seconds).
+
 ### Speak Text (TTS)
 ```
 POST /audio/play
@@ -139,6 +171,18 @@ POST /follow/stop
 ```
 Note: Follow planner may return 501 if not yet wired to the bridge.
 
+### Behavior Mode
+```
+GET /mode
+→ {"mode": "quiet"}
+
+POST /mode
+Content-Type: application/json
+{"mode": "quiet"}    → sit still, suppress autonomous behaviors
+{"mode": "playful"}  → release control, let Vector explore and react
+```
+Default is "quiet" (Vector sits still on startup). "Playful" lets vic-engine run its behavior tree.
+
 ### Video/Audio Call (LiveKit)
 ```
 GET /call/join-url
@@ -157,30 +201,15 @@ Room name is optional (defaults to "robot-cam").
 POST /call/stop
 → {"status": "ok", "active": false}
 ```
-Publishes Vector camera (800x600 ~15fps) as a LiveKit video track.
-Audio is ONE-WAY: user speaks → LiveKit → Vector speaker (20x amplified, downsampled 48kHz→16kHz).
-Vector mic audio is NOT published (SDK AudioFeed only provides signal_power calibration tone, not real PCM).
+Publishes Vector camera (640x360 ~15fps) and mic audio as LiveKit tracks.
+Audio is TWO-WAY: user speaks → LiveKit → Vector speaker, Vector mic → wire-pod chipper tap → LiveKit.
+Mic audio only flows during voice sessions (after "Hey Vector" wake word).
+Remote video is displayed on Vector's 160x80 OLED at ~10fps.
 Returns 503 if LiveKit bridge not initialised.
 
-### Face Recognition & Enrollment
-```
-POST /face/enroll {"name": "ophir"}
-→ {"status": "ok", "name": "ophir", "face_embeddings": 3, "face_confidence": 0.87, "body_saved": true, "body_confidence": 0.92}
+## Trigger Word: "robot" (or direct commands from Ophir)
 
-GET /face/list
-→ {"status": "ok", "enrolled": {"ophir": {"face_embeddings": 5, "body_references": 5}}}
-
-GET /face/recognize
-→ {"status": "ok", "faces": [{"name": "ophir", "confidence": 0.89, "x": 200, "y": 150, "width": 80, "height": 100}], "persons": [{"cx": 400, "cy": 300, "width": 200, "height": 400, "confidence": 0.95}]}
-
-POST /face/remove {"name": "ophir"}
-→ {"status": "ok", "removed": "ophir"}
-```
-Enroll captures a live frame from Vector's camera, detects face (YuNet) + body (YOLO), stores face embedding and body reference crop. Call multiple times from different angles for better recognition (up to 5 embeddings per person).
-
-## Trigger Word: "robot"
-
-When the user's message starts with or contains the word **"robot"**, activate this skill and execute the command via curl. Examples:
+When the user's message starts with or contains the word **"robot"**, activate this skill and execute the command via curl. **Additionally, Ophir often sends short imperative commands WITHOUT the "robot" prefix** — treat these as robot commands too. If Ophir says "sit", "stop", "forward", "look up", "follow me", "call me", etc., interpret them as robot control instructions and execute immediately. Examples:
 
 ### Movement
 - "robot forward" or "robot go forward" → POST /move {"type": "straight", "distance_mm": 300, "speed_mmps": 100}
@@ -219,6 +248,15 @@ When the user's message starts with or contains the word **"robot"**, activate t
 - "robot happy" → POST /display {"expression": "happy"}
 - "robot sad" → POST /display {"expression": "sad"}
 
+### Display Image / Text / Color on Face
+- **CRITICAL: If the user sends an image attachment AND says "robot show this" / "robot display this", you MUST display the ATTACHED IMAGE on Vector's face — do NOT take a robot photo.** The attachment path appears in the message as `[media attached: /path/to/file.jpg]`. Base64-encode that file and POST to /display/image. This is the #1 most commonly confused command.
+- "robot show this" or "robot display this" (with image attachment) → read the path from the `[media attached: ...]` note, base64-encode it, and POST /display/image
+- "robot show text Hello" → POST /display/text {"text": "Hello"}
+- "robot display message Good morning" → POST /display/text {"text": "Good morning", "fg_color": "#00FF00"}
+- "robot screen red" → POST /display/color {"color": "red"}
+- "robot screen blue" → POST /display/color {"color": "blue"}
+- "robot screen #FF00FF" → POST /display/color {"color": "#FF00FF"}
+
 ### Speech
 - "robot say hello" → POST /audio/play {"text": "hello"}
 - "robot say good morning Ophir" → POST /audio/play {"text": "good morning Ophir"}
@@ -228,22 +266,20 @@ When the user's message starts with or contains the word **"robot"**, activate t
 - "robot follow" → POST /follow/start
 - "robot stop following" → POST /follow/stop
 
+### Behavior Mode
+- "robot sit" or "robot sit tight" or "robot stay" or "robot quiet" → POST /mode {"mode": "quiet"}
+- "robot playful" or "robot be playful" or "robot explore" or "robot go play" → POST /mode {"mode": "playful"}
+
 ### Video Call
 - "robot call" or "robot call me" or "robot video call" → GET /call/join-url → extract join_url from JSON, send it to the user
 - "robot hangup" or "robot hang up" → POST /call/stop
 
-### Face Recognition
-- "robot who am I" or "robot who is this" → GET /face/recognize → report who's in view
-- "robot remember me" or "robot learn my face" → POST /face/enroll {"name": "ophir"} → enroll face + body from live camera
-- "robot who do you know" → GET /face/list → list enrolled people
-- "robot forget <name>" → POST /face/remove {"name": "<name>"} → remove enrollment
-
 ### Status & Diagnostics
-- "robot battery" → GET /health → report voltage and level
+- "robot battery" → GET /health → report battery percent (e.g. "Battery: 38%")
 - "robot status" or "robot how are you" → GET /status → full dashboard
 - "robot health" → GET /health
 
-Without the "robot" trigger word, do NOT execute robot commands — just chat normally.
+If a message is clearly a robot command (e.g. "sit", "stop", "forward", "look up", "follow me", "call me", "photo"), execute it even without the "robot" prefix. Only fall back to normal chat if the message is clearly NOT a robot command.
 
 ## HOW TO EXECUTE (critical)
 
@@ -277,9 +313,35 @@ Example for "robot lift up":
 curl -sf -X POST http://172.17.0.1:8081/lift -H 'Content-Type: application/json' -d '{"preset":"high"}'
 ```
 
+Example for "robot show text Hello World":
+```bash
+curl -sf -X POST http://172.17.0.1:8081/display/text -H 'Content-Type: application/json' -d '{"text":"Hello World","fg_color":"#00FF00","duration":5}'
+```
+
+Example for "robot screen red":
+```bash
+curl -sf -X POST http://172.17.0.1:8081/display/color -H 'Content-Type: application/json' -d '{"color":"red","duration":5}'
+```
+
+Example for displaying an image attachment (the path comes from the `[media attached: ...]` note in the message):
+```bash
+IMAGE_B64=$(base64 -w0 /home/node/.openclaw/media/inbound/ATTACHMENT_UUID.jpg)
+curl -sf -X POST http://172.17.0.1:8081/display/image -H 'Content-Type: application/json' -d "{\"image\":\"$IMAGE_B64\",\"duration\":5}"
+```
+
 Example for "robot photo":
 ```bash
 curl -sf http://172.17.0.1:8081/capture --output /tmp/robot-photo.jpg
+```
+
+Example for "robot sit":
+```bash
+curl -sf -X POST http://172.17.0.1:8081/mode -H 'Content-Type: application/json' -d '{"mode":"quiet"}'
+```
+
+Example for "robot be playful":
+```bash
+curl -sf -X POST http://172.17.0.1:8081/mode -H 'Content-Type: application/json' -d '{"mode":"playful"}'
 ```
 
 Example for "robot call me":
@@ -299,11 +361,12 @@ Do NOT ask the user what they mean. Do NOT explain the API. Just run curl and te
 - Camera: "photo", "snapshot", "take a photo"
 - LEDs: "led red/green/blue/yellow/orange/purple/cyan/white/off"
 - Face: "happy", "sad"
+- Display: "show this" (with image), "show text ...", "display message ...", "screen red/blue/..."
 - Speech: "say hello", "say good morning"
 - Status: "battery", "health", "status", "how are you"
 - Control: "stop", "freeze", "follow me", "stop following"
+- Mode: "sit", "sit tight", "stay", "quiet", "playful", "explore", "go play"
 - Calls: "call me", "hang up"
-- Face: "who am I", "who is this", "remember me", "learn my face", "who do you know", "forget <name>"
 
 ## Safety Rules
 - ALWAYS check /health first if you haven't recently
@@ -320,7 +383,7 @@ When executing robot commands:
 3. Report the result
 4. If it involved movement, describe what happened physically
 
-Example: "Driving forward 300mm... done! Vector scooted forward about 30cm. Battery at 3.7V (level 2)."
+Example: "Driving forward 300mm... done! Vector scooted forward about 30cm. Battery at 38%."
 
 ## Important Notes
 - Vector uses differential drive (tank treads) — NO strafing/sliding sideways
@@ -332,3 +395,5 @@ Example: "Driving forward 300mm... done! Vector scooted forward about 30cm. Batt
 - If bridge returns 503, Vector is offline — tell the user
 - Follow planner may return 501 if not yet wired to the bridge
 - Call endpoints return 503 if LiveKit bridge not initialised — tell the user to check LiveKit config
+- **ATTACHMENT DISPLAY vs PHOTO**: When user sends an image via Signal with "show this" or "display this", the attachment path is in the `[media attached: /path/to/file.jpg]` note. Base64-encode that file and POST to /display/image. Do NOT confuse this with "robot photo" (which captures from the robot camera). The key signal: if there's a `[media attached: ...]` note + "show/display", display the attachment.
+- Display image/text/color endpoints hold the image on screen for the specified duration (default 5s), then automatically restore eye animations

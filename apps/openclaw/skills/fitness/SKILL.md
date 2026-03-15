@@ -30,10 +30,8 @@ Schema:
 
 ## Withings API (weight from scale)
 
-Tokens are refreshed automatically every 2 hours by `fitness-token-refresh.timer` (systemd user timer on NUC). The timer runs `scripts/refresh-fitness-tokens.py` inside the openclaw-gateway container via `sg docker` (required because systemd user services don't inherit groups added after login — see `infra/openclaw/systemd/`).
+Tokens are refreshed automatically every 2 hours by `fitness-token-refresh.timer` (systemd user timer on NUC). The timer runs `scripts/refresh-fitness-tokens.py` inside the openclaw-gateway container.
 If `withings_token_cache.expires_at < now`, the timer will refresh it within 2 hours. Tell the user the token is being refreshed and to try again shortly. Do NOT attempt to refresh tokens yourself.
-
-**Troubleshooting:** If tokens stay expired, check `journalctl --user -u fitness-token-refresh.service`. Common failure: Docker socket permission denied (fix: ensure `ExecStart` uses `sg docker -c`).
 
 ```
 GET https://wbsapi.withings.net/measure?action=getmeas&meastypes=1&category=1&lastupdate=<unix 48h ago>
