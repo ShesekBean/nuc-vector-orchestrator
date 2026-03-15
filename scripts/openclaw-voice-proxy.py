@@ -46,7 +46,8 @@ OPENCLAW_DEVICE_IDENTITY_PATH = Path.home() / ".openclaw" / "identity" / "device
 OPENCLAW_GATEWAY_TOKEN = "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
 
 # Session key — shared with Signal DM for unified memory
-VOICE_SESSION_KEY = "main"
+# Must match the full session key that Signal DMs resolve to
+VOICE_SESSION_KEY = "agent:main:main"
 
 # Protocol version
 PROTOCOL_VERSION = 3
