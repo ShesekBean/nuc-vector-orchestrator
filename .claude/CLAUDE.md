@@ -468,6 +468,7 @@ Doc update issues requesting CLAUDE.md changes will cause workers to spin in rej
 - Read .env, secrets, passwords, tokens
 - Run sudo
 - Modify existing OpenClaw containers, configs, or DNS
+- Install plugins on OpenClaw (no `openclaw plugin install`, no adding entries to `plugins.entries`)
 - Push Docker images
 - curl/wget to external URLs not on the allowlist
 - Disable any safety check
