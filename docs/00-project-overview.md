@@ -27,7 +27,7 @@ Two machines coordinate via GitHub Issues in a single monorepo:
 Ophir (phone/laptop)
 ├── Signal app ────► OpenClaw gateway ─► robot-control skill ─► Bridge HTTP ─► Vector
 ├── LiveKit Cloud (robot-cam room) ◄──► LiveKit bridge ◄──► Vector camera/mic/speaker
-└── Signal feedback ◄── PGM notifications, Intercom photos
+└── Signal feedback ◄── PGM notifications, robot photos (via bridge /signal/* routes)
 
 NUC "desk" (THIS MACHINE — ALL COMPUTE)
 ├── Vector Supervisor (apps/vector/supervisor.py)
@@ -95,7 +95,7 @@ Vector ──TCP:5555 (Opus audio)────► NUC (vector-streamer → MicCh
 NUC ───gRPC motor/speaker cmds───► Vector
 NUC ───HTTP bridge:8081──────────► OpenClaw Docker (robot-control skill curls bridge)
 NUC ───WebSocket:18889───────────► OpenClaw gateway (companion skill, voice proxy)
-NUC ───Signal (via OpenClaw)─────► Ophir's phone (PGM notifications, intercom photos)
+NUC ───Signal (via OpenClaw)─────► Ophir's phone (PGM notifications, robot photos via bridge)
 NUC ───LiveKit Cloud (WebRTC)────► Ophir's browser/phone (robot-cam room)
 ```
 
@@ -147,7 +147,7 @@ Vector mic → Porcupine PV wake word → wire-pod (Vosk STT)
 - **Dual-path routing**: wire-pod intents → bridge HTTP for hardware commands; conversational queries → OpenClaw agent.
 - **Echo cancellation** (`EchoSuppressor`): Pauses mic during `say_text()` output + holdoff period to prevent feedback loops.
 - **Audio path**: `AudioClient` receives PCM from SDK `AudioFeed` (decoded from `signal_power` field, int16 LE at 15625 Hz), resamples to 16000 Hz, stores in thread-safe ring buffer for wake word and STT.
-- **"Tell Ophir" relay**: Regex intercept in voice command router catches "tell Ophir [message]" → sends via Signal intercom.
+- **"Tell Ophir" relay**: Regex intercept in voice command router catches "tell Ophir [message]" → sends via Signal (bridge /signal/send).
 
 ---
 
@@ -274,14 +274,15 @@ All skills are hot-deployable directories under `~/.openclaw/workspace/skills/<n
 3. **fitness** (`apps/openclaw/skills/fitness/SKILL.md`) — Strava, Withings, Oura Ring data tracking and reporting
 4. **monarch-money** (`apps/openclaw/skills/monarch-money/SKILL.md`) — Financial queries via Monarch Money API (read-only)
 
-### Signal Messaging (`src/intercom.py` + bridge `/signal/*` routes)
-- `Intercom` class sends text + JPEG photos to Ophir via bridge HTTP endpoints
+### Signal Messaging (`src/intercom.py` → bridge `/signal/*` + `/intercom/*` routes)
+- `Intercom` class sends text + JPEG photos to Ophir via bridge HTTP endpoints (port 8081)
 - Bridge relays to Signal DM via JSON-RPC to openclaw-gateway signal-cli
-- Endpoints: `/signal/send` (text), `/signal/send-image` (file), `/signal/send-camera` (capture+send)
+- Primary endpoints: `/signal/send` (text), `/signal/send-image` (file), `/signal/send-camera` (capture+send)
+- Legacy aliases: `/intercom/receive` (→ /signal/send), `/intercom/photo` (→ /signal/send-camera)
 - Used by: HomeGuardian alerts, exploration room naming, scene descriptions
 
 ### Voice-to-Signal Relay
-- "Tell Ophir [message]" detected by voice command router → regex intercept → Signal send via intercom
+- "Tell Ophir [message]" detected by voice command router → regex intercept → Signal send via bridge
 
 ---
 
