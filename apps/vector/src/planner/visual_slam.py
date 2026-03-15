@@ -49,8 +49,8 @@ DEFAULT_GRID_SIZE_MM = 5000  # 5 m square default map
 DEFAULT_CELL_SIZE_MM = 50  # 50 mm per cell
 DEFAULT_ORB_FEATURES = 500  # ORB keypoints per frame
 MIN_FEATURE_MATCHES = 10  # below this, fall back to dead reckoning
-LOOP_CLOSURE_MATCH_THRESHOLD = 30  # min matches to declare loop closure
-LOOP_CLOSURE_MIN_DISTANCE_MM = 500  # don't check loop closure if too close
+LOOP_CLOSURE_MATCH_THRESHOLD = 200  # min matches to declare loop closure (was 30 — too low for Vector's dark camera)
+LOOP_CLOSURE_MIN_DISTANCE_MM = 1000  # don't check loop closure if too close (was 500)
 LANDMARK_SAMPLE_INTERVAL = 5  # store landmark every N frames
 TRACK_WIDTH_MM = 47.0  # distance between Vector's treads
 
@@ -565,7 +565,7 @@ class VisualSLAM:
             and best_landmark is not None
         ):
             # Correct pose drift towards landmark position
-            correction_weight = 0.3
+            correction_weight = 0.1  # subtle correction (was 0.3 — too aggressive)
             self._pose.x += correction_weight * (
                 best_landmark.x - self._pose.x
             )
