@@ -90,7 +90,7 @@ def _extract_text(msg: object) -> str:
 
 async def openclaw_chat(
     message: str,
-    session_key: str = "hook:companion",
+    session_key: str = "main",
     timeout_s: float = 90.0,
     display_name: str = "Vector Companion",
 ) -> str:
