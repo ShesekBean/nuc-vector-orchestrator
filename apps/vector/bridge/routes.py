@@ -10,8 +10,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import json
 import logging
 import os
+import shlex
+import tempfile
 import threading
 import time
 from typing import Any, TYPE_CHECKING
@@ -1864,6 +1867,232 @@ async def face_recognize(request: web.Request) -> web.Response:
         return _json_error(500, str(exc), "RECOGNIZE_FAILED")
 
 
+# ---------------------------------------------------------------------------
+# Signal intercom — send text/images to Ophir via openclaw-gateway
+# ---------------------------------------------------------------------------
+
+SIGNAL_RECIPIENT = "+14084758230"
+SIGNAL_BOT_ACCOUNT = "+14086469950"
+BOT_CONTAINER = "openclaw-gateway"
+SIGNAL_COOLDOWN_SECONDS = 30
+_signal_last_sent: float = 0.0
+
+
+async def _send_signal(text: str, attachment_path: str | None = None) -> bool:
+    """Send a message to Signal via openclaw-gateway JSON-RPC.
+
+    Uses ``asyncio.create_subprocess_exec`` so the event loop is not blocked.
+    Respects a 30-second cooldown between sends to avoid spam.
+    """
+    global _signal_last_sent
+    now = time.time()
+    if now - _signal_last_sent < SIGNAL_COOLDOWN_SECONDS:
+        logger.info("[signal] cooldown (%.0fs remaining), skipping: %s",
+                    SIGNAL_COOLDOWN_SECONDS - (now - _signal_last_sent), text)
+        return False
+    _signal_last_sent = now
+
+    params: dict[str, Any] = {"recipient": SIGNAL_RECIPIENT, "message": text}
+    container = BOT_CONTAINER
+
+    # Copy attachment into container if present
+    container_attachment = None
+    if attachment_path and os.path.isfile(attachment_path):
+        container_attachment = f"/tmp/{os.path.basename(attachment_path)}"
+        proc = await asyncio.create_subprocess_exec(
+            "sg", "docker", "-c",
+            f"docker cp {shlex.quote(attachment_path)} {container}:{container_attachment}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
+        if proc.returncode != 0:
+            logger.warning("[signal] docker cp failed: %s", stderr.decode())
+            container_attachment = None
+
+    if container_attachment:
+        params["attachments"] = [container_attachment]
+
+    payload = json.dumps({"jsonrpc": "2.0", "method": "send", "params": params, "id": 1})
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sg", "docker", "-c",
+            f"docker exec -i {container} curl -sf -X POST "
+            "http://127.0.0.1:8080/api/v1/rpc "
+            "-H 'Content-Type: application/json' -d @-",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=payload.encode()), timeout=15
+        )
+        if proc.returncode == 0:
+            suffix = " [+attachment]" if container_attachment else ""
+            logger.info("[signal] sent: %s%s", text, suffix)
+            return True
+        logger.warning("[signal] send failed (rc=%d): %s", proc.returncode, stderr.decode())
+        return False
+    except asyncio.TimeoutError:
+        logger.warning("[signal] send timed out")
+        return False
+    except Exception as exc:
+        logger.warning("[signal] send error: %s", exc)
+        return False
+
+
+async def signal_send(request: web.Request) -> web.Response:
+    """POST /signal/send — send text message to Signal.
+
+    JSON body: ``{"message": "text"}``
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return _json_error(400, "invalid JSON")
+
+    text = str(data.get("message", "")).strip()
+    if not text:
+        return _json_error(400, "message required")
+
+    ok = await _send_signal(text)
+    status_code = 200 if ok else 429 if not ok else 502
+    # Distinguish cooldown (False from cooldown) vs send failure
+    return web.json_response({"status": "sent" if ok else "cooldown_or_failed"}, status=200 if ok else 429)
+
+
+async def signal_send_image(request: web.Request) -> web.Response:
+    """POST /signal/send-image — send image + caption to Signal.
+
+    JSON body: ``{"caption": "text", "path": "/path/to/image.jpg"}``
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return _json_error(400, "invalid JSON")
+
+    caption = str(data.get("caption", "")).strip() or "Image"
+    image_path = str(data.get("path", "")).strip()
+    if not image_path or not os.path.isfile(image_path):
+        return _json_error(400, "path required and must exist on NUC filesystem")
+
+    ok = await _send_signal(caption, attachment_path=image_path)
+    return web.json_response({"status": "sent" if ok else "cooldown_or_failed"}, status=200 if ok else 429)
+
+
+async def signal_send_camera(request: web.Request) -> web.Response:
+    """POST /signal/send-camera — capture current camera frame and send to Signal.
+
+    JSON body (optional): ``{"caption": "text"}``
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    caption = str(data.get("caption", "Camera capture")).strip()
+
+    # Grab a camera frame
+    try:
+        def _capture() -> bytes:
+            jpeg = conn.camera_client.get_latest_jpeg()
+            if jpeg:
+                return jpeg
+            image = conn.robot.camera.capture_single_image()
+            if image is None:
+                raise RuntimeError("Camera not producing frames")
+            buf = io.BytesIO()
+            image.raw_image.save(buf, format="JPEG")
+            return buf.getvalue()
+
+        jpeg_bytes = await _run_sync(_capture)
+    except Exception as exc:
+        return _json_error(502, f"camera capture failed: {exc}")
+
+    # Write to temp file and send
+    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", prefix="signal-cam-", delete=False)
+    try:
+        tmp.write(jpeg_bytes)
+        tmp.close()
+        ok = await _send_signal(caption, attachment_path=tmp.name)
+        return web.json_response({"status": "sent" if ok else "cooldown_or_failed"}, status=200 if ok else 429)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+
+async def intercom_receive(request: web.Request) -> web.Response:
+    """POST /intercom/receive — backward-compatible alias for signal/send.
+
+    JSON body: ``{"text": "..."}``
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return _json_error(400, "invalid JSON")
+
+    text = str(data.get("text", "")).strip()
+    if not text:
+        return _json_error(400, "text required")
+
+    ok = await _send_signal(f"\U0001f916 Robot says: {text}")
+    return web.json_response({"status": "sent" if ok else "failed"}, status=200 if ok else 502)
+
+
+async def intercom_photo(request: web.Request) -> web.Response:
+    """POST /intercom/photo — backward-compatible alias for signal/send-camera.
+
+    JSON body: ``{"caption": "..."}``
+    """
+    conn: ConnectionManager = request.app["conn"]
+    err = _require_connected(conn)
+    if err:
+        return err
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+
+    caption = str(data.get("caption", "Photo from robot")).strip()
+
+    try:
+        def _capture() -> bytes:
+            jpeg = conn.camera_client.get_latest_jpeg()
+            if jpeg:
+                return jpeg
+            image = conn.robot.camera.capture_single_image()
+            if image is None:
+                raise RuntimeError("Camera not producing frames")
+            buf = io.BytesIO()
+            image.raw_image.save(buf, format="JPEG")
+            return buf.getvalue()
+
+        jpeg_bytes = await _run_sync(_capture)
+    except Exception as exc:
+        return _json_error(502, f"capture failed: {exc}")
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".jpg", prefix="robot-", delete=False)
+    try:
+        tmp.write(jpeg_bytes)
+        tmp.close()
+        ok = await _send_signal(f"\U0001f4f8 {caption}", attachment_path=tmp.name)
+        return web.json_response({"status": "sent" if ok else "failed"}, status=200 if ok else 502)
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+
 def setup_routes(app: web.Application) -> None:
     """Register all bridge routes on the application."""
     app.router.add_get("/health", health)
@@ -1915,6 +2144,13 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/patrol/start", patrol_start)
     app.router.add_post("/patrol/stop", patrol_stop)
     app.router.add_get("/patrol/status", patrol_status)
+    # Signal intercom routes
+    app.router.add_post("/signal/send", signal_send)
+    app.router.add_post("/signal/send-image", signal_send_image)
+    app.router.add_post("/signal/send-camera", signal_send_camera)
+    # Backward-compatible aliases (from standalone intercom-server.py)
+    app.router.add_post("/intercom/receive", intercom_receive)
+    app.router.add_post("/intercom/photo", intercom_photo)
     app.router.add_get("/patrol/log", patrol_log)
     app.router.add_post("/patrol/pause", patrol_pause)
     app.router.add_post("/patrol/resume", patrol_resume)

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""NUC-side HTTP server for robot intercom — receives text/photo from robot, sends to Signal.
+"""DEPRECATED: Signal intercom functionality has been merged into the bridge server
+(apps/vector/bridge/routes.py) as /signal/send, /signal/send-image, /signal/send-camera.
+The bridge also exposes /intercom/receive and /intercom/photo as backward-compatible aliases.
+This standalone server is kept temporarily for reference and will be removed.
+
+Original description:
+NUC-side HTTP server for robot intercom — receives text/photo from robot, sends to Signal.
 
 Endpoints:
     POST /intercom/receive  {"text": "..."}        → sends text to Ophir's Signal DM
