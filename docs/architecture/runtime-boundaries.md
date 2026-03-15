@@ -17,7 +17,7 @@ All compute, inference, and orchestration happens on the NUC.
 - NUC OpenClaw: DNS allowlist via openclaw-dns container
 - Signal: JSON-RPC via openclaw-gateway container (port 18889)
 - wire-pod: runs on NUC, Vector connects to it for cloud services
-- NUC Intercom: HTTP on NUC port 8095 (intercom-server.py → Signal DM)
+- NUC Signal Messaging: HTTP on NUC port 8081 (bridge /signal/* + /intercom/* routes → Signal DM)
 
 ## Workspace Model
 

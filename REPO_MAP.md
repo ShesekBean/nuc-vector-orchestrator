@@ -160,7 +160,7 @@ nuc-vector-orchestrator/
 │   ├── sprint-end.sh             ← end-of-sprint test/backup workflow
 │   ├── pgm-signal-gate.sh        ← rate-limited Signal notifications
 │   ├── signal-interactive.sh     ← interactive test Signal library
-│   ├── intercom-server.py        ← REMOVED: migrated to bridge /signal/* routes
+│   ├── intercom-server.py        ← REMOVED (deleted): migrated to bridge /signal/* and /intercom/* routes
 │   ├── monarch-login.py          ← Monarch Money auth → saves token for OpenClaw
 │   ├── chatgpt-server.py         ← ChatGPT HTTP proxy (Playwright persistent browser, async job queue)
 │   ├── chatgpt-query.py          ← ChatGPT CLI query + login flow (Playwright)
