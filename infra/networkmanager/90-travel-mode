@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# 90-travel-mode — NetworkManager dispatcher script for travel mode
+#
+# Auto-detects network changes and toggles travel mode accordingly.
+# When WiFi connects to a non-home SSID, sensitive OpenClaw skills are disabled.
+# When returning to home network, skills are re-enabled.
+#
+# Installation (requires root):
+#   sudo cp infra/networkmanager/90-travel-mode /etc/NetworkManager/dispatcher.d/
+#   sudo chmod 755 /etc/NetworkManager/dispatcher.d/90-travel-mode
+#   sudo chown root:root /etc/NetworkManager/dispatcher.d/90-travel-mode
+#
+# NM dispatcher passes: $1 = interface, $2 = action
+# Actions we care about: up, down, connectivity-change
+
+ACTION="$2"
+
+# Only act on relevant events
+case "$ACTION" in
+    up|down|connectivity-change) ;;
+    *) exit 0 ;;
+esac
+
+# Run as the user who owns the OpenClaw setup
+TRAVEL_USER="ophirsw"
+TRAVEL_SCRIPT="/home/${TRAVEL_USER}/Documents/claude/nuc-vector-orchestrator/scripts/travel-mode.sh"
+
+if [[ ! -f "$TRAVEL_SCRIPT" ]]; then
+    exit 0
+fi
+
+# Run the check as the travel user (NM dispatcher runs as root)
+su - "$TRAVEL_USER" -c "bash '$TRAVEL_SCRIPT' check" >> /var/log/travel-mode.log 2>&1 &
+
+exit 0
