@@ -45,8 +45,8 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-DEFAULT_GRID_SIZE_MM = 5000  # 5 m square default map
-DEFAULT_CELL_SIZE_MM = 50  # 50 mm per cell
+DEFAULT_GRID_SIZE_MM = 20000  # 20 m square — covers a full apartment
+DEFAULT_CELL_SIZE_MM = 50  # 50 mm per cell (400x400 grid = 160K cells)
 DEFAULT_ORB_FEATURES = 500  # ORB keypoints per frame
 MIN_FEATURE_MATCHES = 10  # below this, fall back to dead reckoning
 LOOP_CLOSURE_MATCH_THRESHOLD = 200  # min matches to declare loop closure (was 30 — too low for Vector's dark camera)
@@ -156,6 +156,48 @@ class OccupancyGrid:
         for r, c in _bresenham(r0, c0, r1, c1):
             if self.in_bounds(r, c):
                 self._grid[r, c] = int(CellState.FREE)
+
+    def mark_fov_free(
+        self,
+        x_mm: float,
+        y_mm: float,
+        theta: float,
+        max_range_mm: float = 1500.0,
+        fov_deg: float = 120.0,
+        num_rays: int = 24,
+        obstacle_range_mm: float | None = None,
+    ) -> None:
+        """Cast rays through camera FOV and mark cells as FREE.
+
+        Marks all cells along each ray as FREE up to max_range_mm or
+        the obstacle distance. If obstacle_range_mm is provided, marks
+        the endpoint as OCCUPIED.
+
+        Args:
+            x_mm, y_mm: Robot position in world mm.
+            theta: Robot heading in radians.
+            max_range_mm: Maximum ray distance.
+            fov_deg: Camera field of view.
+            num_rays: Number of rays to cast.
+            obstacle_range_mm: If set, mark cell at this range as OCCUPIED.
+        """
+        import math
+
+        half_fov = math.radians(fov_deg / 2)
+        for i in range(num_rays):
+            angle = theta + (-half_fov + i * 2 * half_fov / max(num_rays - 1, 1))
+            ray_range = min(max_range_mm, obstacle_range_mm or max_range_mm)
+            end_x = x_mm + ray_range * math.cos(angle)
+            end_y = y_mm + ray_range * math.sin(angle)
+            self.mark_line_free(x_mm, y_mm, end_x, end_y)
+
+            # Mark obstacle cell if detected
+            if obstacle_range_mm is not None and obstacle_range_mm < max_range_mm:
+                obs_x = x_mm + obstacle_range_mm * math.cos(angle)
+                obs_y = y_mm + obstacle_range_mm * math.sin(angle)
+                row, col = self.world_to_cell(obs_x, obs_y)
+                if self.in_bounds(row, col):
+                    self._grid[row, col] = int(CellState.OCCUPIED)
 
     @property
     def free_cell_count(self) -> int:

@@ -484,24 +484,7 @@ class AutonomousExplorer:
 
                 no_frontier_count = 0
 
-                # Scan for obstacles before driving
-                blocked, turn_dir = self._scan_for_obstacles()
-                if blocked:
-                    angle = -45.0 if turn_dir == "left" else 45.0
-                    logger.info("Obstacle ahead — turning %s", turn_dir or "right")
-                    try:
-                        self._motor.turn_in_place(
-                            angle, speed_dps=self._cfg.turn_speed_dps
-                        )
-                    except Exception:
-                        pass
-                    time.sleep(1.0)
-                    # Invalidate stale vision so next check is fresh
-                    if self._obstacle_map is not None:
-                        self._obstacle_map.update_vision(blocked=False)
-                    continue
-
-                # Drive toward frontier
+                # Drive toward frontier (obstacle check is inside _drive_toward)
                 self._state = ExploreState.NAVIGATING_TO_FRONTIER
                 logger.info(
                     "Driving toward frontier (%.0f, %.0f) from pose (%.0f, %.0f)",
@@ -631,21 +614,46 @@ class AutonomousExplorer:
         logger.info("Seeded start area with FREE cells at (%.0f, %.0f)", pose.x, pose.y)
 
     def _initial_scan(self) -> None:
-        """Do a slow 360° turn to build initial map around the robot."""
-        logger.info("Performing initial 360° scan")
+        """Do a slow 360° turn to build initial map with FOV raycasting."""
+        logger.info("Performing initial 360° scan with FOV raycasting")
         try:
-            # Head level for best field of view
             self._head.set_angle(0.0)
             time.sleep(0.3)
 
-            # Turn in place: 4 × 90°, pausing to let SLAM process
+            # Turn in place: 4 × 90°, raycasting FOV at each stop
             for i in range(4):
                 if not self._running:
                     return
                 self._motor.turn_in_place(
                     90.0, speed_dps=self._cfg.turn_speed_dps
                 )
-                time.sleep(1.0)  # let SLAM process frames during pause
+                time.sleep(1.0)
+
+                # Raycast FOV to mark visible space as FREE
+                pose = self._slam.get_pose()
+                grid = self._slam.get_grid()
+                obstacle_range = None
+                if self._floor_proximity is not None:
+                    frame = self._camera.get_latest_frame()
+                    if frame is not None:
+                        try:
+                            reading = self._floor_proximity.detect(frame)
+                            if reading.center_mm < 1500:
+                                obstacle_range = reading.center_mm
+                        except Exception:
+                            pass
+                grid.mark_fov_free(
+                    pose.x, pose.y, pose.theta,
+                    max_range_mm=1500.0,
+                    fov_deg=120.0,
+                    num_rays=24,
+                    obstacle_range_mm=obstacle_range,
+                )
+                logger.info(
+                    "Scan %d/4: marked FOV at (%.0f, %.0f) θ=%.0f° — %d free cells",
+                    i + 1, pose.x, pose.y, math.degrees(pose.theta),
+                    grid.free_cell_count,
+                )
 
         except Exception:
             logger.warning("Initial scan failed — continuing anyway", exc_info=True)
@@ -790,7 +798,7 @@ class AutonomousExplorer:
         return (float(x_mm), float(y_mm))
 
     def _drive_toward(self, target_x: float, target_y: float) -> None:
-        """Drive one step toward a target position."""
+        """Drive one step toward a target position with adaptive step size."""
         from apps.vector.src.motor_controller import CliffSafetyError
 
         pose = self._slam.get_pose()
@@ -798,21 +806,32 @@ class AutonomousExplorer:
         dy = target_y - pose.y
         distance = math.hypot(dx, dy)
 
-        # Limit step distance
-        distance = min(distance, self._cfg.step_distance_mm)
+        # Adaptive step size based on floor proximity
+        max_step = self._cfg.step_distance_mm
+        if self._floor_proximity is not None:
+            frame = self._camera.get_latest_frame()
+            if frame is not None:
+                try:
+                    reading = self._floor_proximity.detect(frame)
+                    # Drive up to 80% of detected free distance
+                    max_step = min(reading.center_mm * 0.8, 1200)
+                    max_step = max(max_step, 100)  # minimum 100mm
+                    if self._obstacle_map is not None:
+                        self._obstacle_map.update_proximity(reading)
+                    if reading.is_blocked:
+                        turn = reading.suggested_turn or "right"
+                        angle = -45.0 if turn == "left" else 45.0
+                        logger.info("Floor proximity blocked (%.0fmm) — turning %s",
+                                    reading.min_mm, turn)
+                        try:
+                            self._motor.turn_in_place(angle, speed_dps=self._cfg.turn_speed_dps)
+                        except Exception:
+                            pass
+                        return
+                except Exception:
+                    logger.debug("Floor proximity failed", exc_info=True)
 
-        # Fresh obstacle scan before driving
-        blocked, turn_dir = self._scan_for_obstacles()
-        if blocked:
-            angle = -45.0 if turn_dir == "left" else 45.0
-            logger.info("Obstacle in _drive_toward — turning %s", turn_dir or "right")
-            try:
-                self._motor.turn_in_place(
-                    angle, speed_dps=self._cfg.turn_speed_dps
-                )
-            except Exception:
-                pass
-            return
+        distance = min(distance, max_step)
 
         # Compute bearing
         bearing = math.atan2(dy, dx)
@@ -820,8 +839,8 @@ class AutonomousExplorer:
         turn_deg = math.degrees(turn_angle)
 
         logger.info(
-            "turn_then_drive: turn=%.1f° dist=%.0fmm bearing=%.1f°",
-            turn_deg, distance, math.degrees(bearing),
+            "turn_then_drive: turn=%.1f° dist=%.0fmm (max=%.0f) bearing=%.1f°",
+            turn_deg, distance, max_step, math.degrees(bearing),
         )
         try:
             self._motor.turn_then_drive(
@@ -831,16 +850,37 @@ class AutonomousExplorer:
                 turn_speed_dps=self._cfg.turn_speed_dps,
             )
             logger.info("Drive command completed successfully")
-            # Dead-reckoning: update SLAM pose with commanded movement
-            # Visual SLAM only tracks rotation — we need to manually
-            # update position so the map builds and frontiers advance.
+
+            # Dead-reckoning update
             self._slam.update_pose_dead_reckoning(
                 delta_x=distance * math.cos(bearing),
                 delta_y=distance * math.sin(bearing),
             )
-            # Mark area around new position as free (robot clearance)
+
+            # FOV raycasting — mark all visible space as FREE
+            new_pose = self._slam.get_pose()
+            grid = self._slam.get_grid()
+            obstacle_range = None
+            if self._floor_proximity is not None:
+                frame2 = self._camera.get_latest_frame()
+                if frame2 is not None:
+                    try:
+                        reading2 = self._floor_proximity.detect(frame2)
+                        if reading2.center_mm < 1500:
+                            obstacle_range = reading2.center_mm
+                    except Exception:
+                        pass
+            grid.mark_fov_free(
+                new_pose.x, new_pose.y, new_pose.theta,
+                max_range_mm=1500.0,
+                fov_deg=120.0,
+                num_rays=24,
+                obstacle_range_mm=obstacle_range,
+            )
+
+            # Also mark area around robot
             self._mark_area_free()
-            # Reset stuck detection on successful movement
+
             if self._obstacle_detector:
                 self._obstacle_detector.reset_stuck()
         except CliffSafetyError:
