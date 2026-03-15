@@ -179,10 +179,10 @@ has_valid_session() {
     fi
     # Session is valid if it exists and matches current SSID
     local session_ssid
-    session_ssid=$(python3 -c "
-import json, sys
+    session_ssid=$(TRAVEL_SESSION_FILE="${SESSION_FILE}" python3 -c "
+import json, os
 try:
-    with open('${SESSION_FILE}') as f:
+    with open(os.environ['TRAVEL_SESSION_FILE']) as f:
         data = json.load(f)
     print(data.get('ssid', ''))
 except Exception:
@@ -318,11 +318,11 @@ cmd_unlock() {
         enable_skill "$skill"
     done
 
-    # Save session (tied to current SSID)
-    python3 -c "
-import json, time
-data = {'ssid': '${ssid//\'/\\\'}', 'unlocked_at': time.time()}
-with open('${SESSION_FILE}', 'w') as f:
+    # Save session (tied to current SSID) — pass SSID via env to avoid injection
+    TRAVEL_SSID="$ssid" TRAVEL_SESSION_FILE="${SESSION_FILE}" python3 -c "
+import json, os, time
+data = {'ssid': os.environ.get('TRAVEL_SSID', ''), 'unlocked_at': time.time()}
+with open(os.environ['TRAVEL_SESSION_FILE'], 'w') as f:
     json.dump(data, f)
 "
     chmod 600 "${SESSION_FILE}"
