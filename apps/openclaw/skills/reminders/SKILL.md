@@ -19,28 +19,30 @@ You can create reminders on Ophir's iPhone by sending a tappable `shortcuts://` 
 
 ## How to Create a Reminder
 
-Generate a URL in this exact format and send it as a Signal message:
+Generate a URL in this exact format and send it as a tappable Signal message:
 
 ```
 ⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=<URL-ENCODED TEXT>
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=<URL-ENCODED JSON>
 ```
 
-The text parameter format: `<list>|<date> <time>|<action>`
+The text parameter is a JSON object with three fields:
+```json
+{"title":"<action>","list":"<list name>","when":"<Month Day, Year at HH:MM AM/PM>"}
+```
 
-Three fields separated by `|`:
-1. **List name** — which Reminders list (see routing rules below)
-2. **Date and time** — when to remind
-3. **Action** — what to do
+### Date format
+Always use: `March 15, 2026 at 10:00 AM` (full month name, full year, 12-hour with AM/PM)
 
 ### Reminder List Routing
 
-Ophir's iCloud Reminders structure:
+Ophir's iCloud Reminders lists:
 
 **Personal:**
 - `Personal Todo` — general personal tasks
 - `Family Todo` — family-related
 - `Trip` — travel
+- `Family ⚠️` — urgent family
 - `Robot` — Vector/robot project tasks
 - `My bucket list` — long-term goals
 
@@ -52,44 +54,38 @@ Ophir's iCloud Reminders structure:
 - `James` — tasks involving James
 
 **Routing rules:**
-- Work emails/Slack/meetings → route to the **person's list** if a specific person is involved
-- General work tasks with no specific person → `Personal Todo`
+- Work task involving a specific person → that person's list
+- General work tasks → `Personal Todo`
 - Robot/Vector project → `Robot`
-- Family stuff → `Family Todo`
+- Family → `Family Todo`
 - If unclear → `Personal Todo`
 
 ### URL Encoding Rules
 - Spaces → `%20`
-- Pipe `|` → `%7C`
-- Commas → `%2C`
-- Colons → `%3A`
-- @ → `%40`
-- & → `%26`
+- `{` → `%7B`, `}` → `%7D`
+- `"` → `%22`
+- `:` → `%3A`
+- `,` → `%2C`
+- `@` → `%40`
 
 ### Examples
 
-**Follow up with a person (→ their list):**
+**Follow up with a person:**
 ```
 ⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=Manish%7CFriday%203pm%7CFollow%20up%20on%20ERP%20decision
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=%7B%22title%22%3A%22Follow%20up%20on%20ERP%20decision%22%2C%22list%22%3A%22Manish%22%2C%22when%22%3A%22March%2021%2C%202026%20at%203%3A00%20PM%22%7D
 ```
 
-**Meeting prep (→ person's list):**
+**Meeting prep:**
 ```
 ⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=Bob%7CMonday%208%3A30am%7CReview%20roadmap%20doc%20before%20kickoff
-```
-
-**General work task:**
-```
-⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=Personal%20Todo%7Ctomorrow%2010am%7CSend%20weekly%20status%20update
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=%7B%22title%22%3A%22Review%20roadmap%20doc%20before%20kickoff%22%2C%22list%22%3A%22Bob%22%2C%22when%22%3A%22March%2017%2C%202026%20at%208%3A30%20AM%22%7D
 ```
 
 **Robot project:**
 ```
 ⏰ Tap to set reminder:
-shortcuts://run-shortcut?name=CreateReminder&input=text&text=Robot%7CSaturday%209am%7CTest%20new%20follow%20planner
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=%7B%22title%22%3A%22Test%20new%20follow%20planner%22%2C%22list%22%3A%22Robot%22%2C%22when%22%3A%22March%2015%2C%202026%20at%209%3A00%20AM%22%7D
 ```
 
 ## When to Use Proactively
@@ -99,11 +95,14 @@ After delivering a daily brief or answering a work query, scan for items that ne
 ```
 ⏰ Suggested reminders (tap to set):
 
-1. shortcuts://run-shortcut?name=CreateReminder&input=text&text=James%7CMonday%208am%7CPrep%20roadmap%20questions
-2. shortcuts://run-shortcut?name=CreateReminder&input=text&text=Manish%7CMonday%202pm%7CSend%20ERP%20summary
+1. Prep roadmap questions (James, Mon 8am)
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=%7B%22title%22%3A%22Prep%20roadmap%20questions%22%2C%22list%22%3A%22James%22%2C%22when%22%3A%22March%2017%2C%202026%20at%208%3A00%20AM%22%7D
+
+2. Send ERP summary (Manish, Mon 2pm)
+shortcuts://run-shortcut?name=CreateReminder&input=text&text=%7B%22title%22%3A%22Send%20ERP%20summary%22%2C%22list%22%3A%22Manish%22%2C%22when%22%3A%22March%2017%2C%202026%20at%202%3A00%20PM%22%7D
 ```
 
-Keep action text short — under 50 characters.
+Always add a human-readable label before each link. Keep action text under 50 characters.
 
 ## When User Asks Directly
 
