@@ -19,7 +19,8 @@ import pytest
 pytestmark = pytest.mark.phase12
 
 OPENCLAW_WS_URL = "ws://127.0.0.1:18889"
-OPENCLAW_GATEWAY_TOKEN = "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
+import json as _json
+OPENCLAW_GATEWAY_TOKEN = _json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))["gateway"]["auth"]["token"]
 VOICE_SESSION_KEY = "hook:voice"
 PROTOCOL_VERSION = 3
 

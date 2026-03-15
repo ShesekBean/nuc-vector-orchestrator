@@ -18,7 +18,7 @@ import os
 import sys
 from datetime import datetime
 
-AUTH_FILE = os.path.expanduser("~/.openclaw/workspace/memory/chatgpt-auth.json")
+AUTH_FILE = os.path.expanduser("~/.openclaw/secrets/chatgpt-auth.json")
 
 
 def main():

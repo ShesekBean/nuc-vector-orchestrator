@@ -42,8 +42,13 @@ OPENCLAW_WS_URL = "ws://127.0.0.1:18889"
 OPENCLAW_TOKEN_PATH = Path.home() / ".openclaw" / "hooks-token"
 OPENCLAW_DEVICE_IDENTITY_PATH = Path.home() / ".openclaw" / "identity" / "device.json"
 
-# OpenClaw gateway auth token (from openclaw.json)
-OPENCLAW_GATEWAY_TOKEN = "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
+# OpenClaw gateway auth token — read from config, never hardcode
+def _load_gateway_token() -> str:
+    cfg_path = Path.home() / ".openclaw" / "openclaw.json"
+    with open(cfg_path) as f:
+        return json.load(f)["gateway"]["auth"]["token"]
+
+OPENCLAW_GATEWAY_TOKEN = _load_gateway_token()
 
 # Session key — shared with Signal DM for unified memory
 # Must match the full session key that Signal DMs resolve to

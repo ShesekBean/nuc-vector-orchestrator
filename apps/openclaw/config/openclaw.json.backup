@@ -104,7 +104,7 @@
   "hooks": {
     "enabled": true,
     "path": "/hooks",
-    "token": "b4eae01172712e75935540e31b8b0ac0e9e006c5a3c625b25138fe57411c8cc5",
+    "token": "<REDACTED>",
     "defaultSessionKey": "hook:ingress",
     "internal": {
       "enabled": true,
@@ -155,7 +155,7 @@
     },
     "auth": {
       "mode": "token",
-      "token": "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
+      "token": "<REDACTED>"
     },
     "tailscale": {
       "mode": "off",

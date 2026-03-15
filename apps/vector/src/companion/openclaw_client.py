@@ -22,7 +22,12 @@ from cryptography.hazmat.primitives.serialization import load_pem_private_key, l
 logger = logging.getLogger(__name__)
 
 OPENCLAW_WS_URL = "ws://127.0.0.1:18889"
-OPENCLAW_GATEWAY_TOKEN = "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
+def _load_gateway_token() -> str:
+    cfg_path = Path.home() / ".openclaw" / "openclaw.json"
+    with open(cfg_path) as f:
+        return json.load(f)["gateway"]["auth"]["token"]
+
+OPENCLAW_GATEWAY_TOKEN = _load_gateway_token()
 OPENCLAW_DEVICE_IDENTITY_PATH = Path.home() / ".openclaw" / "identity" / "device.json"
 PROTOCOL_VERSION = 3
 AGENT_TIMEOUT_MS = 90_000
