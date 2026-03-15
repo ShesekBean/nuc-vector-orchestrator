@@ -87,7 +87,7 @@ def _b64url_no_pad(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def _build_device_auth(nonce: str, client_id: str = "cli", client_mode: str = "backend") -> dict:
+def _build_device_auth(nonce: str, challenge_ts: int, client_id: str = "cli", client_mode: str = "backend") -> dict:
     """Build V3 device-signed auth payload for the connect frame.
 
     Signs: v3|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce|platform|deviceFamily
@@ -99,7 +99,7 @@ def _build_device_auth(nonce: str, client_id: str = "cli", client_mode: str = "b
 
     role = "operator"
     scopes = "operator.admin,operator.read,operator.write"
-    signed_at_ms = str(int(time.time() * 1000))
+    signed_at_ms = str(challenge_ts)
     token = OPENCLAW_GATEWAY_TOKEN
     platform = "linux"
     device_family = ""
@@ -176,13 +176,15 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
                 ):
                     payload = challenge_msg.get("payload", {})
                     nonce = payload.get("nonce", "")
+                    challenge_ts = payload.get("ts", int(time.time() * 1000))
                     logger.debug("Got challenge nonce: %s", nonce[:16])
                 else:
                     logger.warning("Expected connect.challenge, got: %s", challenge_msg)
+                    challenge_ts = int(time.time() * 1000)
 
                 # Step 2: Send connect request with device-signed auth (V3)
                 connect_id = str(uuid.uuid4())
-                auth_payload = _build_device_auth(nonce)
+                device_auth = _build_device_auth(nonce, challenge_ts)
                 connect_frame = {
                     "type": "req",
                     "id": connect_id,
@@ -199,7 +201,8 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
                         },
                         "role": "operator",
                         "scopes": ["operator.admin", "operator.read", "operator.write"],
-                        "auth": auth_payload,
+                        "auth": {"token": device_auth["token"]},
+                        "device": device_auth["device"],
                     },
                 }
                 await ws.send_json(connect_frame)

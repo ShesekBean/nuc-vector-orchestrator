@@ -33,7 +33,7 @@ def _b64url_no_pad(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
 
 
-def _build_device_auth(nonce: str, client_id: str = "cli", client_mode: str = "backend") -> dict:
+def _build_device_auth(nonce: str, challenge_ts: int, client_id: str = "cli", client_mode: str = "backend") -> dict:
     """Build V3 device-signed auth payload for the connect frame."""
     with open(OPENCLAW_DEVICE_IDENTITY_PATH) as f:
         identity = json.load(f)
@@ -44,7 +44,7 @@ def _build_device_auth(nonce: str, client_id: str = "cli", client_mode: str = "b
 
     role = "operator"
     scopes = "operator.admin,operator.read,operator.write"
-    signed_at_ms = str(int(time.time() * 1000))
+    signed_at_ms = str(challenge_ts)
     token = OPENCLAW_GATEWAY_TOKEN
     platform = "linux"
     device_family = ""
@@ -124,11 +124,13 @@ async def openclaw_chat(
                     and challenge_msg.get("event") == "connect.challenge"
                 ):
                     nonce = challenge_msg.get("payload", {}).get("nonce", "")
+                    challenge_ts = challenge_msg.get("payload", {}).get("ts", int(time.time() * 1000))
                 else:
                     logger.warning("Expected connect.challenge, got: %s", challenge_msg)
+                    challenge_ts = int(time.time() * 1000)
 
                 # 2. connect with device-signed auth (V3)
-                auth_payload = _build_device_auth(nonce)
+                device_auth = _build_device_auth(nonce, challenge_ts)
                 await ws.send_json({
                     "type": "req",
                     "id": str(uuid.uuid4()),
@@ -145,7 +147,8 @@ async def openclaw_chat(
                         },
                         "role": "operator",
                         "scopes": ["operator.admin", "operator.read", "operator.write"],
-                        "auth": auth_payload,
+                        "auth": {"token": device_auth["token"]},
+                        "device": device_auth["device"],
                     },
                 })
 
