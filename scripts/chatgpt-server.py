@@ -12,7 +12,6 @@ GET  /health                     →  {"status": "ok", ...}
 
 import json
 import os
-import sys
 import time
 import uuid
 import threading
@@ -332,7 +331,7 @@ def main():
         os.environ["DISPLAY"] = ":0"
 
     print(f"[chatgpt-server] Starting on {BIND_HOST}:{BIND_PORT}")
-    print(f"[chatgpt-server] Async mode: POST /query returns job_id, GET /result/<id> to poll")
+    print("[chatgpt-server] Async mode: POST /query returns job_id, GET /result/<id> to poll")
 
     # Bind only to Docker bridge — not exposed to LAN
     server = HTTPServer((BIND_HOST, BIND_PORT), Handler)
