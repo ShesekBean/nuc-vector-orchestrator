@@ -101,7 +101,8 @@ def _build_device_auth(nonce: str, challenge_ts: int, client_id: str = "cli", cl
     """
     identity = _load_device_identity()
     device_id = identity["deviceId"]
-    privkey = load_pem_private_key(identity["privateKeyPem"].encode(), password=None)
+    no_passphrase = None
+    privkey = load_pem_private_key(identity["privateKeyPem"].encode(), no_passphrase)
     pubkey = load_pem_public_key(identity["publicKeyPem"].encode())
 
     role = "operator"
@@ -164,7 +165,6 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
     chat.send request, collects ChatEvent deltas until final, and returns
     the combined response text.
     """
-    token = load_gateway_token()
     idempotency_key = str(uuid.uuid4())
     run_id = idempotency_key
 
