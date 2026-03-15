@@ -73,6 +73,24 @@ def _ensure_browser():
     )
     _page = _context.pages[0] if _context.pages else _context.new_page()
 
+    # Security: block top-level navigation away from chatgpt.com
+    # Allows subresources (CDN, fonts, APIs) but prevents the page from
+    # navigating to arbitrary sites (e.g. if ChatGPT generates a link)
+    _ALLOWED_DOMAINS = {"chatgpt.com", "openai.com", "oaiusercontent.com", "auth0.com"}
+
+    def _block_navigation(route):
+        req = route.request
+        if req.resource_type == "document":
+            from urllib.parse import urlparse
+            domain = urlparse(req.url).hostname or ""
+            if not any(domain.endswith(d) for d in _ALLOWED_DOMAINS):
+                print(f"[security] Blocked navigation to: {req.url}")
+                route.abort("blockedbyclient")
+                return
+        route.continue_()
+
+    _context.route("**/*", _block_navigation)
+
     _page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30_000)
     _page.wait_for_selector(
         '#prompt-textarea, .ProseMirror[contenteditable="true"]',
@@ -241,9 +259,6 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path == "/reminders-import":
-            return self._handle_reminders_import()
-
         if self.path != "/query":
             self._respond(404, {"error": "not found"})
             return
@@ -262,6 +277,30 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(400, {"error": "message required"})
             return
 
+        # Security: only accept from Docker bridge (OpenClaw) or localhost
+        client_ip = self.client_address[0]
+        if client_ip not in ("127.0.0.1", "172.17.0.1", "172.17.0.2", "::1"):
+            print(f"[security] Rejected query from {client_ip}")
+            self._respond(403, {"error": "forbidden"})
+            return
+
+        # Security: block prompt injection patterns
+        _blocked = [
+            "ignore previous", "ignore above", "disregard",
+            "new instructions", "system prompt", "you are now",
+            "forget everything", "override", "jailbreak",
+        ]
+        msg_lower = message.lower()
+        if any(pattern in msg_lower for pattern in _blocked):
+            print(f"[security] Blocked suspicious message: {message[:80]}")
+            self._respond(400, {"error": "message blocked by security filter"})
+            return
+
+        # Security: cap message length
+        if len(message) > 2000:
+            self._respond(400, {"error": "message too long (max 2000 chars)"})
+            return
+
         # Create job and run in background
         job_id = uuid.uuid4().hex[:12]
         with _jobs_lock:
@@ -272,29 +311,6 @@ class Handler(BaseHTTPRequestHandler):
 
         # Return immediately with job ID
         self._respond(200, {"job_id": job_id})
-
-    def _handle_reminders_import(self):
-        """Receive reminders from iOS Shortcut, save for daily brief."""
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode() if length else ""
-
-        if not body.strip():
-            self._respond(400, {"error": "empty body"})
-            return
-
-        try:
-            from datetime import datetime
-            reminders_file = os.path.expanduser(
-                "~/.openclaw/workspace/memory/reminders-snapshot.txt"
-            )
-            header = f"# iPhone Reminders snapshot — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-            with open(reminders_file, "w") as f:
-                f.write(header + body.strip() + "\n")
-            print(f"[reminders] Imported {len(body.splitlines())} lines")
-            self._respond(200, {"status": "ok", "lines": len(body.splitlines())})
-        except Exception as e:
-            print(f"[reminders] Error: {e}")
-            self._respond(500, {"error": str(e)[:200]})
 
     def _respond(self, code, data):
         body = json.dumps(data).encode()
@@ -316,11 +332,10 @@ def main():
         os.environ["DISPLAY"] = ":0"
 
     print(f"[chatgpt-server] Starting on {BIND_HOST}:{BIND_PORT}")
-    print(f"[chatgpt-server] Also listening on 0.0.0.0:{BIND_PORT} for iPhone webhooks")
     print(f"[chatgpt-server] Async mode: POST /query returns job_id, GET /result/<id> to poll")
 
-    # Bind to all interfaces so iPhone can reach /reminders-import
-    server = HTTPServer(("0.0.0.0", BIND_PORT), Handler)
+    # Bind only to Docker bridge — not exposed to LAN
+    server = HTTPServer((BIND_HOST, BIND_PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
