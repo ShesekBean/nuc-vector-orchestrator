@@ -38,7 +38,8 @@ log() { echo "[travel-mode] $*"; }
 
 get_current_ssid() {
     # Returns the SSID of the active WiFi connection, or empty if not on WiFi
-    nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes:' | head -1 | cut -d: -f2-
+    # Uses || true to avoid pipefail exit when nmcli is unavailable (e.g. CI)
+    nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes:' | head -1 | cut -d: -f2- || true
 }
 
 is_home_network() {
@@ -57,7 +58,7 @@ is_home_network() {
 
 # Check if ethernet is connected (fallback: treat wired as home)
 is_wired_connection() {
-    nmcli -t -f type,state dev 2>/dev/null | grep -q '^ethernet:connected$'
+    nmcli -t -f type,state dev 2>/dev/null | grep -q '^ethernet:connected$' || return 1
 }
 
 get_sandbox_skills_dirs() {
