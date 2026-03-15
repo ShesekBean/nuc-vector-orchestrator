@@ -3,8 +3,13 @@
  *
  * Proxies the _engine_anim_server_0 Unix DGRAM socket to intercept
  * the vic-engine ↔ vic-anim IPC channel. This allows injection of
- * CLAD messages (SetTriggerWordResponse + StartWakeWordlessStreaming)
- * to trigger continuous mic audio streaming during LiveKit calls.
+ * CLAD messages (SetMicBroadcastMode + SetTriggerWordResponse +
+ * StartWakeWordlessStreaming) to trigger continuous mic audio streaming
+ * during LiveKit calls.
+ *
+ * Broadcast mode: Injects SetMicBroadcastMode(1) to disable vic-anim's
+ * kStreamingTimeout_ms check, then a single StartWakeWordlessStreaming.
+ * No keepalive re-injection needed — audio streams until broadcast OFF.
  *
  * Socket architecture (after proxy setup):
  *
@@ -60,7 +65,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <time.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -127,14 +131,6 @@ static void restore_original_socket(void)
     }
 
     g_socket_renamed = 0;
-}
-
-
-static uint64_t time_ms(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
 
 
@@ -264,6 +260,36 @@ static int inject_start_wakewordless(void)
         LOG("Injected StartWakeWordlessStreaming #%llu",
             (unsigned long long)g_msgs_injected);
     }
+    return 0;
+}
+
+
+/*
+ * Inject SetMicBroadcastMode (tag 0x93) to enable/disable broadcast mode.
+ *
+ * Wire format (2 bytes = 1 tag + 1 payload):
+ *   [0x93]
+ *   [mode:uint8] = 0x00 (normal) or 0x01 (broadcast)
+ *
+ * When broadcast mode is active, vic-anim skips the kStreamingTimeout_ms
+ * check, so audio streams indefinitely until mode is set back to normal.
+ */
+static int inject_set_broadcast_mode(uint8_t mode)
+{
+    uint8_t msg[2] = {
+        CLAD_TAG_SET_MIC_BROADCAST_MODE,  /* tag */
+        mode                               /* mode */
+    };
+
+    ssize_t sent = send_to_anim(msg, sizeof(msg));
+    if (sent < 0) {
+        LOG("Failed to inject SetMicBroadcastMode(%d): %s", mode, strerror(errno));
+        return -1;
+    }
+
+    LOG("Injected SetMicBroadcastMode(%s)",
+        mode == MIC_BROADCAST_MODE_BROADCAST ? "broadcast" : "normal");
+    g_msgs_injected++;
     return 0;
 }
 
@@ -406,9 +432,8 @@ int engine_proxy_init(const char *server_path)
 int engine_proxy_run(void)
 {
     uint8_t buf[MAX_DGRAM_SIZE];
-    uint64_t last_inject_ms = 0;
 
-    LOG("Engine-anim proxy loop started");
+    LOG("Engine-anim proxy loop started (broadcast mode enabled)");
     LOG("Waiting for vic-engine to connect and send ANKICONN...");
 
     while (g_running) {
@@ -424,7 +449,7 @@ int engine_proxy_run(void)
 
         int maxfd = (g_server_fd > g_client_fd) ? g_server_fd : g_client_fd;
 
-        /* Timeout for injection timer — wake up every 500ms to check */
+        /* Timeout — wake up every 500ms for shutdown checks */
         struct timeval tv = { .tv_sec = 0, .tv_usec = 500000 };
 
         int nready = select(maxfd + 1, &rfds, NULL, NULL, &tv);
@@ -519,14 +544,9 @@ int engine_proxy_run(void)
             }
         }
 
-        /* Mic streaming injection timer */
-        if (g_mic_streaming) {
-            uint64_t now = time_ms();
-            if (now - last_inject_ms >= MIC_STREAM_RETRIGGER_MS) {
-                inject_start_wakewordless();
-                last_inject_ms = now;
-            }
-        }
+        /* No retrigger timer needed — broadcast mode disables vic-anim's
+         * kStreamingTimeout_ms check, so a single StartWakeWordlessStreaming
+         * injection keeps audio flowing until broadcast mode is turned off. */
     }
 
     LOG("Engine-anim proxy loop ended");
@@ -549,9 +569,9 @@ void engine_proxy_start_mic_stream(void)
         return;
     }
 
-    LOG("Starting continuous mic streaming via StartWakeWordlessStreaming");
+    LOG("Starting continuous mic streaming via broadcast mode");
 
-    /* First, inject SetTriggerWordResponse so HasValidTriggerResponse() is true.
+    /* Step 1: Inject SetTriggerWordResponse so HasValidTriggerResponse() is true.
      * Without this, StartWakeWordlessStreaming fails with "CantStreamToCloud"
      * because the behavior tree doesn't run under SDK OVERRIDE_BEHAVIORS priority. */
     inject_set_trigger_word_response();
@@ -559,10 +579,18 @@ void engine_proxy_start_mic_stream(void)
     /* Small delay to let vic-anim process the trigger response */
     usleep(50000);  /* 50ms */
 
-    g_mic_streaming = 1;
+    /* Step 2: Enable broadcast mode — disables kStreamingTimeout_ms in vic-anim.
+     * Audio will stream indefinitely until we send broadcast OFF. */
+    inject_set_broadcast_mode(MIC_BROADCAST_MODE_BROADCAST);
 
-    /* Inject immediately — don't wait for timer */
+    /* Small delay to let vic-anim process the broadcast mode change */
+    usleep(10000);  /* 10ms */
+
+    /* Step 3: Inject a single StartWakeWordlessStreaming to begin the session.
+     * No re-injection timer needed — broadcast mode keeps it alive. */
     inject_start_wakewordless();
+
+    g_mic_streaming = 1;
 }
 
 
@@ -573,7 +601,12 @@ void engine_proxy_stop_mic_stream(void)
         return;
     }
 
-    LOG("Stopping continuous mic streaming (will timeout in ~6s)");
+    LOG("Stopping continuous mic streaming — disabling broadcast mode");
+
+    /* Disable broadcast mode — restores kStreamingTimeout_ms check.
+     * The current streaming session will naturally time out in ~6s. */
+    inject_set_broadcast_mode(MIC_BROADCAST_MODE_NORMAL);
+
     g_mic_streaming = 0;
 }
 
