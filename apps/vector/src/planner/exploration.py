@@ -86,7 +86,7 @@ class ExploreConfig:
 
     # Frontier detection
     frontier_min_cells: int = 3  # minimum frontier cluster size
-    frontier_search_radius_cells: int = 40  # how far to look for frontiers
+    frontier_search_radius_cells: int = 80  # how far to look for frontiers (doubled)
 
     # How long to wait for Ophir's room name reply (seconds)
     reply_timeout_s: float = 300.0  # 5 minutes
@@ -604,10 +604,10 @@ class AutonomousExplorer:
         grid = self._slam.get_grid()
         pose = self._slam.get_pose()
 
-        # Mark 150mm radius around robot as free (robot is ~100mm wide)
-        for dx in range(-150, 151, 50):
-            for dy in range(-150, 151, 50):
-                if math.hypot(dx, dy) <= 150:
+        # Mark 300mm radius around robot as free (Vector can see ~300mm around it)
+        for dx in range(-300, 301, 50):
+            for dy in range(-300, 301, 50):
+                if math.hypot(dx, dy) <= 300:
                     grid.set_cell(int(pose.x + dx), int(pose.y + dy), CellState.FREE)
 
     def _seed_start_area(self) -> None:

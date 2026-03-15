@@ -241,6 +241,9 @@ class Handler(BaseHTTPRequestHandler):
             self._respond(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path == "/reminders-import":
+            return self._handle_reminders_import()
+
         if self.path != "/query":
             self._respond(404, {"error": "not found"})
             return
@@ -270,6 +273,29 @@ class Handler(BaseHTTPRequestHandler):
         # Return immediately with job ID
         self._respond(200, {"job_id": job_id})
 
+    def _handle_reminders_import(self):
+        """Receive reminders from iOS Shortcut, save for daily brief."""
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode() if length else ""
+
+        if not body.strip():
+            self._respond(400, {"error": "empty body"})
+            return
+
+        try:
+            from datetime import datetime
+            reminders_file = os.path.expanduser(
+                "~/.openclaw/workspace/memory/reminders-snapshot.txt"
+            )
+            header = f"# iPhone Reminders snapshot — {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+            with open(reminders_file, "w") as f:
+                f.write(header + body.strip() + "\n")
+            print(f"[reminders] Imported {len(body.splitlines())} lines")
+            self._respond(200, {"status": "ok", "lines": len(body.splitlines())})
+        except Exception as e:
+            print(f"[reminders] Error: {e}")
+            self._respond(500, {"error": str(e)[:200]})
+
     def _respond(self, code, data):
         body = json.dumps(data).encode()
         self.send_response(code)
@@ -290,9 +316,11 @@ def main():
         os.environ["DISPLAY"] = ":0"
 
     print(f"[chatgpt-server] Starting on {BIND_HOST}:{BIND_PORT}")
+    print(f"[chatgpt-server] Also listening on 0.0.0.0:{BIND_PORT} for iPhone webhooks")
     print(f"[chatgpt-server] Async mode: POST /query returns job_id, GET /result/<id> to poll")
 
-    server = HTTPServer((BIND_HOST, BIND_PORT), Handler)
+    # Bind to all interfaces so iPhone can reach /reminders-import
+    server = HTTPServer(("0.0.0.0", BIND_PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

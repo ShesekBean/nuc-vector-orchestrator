@@ -232,12 +232,14 @@ class ObstacleMap:
                 speed_scale = min(speed_scale, self._yolo_scale)
                 source = source or "yolo"
 
-            # Tier 3: Vision (with TTL)
+            # Tier 3: Vision (with TTL) — caution only, never danger.
+            # Claude Vision can't judge distance reliably from monocular camera.
+            # It flags objects 1-2m away as "blocked". Use it to slow down, not stop.
             vision_age = now - self._vision_time if self._vision_time > 0 else 999.0
             vision_valid = vision_age < VISION_TTL_S
-            if vision_valid and self._vision_blocked:
-                zone = "danger"
-                speed_scale = 0.0
+            if vision_valid and self._vision_blocked and zone != "danger":
+                zone = "caution"
+                speed_scale = min(speed_scale, 0.5)
                 turn_direction = turn_direction or self._vision_direction
                 source = source or "vision"
 
