@@ -107,6 +107,14 @@ NUC "desk" (THIS MACHINE — ALL COMPUTE)
 │
 ├── Planner (P controller → turn-first-then-drive → gRPC motor commands)
 │
+├── Signal Messaging (bridge /signal/* routes → openclaw-gateway signal-cli JSON-RPC)
+│   ├── POST /signal/send — text message to Ophir
+│   ├── POST /signal/send-image — send image file + caption
+│   └── POST /signal/send-camera — capture camera frame + send
+│
+├── ChatGPT Proxy (chatgpt-server.py, port 18792, Playwright browser)
+│   └── POST /query → async job → GET /result/<id> (email, Slack, calendar via ChatGPT)
+│
 ├── Docker: NUC OpenClaw (Vector — Signal gateway) [EXISTING — DO NOT TOUCH]
 ├── Docker: openclaw-dns (dnsmasq) [EXISTING — DO NOT TOUCH]
 │
@@ -333,7 +341,7 @@ nuc-vector-orchestrator/
 
 **IS component:vector:** LED, head, lift, motors, battery, camera streaming, touch/cliff sensors, say_text TTS, person following, head tracking.
 
-**IS NOT component:vector (NUC-only):** YOLO/face inference, OpenClaw config, voice command routing, HTTP→gRPC bridge code, supervisor, echo cancellation, OpenVINO setup, wake word, scene description, Signal/intercom framework. These run in parallel NUC slots.
+**IS NOT component:vector (NUC-only):** YOLO/face inference, OpenClaw config, voice command routing, HTTP→gRPC bridge code, supervisor, echo cancellation, OpenVINO setup, wake word, scene description, Signal messaging (bridge /signal/* routes). These run in parallel NUC slots.
 
 ### Issue Dependency Convention
 
@@ -477,6 +485,8 @@ OpenClaw extensions live at `apps/openclaw/`. These are ADDITIVE — they don't 
 - **Companion skill:** `~/.openclaw/workspace/skills/companion/SKILL.md` — presence → personality
 - **Fitness skill:** `~/.openclaw/workspace/skills/fitness/SKILL.md` — Oura ring tracking
 - **Monarch Money skill:** `~/.openclaw/workspace/skills/monarch-money/SKILL.md` — financial queries (read-only)
+- **ChatGPT skill:** `~/.openclaw/workspace/skills/chatgpt/SKILL.md` — Outlook email/calendar, Slack, SharePoint (via Playwright browser proxy on port 18792)
+- **Reminders skill:** `~/.openclaw/workspace/skills/reminders/SKILL.md` — tappable iOS Shortcuts links for iCloud Reminders (routes to person-specific lists)
 - Skills are directories under `~/.openclaw/workspace/skills/<name>/` with YAML frontmatter `SKILL.md`. Hot-deploy without restart.
 - **Remember:** Workspace changes don't take effect until synced to sandbox (`~/.openclaw/sandboxes/agent-main-*/`)
 
@@ -502,7 +512,7 @@ wire-pod replaces Anki/DDL cloud servers. Source-built on NUC, runs as root.
 The R3 robot (Yahboom ROSMASTER R3 on Jetson Orin Nano) is the reference implementation.
 Key lessons learned are documented in `docs/vector/oskr-research.md`.
 
-Features that transfer directly: person detection, face recognition, voice pipeline, LED control, Signal integration, agent loop, intercom.
+Features that transfer directly: person detection, face recognition, voice pipeline, LED control, Signal integration, agent loop, Signal messaging.
 Features requiring rearchitecting: person following (differential drive), servo tracking (gRPC latency), movement control (no strafe).
 Features not portable: SLAM/Nav2 (no LiDAR), IMU gyro gimbal, obstacle avoidance (no LiDAR).
 New capabilities: face display, lift mechanism, cube interaction, cliff detection, touch sensor, built-in beamforming mic.
