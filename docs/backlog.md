@@ -37,3 +37,43 @@
 - Alerts for unusual spend, subscription creep, cash thresholds
 - Monthly "where money leaked" report + exact fixes
 - Extends existing Monarch Money skill (read-only → proactive alerts)
+
+## Goal Drift Monitor
+- Weekly check if your calendar/tasks match your top 3 priorities
+- Flag misalignment and suggest corrections
+
+## Auto-Draft Replies
+- Generate first drafts for recurring stakeholder/email patterns
+- Learn tone and style from past responses
+
+## Delegation Detector
+- Flag tasks you should hand off based on priority and skill match
+- Draft the delegation message
+
+## PRD Copilot Loop
+- Turn meeting notes into PRD deltas + open questions + risks
+- Keep living docs updated automatically
+
+## Launch Risk Radar
+- Daily scan for blockers, dependency slips, and owner-less tasks
+- Surface risks before they become fires
+
+## Personal Knowledge Graph
+- Auto-link people, projects, decisions, docs, and commitments
+- Queryable: "what did we decide about X?" or "who owns Y?"
+
+## Contrarian Review Mode
+- For major decisions, generate the strongest "why this could fail"
+- Force steel-man counterarguments before committing
+
+## Habit Guardrails
+- Bedtime, workout, and deep-work nudges only when deviation is detected
+- No nagging on good days — intervene only when needed
+
+## Family Ops Assistant
+- School/admin/appointments digest with who-needs-what-by-when
+- Centralize family logistics into one view
+
+## Opportunity Pipeline
+- Capture product/startup ideas as they come up
+- Score them periodically and resurface the top 3 monthly
