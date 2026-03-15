@@ -60,8 +60,10 @@ nuc-vector-orchestrator/
 │   │   │   │   └── SKILL.md       ← ChatGPT proxy (email, Slack, calendar via Playwright browser)
 │   │   │   ├── fitness/
 │   │   │   │   └── SKILL.md       ← Fitness tracking skill
-│   │   │   └── monarch-money/
-│   │   │       └── SKILL.md       ← Monarch Money financial queries (read-only)
+│   │   │   ├── monarch-money/
+│   │   │   │   └── SKILL.md       ← Monarch Money financial queries (read-only)
+│   │   │   └── reminders/
+│   │   │       └── SKILL.md       ← iOS Reminders via tappable shortcuts:// links (routes to person lists)
 │   │   ├── agent-notifier.js      ← Agent notification helper
 │   │   ├── command-allowlist.yaml  ← Allowed commands
 │   │   ├── intercom-relay.js      ← Intercom message relay
@@ -160,7 +162,6 @@ nuc-vector-orchestrator/
 │   ├── sprint-end.sh             ← end-of-sprint test/backup workflow
 │   ├── pgm-signal-gate.sh        ← rate-limited Signal notifications
 │   ├── signal-interactive.sh     ← interactive test Signal library
-│   ├── intercom-server.py        ← REMOVED (deleted): migrated to bridge /signal/* and /intercom/* routes
 │   ├── monarch-login.py          ← Monarch Money auth → saves token for OpenClaw
 │   ├── chatgpt-server.py         ← ChatGPT HTTP proxy (Playwright persistent browser, async job queue)
 │   ├── chatgpt-query.py          ← ChatGPT CLI query + login flow (Playwright)

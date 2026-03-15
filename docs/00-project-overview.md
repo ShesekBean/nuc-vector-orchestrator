@@ -140,14 +140,17 @@ Vector mic → Porcupine PV wake word → wire-pod (Vosk STT)
 
 **Key details:**
 - **wire-pod** (`wire-pod.service`, root): Replaces Anki cloud. Handles wake word detection, STT (Vosk), and intent routing.
-- **Voice proxy** (`scripts/openclaw-voice-proxy.py`): Standalone script bridging wire-pod to OpenClaw via OpenAI-compatible API. Serializes requests to prevent double-trigger abort. 60s timeout for tool-heavy queries.
+- **Voice proxy** (`scripts/openclaw-voice-proxy.py`): Bridges wire-pod to OpenClaw via OpenAI-compatible API + V3 device-signed WebSocket auth. Uses `agent:main:main` session (shared with Signal) for unified context. Serializes requests to prevent double-trigger abort. 60s timeout for tool-heavy queries. Voice responses constrained to 1-2 short sentences.
 - **Built-in intents disabled**: All wire-pod intents set to `requiresexact=True` in `en-US.json` — conversational queries route to OpenClaw, not intercepted by built-in handlers.
-- **Sit-still default**: Vector sits still via firmware config — `highLevelAI.json` stripped to Wait-only (1 state, 0 transitions), `quietMode.json` set to 24h active time. Bridge connects with `behavior_control_level=None` (no SDK behavior control). Wake word, voice commands, and SDK commands all still work (they interrupt Wait at higher priority in the behavior tree). Playful mode: `POST /mode {"mode":"playful"}` grants override control for up to 8 min, then auto-reverts to quiet.
+- **Sit-still default**: Vector uses `ObservingOnCharger` initial state in `highLevelAI.json` — green animated eyes, stays on charger, reacts to faces/sounds. QuietMode (`POST /mode {"mode":"quiet"}`) with 15s keepalive for fully still mode with animated eyes. Display controller disabled to preserve native Vector eye animations.
 - **Voice context prefix**: Prepends context to every message telling OpenClaw the speaker is Ophir.
 - **Dual-path routing**: wire-pod intents → bridge HTTP for hardware commands; conversational queries → OpenClaw agent.
 - **Echo cancellation** (`EchoSuppressor`): Pauses mic during `say_text()` output + holdoff period to prevent feedback loops.
 - **Audio path**: `AudioClient` receives PCM from SDK `AudioFeed` (decoded from `signal_power` field, int16 LE at 15625 Hz), resamples to 16000 Hz, stores in thread-safe ring buffer for wake word and STT.
 - **"Tell Ophir" relay**: Regex intercept in voice command router catches "tell Ophir [message]" → sends via Signal (bridge /signal/send).
+- **Unified session**: All channels (Signal DM, voice, companion) share session key `agent:main:main`. Conversation context persists across voice and text interactions. Memory (SQLite vector index) survives daily session resets.
+- **ChatGPT proxy** (`scripts/chatgpt-server.py`, systemd `chatgpt-server.service`, port 18792): Persistent Playwright Chromium browser on DISPLAY=:0, async job queue (POST /query → GET /result/<id>). Connects to Ophir's ChatGPT Plus session for Outlook email, calendar, Slack, SharePoint. Security: IP allowlist (Docker bridge only), domain lock (chatgpt.com/openai.com only), prompt injection filter, 2000 char limit.
+- **OpenClaw v2026.3.13**: Upgraded from v2026.2.26. V3 device-signed WebSocket auth (Ed25519). Persistent sessions (`dmScope: main`), memory hybrid search with temporal decay. See `docs/openclaw-auth.md` for auth protocol details.
 
 ---
 
@@ -266,13 +269,15 @@ Warm personality responses to presence signals:
 - Signal-cli daemon → monitor.ts SSE → gateway → agent → send.ts JSON-RPC
 - Config: `~/.openclaw/openclaw.json`
 
-### 4 Skills
+### 6 Skills
 All skills are hot-deployable directories under `~/.openclaw/workspace/skills/<name>/` with YAML frontmatter `SKILL.md`:
 
 1. **robot-control** (`apps/openclaw/skills/robot-control/SKILL.md`) — Signal text commands → bridge HTTP → Vector actions (move, look, speak, photo, follow, patrol, explore)
 2. **companion** (`apps/openclaw/skills/companion/SKILL.md`) — Presence signals → personality responses with physical expression
 3. **fitness** (`apps/openclaw/skills/fitness/SKILL.md`) — Strava, Withings, Oura Ring data tracking and reporting
 4. **monarch-money** (`apps/openclaw/skills/monarch-money/SKILL.md`) — Financial queries via Monarch Money API (read-only)
+5. **chatgpt** (`apps/openclaw/skills/chatgpt/SKILL.md`) — Outlook email/calendar, Slack, SharePoint via Playwright browser proxy (async polling). Triggers: email, slack, calendar, meetings, daily brief, ask work
+6. **reminders** (`apps/openclaw/skills/reminders/SKILL.md`) — Tappable iOS Shortcuts links for iCloud Reminders, routed to person-specific lists (Maksim, Bob, Manish, Liana, James)
 
 ### Signal Messaging (`src/intercom.py` → bridge `/signal/*` + `/intercom/*` routes)
 - `Intercom` class sends text + JPEG photos to Ophir via bridge HTTP endpoints (port 8081)
