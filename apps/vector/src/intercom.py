@@ -1,10 +1,10 @@
 """Intercom — send text messages and photos to Ophir via Signal.
 
-Communicates with the NUC intercom-server.py (port 8095) which handles
-Signal delivery via the openclaw-gateway container.
+Communicates with the bridge server's /intercom/* endpoints which handle
+Signal delivery via the openclaw-gateway container (JSON-RPC).
 
-Photo capture is delegated to the intercom server, which fetches frames
-from the HTTP-to-gRPC bridge's /capture endpoint.
+Photo capture is delegated to the bridge server, which grabs the latest
+camera frame and sends it as a Signal attachment.
 
 Usage:
     from apps.vector.src.events.nuc_event_bus import NucEventBus
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_INTERCOM_URL = "http://127.0.0.1:8096"
+DEFAULT_INTERCOM_URL = "http://127.0.0.1:8081"
 _TIMEOUT_SECONDS = 10
 
 

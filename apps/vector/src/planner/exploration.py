@@ -317,8 +317,8 @@ class AutonomousExplorer:
         # Check intercom health
         if not self._intercom.health_check():
             logger.warning(
-                "Intercom server not reachable — room naming via Signal will not work. "
-                "Start it with: python3 scripts/intercom-server.py"
+                "Bridge server not reachable — room naming via Signal will not work. "
+                "Start the bridge: python3 -m apps.vector.bridge.server"
             )
 
         self._intercom.send_text(
