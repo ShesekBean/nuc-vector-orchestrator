@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -28,6 +29,7 @@ from pathlib import Path
 
 import aiohttp
 from aiohttp import web
+from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +40,7 @@ logger = logging.getLogger("openclaw-voice-proxy")
 # OpenClaw gateway WebSocket
 OPENCLAW_WS_URL = "ws://127.0.0.1:18889"
 OPENCLAW_TOKEN_PATH = Path.home() / ".openclaw" / "hooks-token"
+OPENCLAW_DEVICE_IDENTITY_PATH = Path.home() / ".openclaw" / "identity" / "device.json"
 
 # OpenClaw gateway auth token (from openclaw.json)
 OPENCLAW_GATEWAY_TOKEN = "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
@@ -71,6 +74,49 @@ VOICE_CONTEXT_PREFIX = (
 def load_gateway_token() -> str:
     """Load the gateway auth token."""
     return OPENCLAW_GATEWAY_TOKEN
+
+
+def _load_device_identity() -> dict:
+    """Load device identity from ~/.openclaw/identity/device.json."""
+    with open(OPENCLAW_DEVICE_IDENTITY_PATH) as f:
+        return json.load(f)
+
+
+def _b64url_no_pad(data: bytes) -> str:
+    """Base64url encode without padding."""
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _build_device_auth(nonce: str, client_id: str = "cli", client_mode: str = "backend") -> dict:
+    """Build V3 device-signed auth payload for the connect frame.
+
+    Signs: v3|deviceId|clientId|clientMode|role|scopes|signedAtMs|token|nonce|platform|deviceFamily
+    """
+    identity = _load_device_identity()
+    device_id = identity["deviceId"]
+    privkey = load_pem_private_key(identity["privateKeyPem"].encode(), password=None)
+    pubkey = load_pem_public_key(identity["publicKeyPem"].encode())
+
+    role = "operator"
+    scopes = "operator.admin,operator.read,operator.write"
+    signed_at_ms = str(int(time.time() * 1000))
+    token = OPENCLAW_GATEWAY_TOKEN
+    platform = "linux"
+    device_family = ""
+
+    payload = f"v3|{device_id}|{client_id}|{client_mode}|{role}|{scopes}|{signed_at_ms}|{token}|{nonce}|{platform}|{device_family}"
+    signature = privkey.sign(payload.encode())
+
+    return {
+        "token": token,
+        "device": {
+            "id": device_id,
+            "publicKey": _b64url_no_pad(pubkey.public_bytes_raw()),
+            "signature": _b64url_no_pad(signature),
+            "signedAt": int(signed_at_ms),
+            "nonce": nonce,
+        },
+    }
 
 
 def _extract_text(msg: object) -> str:
@@ -134,8 +180,9 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
                 else:
                     logger.warning("Expected connect.challenge, got: %s", challenge_msg)
 
-                # Step 2: Send connect request with auth token
+                # Step 2: Send connect request with device-signed auth (V3)
                 connect_id = str(uuid.uuid4())
+                auth_payload = _build_device_auth(nonce)
                 connect_frame = {
                     "type": "req",
                     "id": connect_id,
@@ -144,16 +191,15 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
                         "minProtocol": PROTOCOL_VERSION,
                         "maxProtocol": PROTOCOL_VERSION,
                         "client": {
-                            "id": "gateway-client",
+                            "id": "cli",
                             "displayName": "Vector Voice",
                             "version": "1.0.0",
                             "platform": "linux",
                             "mode": "backend",
                         },
-                        "auth": {
-                            "token": token,
-                        },
-                        "scopes": ["operator.admin"],
+                        "role": "operator",
+                        "scopes": ["operator.admin", "operator.read", "operator.write"],
+                        "auth": auth_payload,
                     },
                 }
                 await ws.send_json(connect_frame)

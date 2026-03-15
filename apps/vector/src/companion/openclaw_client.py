@@ -9,19 +9,59 @@ response.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import time
 import uuid
+from pathlib import Path
 
 import aiohttp
+from cryptography.hazmat.primitives.serialization import load_pem_private_key, load_pem_public_key
 
 logger = logging.getLogger(__name__)
 
 OPENCLAW_WS_URL = "ws://127.0.0.1:18889"
 OPENCLAW_GATEWAY_TOKEN = "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
+OPENCLAW_DEVICE_IDENTITY_PATH = Path.home() / ".openclaw" / "identity" / "device.json"
 PROTOCOL_VERSION = 3
 AGENT_TIMEOUT_MS = 90_000
+
+
+def _b64url_no_pad(data: bytes) -> str:
+    """Base64url encode without padding."""
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _build_device_auth(nonce: str, client_id: str = "cli", client_mode: str = "backend") -> dict:
+    """Build V3 device-signed auth payload for the connect frame."""
+    with open(OPENCLAW_DEVICE_IDENTITY_PATH) as f:
+        identity = json.load(f)
+
+    device_id = identity["deviceId"]
+    privkey = load_pem_private_key(identity["privateKeyPem"].encode(), password=None)
+    pubkey = load_pem_public_key(identity["publicKeyPem"].encode())
+
+    role = "operator"
+    scopes = "operator.admin,operator.read,operator.write"
+    signed_at_ms = str(int(time.time() * 1000))
+    token = OPENCLAW_GATEWAY_TOKEN
+    platform = "linux"
+    device_family = ""
+
+    payload = f"v3|{device_id}|{client_id}|{client_mode}|{role}|{scopes}|{signed_at_ms}|{token}|{nonce}|{platform}|{device_family}"
+    signature = privkey.sign(payload.encode())
+
+    return {
+        "token": token,
+        "device": {
+            "id": device_id,
+            "publicKey": _b64url_no_pad(pubkey.public_bytes_raw()),
+            "signature": _b64url_no_pad(signature),
+            "signedAt": int(signed_at_ms),
+            "nonce": nonce,
+        },
+    }
 
 
 def _extract_text(msg: object) -> str:
@@ -78,13 +118,17 @@ async def openclaw_chat(
             ) as ws:
                 # 1. connect.challenge
                 challenge_msg = await asyncio.wait_for(ws.receive_json(), timeout=5.0)
-                if not (
+                nonce = ""
+                if (
                     challenge_msg.get("type") == "event"
                     and challenge_msg.get("event") == "connect.challenge"
                 ):
+                    nonce = challenge_msg.get("payload", {}).get("nonce", "")
+                else:
                     logger.warning("Expected connect.challenge, got: %s", challenge_msg)
 
-                # 2. connect
+                # 2. connect with device-signed auth (V3)
+                auth_payload = _build_device_auth(nonce)
                 await ws.send_json({
                     "type": "req",
                     "id": str(uuid.uuid4()),
@@ -93,14 +137,15 @@ async def openclaw_chat(
                         "minProtocol": PROTOCOL_VERSION,
                         "maxProtocol": PROTOCOL_VERSION,
                         "client": {
-                            "id": "gateway-client",
+                            "id": "cli",
                             "displayName": display_name,
                             "version": "1.0.0",
                             "platform": "linux",
                             "mode": "backend",
                         },
-                        "auth": {"token": OPENCLAW_GATEWAY_TOKEN},
-                        "scopes": ["operator.admin"],
+                        "role": "operator",
+                        "scopes": ["operator.admin", "operator.read", "operator.write"],
+                        "auth": auth_payload,
                     },
                 })
 
