@@ -36,13 +36,13 @@
   ],
   "runs": [],
   "strava_token_cache": {
-    "access_token": "7a0294e35f1b5ab9a427c8034ced6d5769ed1304",
+    "access_token": "4139c3bd8e1ad9d55992e025f405fd4143bbf63c",
     "refresh_token": "fe5b9ec763c0462c91c7477e33318c13465ecd2e",
-    "expires_at": 1773561093
+    "expires_at": 1773582701
   },
   "withings_token_cache": {
-    "access_token": "1d1bbb4b5f4c229c32ca2fc084ca0e1aa63eb8f1",
-    "refresh_token": "7afea42038adbdc5e0c350c01ffedead3dc972c4",
-    "expires_at": 1773557494
+    "access_token": "ba297cd1330ef4d29b7e179cac1c534e938d4ef9",
+    "refresh_token": "be55785369ff7e0e6c7222df20f4fa2d199d2c69",
+    "expires_at": 1773586302
   }
 }

@@ -543,7 +543,7 @@
       "name": "Robot bedtime reflection prompts (PT)",
       "enabled": true,
       "createdAtMs": 1773545269481,
-      "updatedAtMs": 1773545374644,
+      "updatedAtMs": 1773549029601,
       "schedule": {
         "kind": "cron",
         "expr": "30 21 * * *",
@@ -559,8 +559,14 @@
         "mode": "announce"
       },
       "state": {
-        "nextRunAtMs": 1773549000000,
-        "runningAtMs": 1773549000003
+        "nextRunAtMs": 1773635400000,
+        "lastRunAtMs": 1773549000007,
+        "lastRunStatus": "ok",
+        "lastStatus": "ok",
+        "lastDurationMs": 29594,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0
       }
     }
   ]

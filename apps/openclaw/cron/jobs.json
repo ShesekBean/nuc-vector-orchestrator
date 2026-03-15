@@ -327,7 +327,8 @@
         "lastDurationMs": 121612,
         "lastDelivered": false,
         "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
+        "consecutiveErrors": 0,
+        "runningAtMs": 1773579600010
       }
     },
     {
@@ -533,7 +534,8 @@
         "mode": "announce"
       },
       "state": {
-        "nextRunAtMs": 1773579600000
+        "nextRunAtMs": 1773579600000,
+        "runningAtMs": 1773579600010
       }
     },
     {
