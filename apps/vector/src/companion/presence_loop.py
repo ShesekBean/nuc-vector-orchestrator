@@ -141,17 +141,36 @@ class PresenceDetectionLoop:
 
             interval = _INTERVAL_IDLE_S
             try:
-                # Person detection (emits YOLO_PERSON_DETECTED via event bus)
+                from apps.vector.src.events.event_types import (
+                    YOLO_PERSON_DETECTED, FACE_RECOGNIZED,
+                    YoloPersonDetectedEvent, FaceRecognizedEvent,
+                )
+
                 detections = self._person_detector.detect(frame)
 
                 if detections:
                     interval = _INTERVAL_PERSON_PRESENT_S
 
+                    # Emit person detected events
+                    for det in detections:
+                        self._bus.emit(YOLO_PERSON_DETECTED, YoloPersonDetectedEvent(
+                            x=det.bbox[0], y=det.bbox[1],
+                            width=det.bbox[2], height=det.bbox[3],
+                            confidence=det.confidence,
+                        ))
+
                     # Face detection + recognition only when person found
                     try:
                         faces = self._face_detector.detect(frame)
                         if faces:
-                            self._face_recognizer.recognize(frame, faces)
+                            results = self._face_recognizer.recognize(frame, faces)
+                            if results:
+                                for name, conf, bbox in results:
+                                    self._bus.emit(FACE_RECOGNIZED, FaceRecognizedEvent(
+                                        name=name, confidence=conf,
+                                        x=bbox[0], y=bbox[1],
+                                        width=bbox[2], height=bbox[3],
+                                    ))
                     except Exception:
                         logger.debug("Face detection/recognition error", exc_info=True)
 

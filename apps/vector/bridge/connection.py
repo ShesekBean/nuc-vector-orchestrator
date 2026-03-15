@@ -345,6 +345,10 @@ class ConnectionManager:
         # Wire explorer ↔ charger so charger can pause/resume exploration
         self._auto_charger.explorer = self._explorer
 
+        # Touch-to-sit: touching Vector's head stops everything and goes quiet
+        from apps.vector.src.events.event_types import TOUCH_DETECTED
+        self._nuc_bus.on(TOUCH_DETECTED, self._on_touch_sit)
+
         self._connected = True
         logger.info("Connected to Vector successfully (firmware defaults to Wait)")
 
@@ -386,6 +390,54 @@ class ConnectionManager:
         import time
         remaining = getattr(self, '_playful_end', 0) - time.monotonic()
         return max(0.0, remaining)
+
+    def _on_touch_sit(self, event: Any) -> None:
+        """Touch Vector's head → stop everything, go to quiet/sit mode.
+
+        Stops exploration, follow, patrol, releases control, and sends
+        quiet intent so Vector sits still.
+        """
+        import time as _time
+
+        # Debounce — ignore if last touch was <3s ago
+        now = _time.monotonic()
+        last = getattr(self, '_last_touch_time', 0.0)
+        if now - last < 3.0:
+            return
+        self._last_touch_time = now
+
+        logger.info("Touch detected — stopping all activities, going to sit mode")
+
+        # Stop active systems
+        try:
+            if self._explorer and self._explorer.state.name != "IDLE":
+                self._explorer.stop()
+                logger.info("Stopped exploration via touch")
+        except Exception:
+            pass
+        try:
+            if self._follow_pipeline and self._follow_pipeline.is_active:
+                self._follow_pipeline.stop()
+                logger.info("Stopped follow via touch")
+        except Exception:
+            pass
+        try:
+            if self._home_guardian and self._home_guardian.is_running:
+                self._home_guardian.stop()
+                logger.info("Stopped patrol via touch")
+        except Exception:
+            pass
+
+        # Release control and go quiet
+        if self._control_manager:
+            self._control_manager.force_release()
+        self.set_mode("quiet")
+
+        # Say something so the user knows it worked
+        try:
+            self._robot.behavior.say_text("OK")
+        except Exception:
+            pass
 
     def set_mode(self, mode: str, duration_s: float = 480.0) -> None:
         """Set behavior mode.
