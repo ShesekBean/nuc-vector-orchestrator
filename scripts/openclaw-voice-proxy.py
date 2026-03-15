@@ -65,9 +65,10 @@ _RESPONSE_REUSE_WINDOW = 3.0  # seconds
 # who is speaking and doesn't ask clarifying questions about recipients.
 VOICE_CONTEXT_PREFIX = (
     "[Voice command from Ophir via Vector's microphone. "
+    "CRITICAL: Keep responses to 1-2 SHORT sentences max — this is spoken aloud "
+    "by a small robot. No markdown, no bullets, no formatting. Just talk naturally. "
     "When Ophir says 'send to Ophir' or 'message Ophir' or 'tell Ophir', "
-    "send a Signal message to Ophir (+14084758230) immediately without asking "
-    "who the recipient is — it's always Ophir himself.] "
+    "send a Signal message to Ophir (+14084758230) immediately.] "
 )
 
 
