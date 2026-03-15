@@ -135,6 +135,26 @@ class CameraClient:
     # Internal
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _enhance_brightness(bgr_frame: np.ndarray) -> np.ndarray:
+        """Brighten dark frames using CLAHE (Contrast Limited Adaptive Histogram Equalization).
+
+        Vector's OV7251 camera produces very dark images (mean ~30/255).
+        CLAHE boosts contrast locally without blowing out bright areas.
+        """
+        import cv2
+
+        lab = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2LAB)
+        l_channel = lab[:, :, 0]
+
+        # Only enhance if the frame is actually dark (mean L < 80)
+        if l_channel.mean() < 80:
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            lab[:, :, 0] = clahe.apply(l_channel)
+            return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+        return bgr_frame
+
     def _start_feed(self) -> None:
         """Initialize camera feed with event subscription + polling fallback."""
         from anki_vector.events import Events
@@ -215,6 +235,9 @@ class CameraClient:
             rgb_array = np.asarray(pil_img)
             bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
 
+            # Brighten dark frames with CLAHE (Vector's camera is very dark)
+            bgr_array = self._enhance_brightness(bgr_array)
+
             # Encode to JPEG for consumers that want raw bytes
             ok, jpeg_buf = cv2.imencode(".jpg", bgr_array)
             jpeg_bytes = jpeg_buf.tobytes() if ok else b""
@@ -293,6 +316,9 @@ class CameraClient:
                 pil_img = image.raw_image
                 rgb_array = np.asarray(pil_img)
                 bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+
+                # Brighten dark frames with CLAHE
+                bgr_array = self._enhance_brightness(bgr_array)
 
                 ok, jpeg_buf = cv2.imencode(".jpg", bgr_array)
                 jpeg_bytes = jpeg_buf.tobytes() if ok else b""
