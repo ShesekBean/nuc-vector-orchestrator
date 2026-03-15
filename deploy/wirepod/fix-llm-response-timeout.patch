@@ -1,0 +1,30 @@
+diff --git a/chipper/pkg/wirepod/ttr/kgsim.go b/chipper/pkg/wirepod/ttr/kgsim.go
+index f94ee7f..a6cb6ca 100644
+--- a/chipper/pkg/wirepod/ttr/kgsim.go
++++ b/chipper/pkg/wirepod/ttr/kgsim.go
+@@ -258,6 +258,14 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
+ 	speakReady := make(chan string)
+ 	successIntent := make(chan bool)
+ 
++	// Send immediate intent response for non-KG requests to prevent
++	// Vector firmware timeout (~10s). Without this, the intent graph
++	// gRPC stream stays open while waiting for the LLM, and Vector
++	// shows "lost connection to cloud" animation.
++	if !isKG {
++		IntentPass(req, "intent_greeting_hello", transcribedText, map[string]string{}, false)
++	}
++
+ 	aireq := CreateAIReq(transcribedText, esn, false, isKG)
+ 
+ 	stream, err := c.CreateChatCompletionStream(ctx, aireq)
+@@ -384,9 +392,7 @@ func StreamingKGSim(req interface{}, esn string, transcribedText string, isKG bo
+ 	}()
+ 	for is := range successIntent {
+ 		if is {
+-			if !isKG {
+-				IntentPass(req, "intent_greeting_hello", transcribedText, map[string]string{}, false)
+-			}
++			// IntentPass already sent above for non-KG requests
+ 			break
+ 		} else {
+ 			return "", errors.New("llm returned no response")
