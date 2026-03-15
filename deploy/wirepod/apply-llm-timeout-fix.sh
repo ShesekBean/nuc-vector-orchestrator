@@ -14,7 +14,7 @@
 set -euo pipefail
 
 WIREPOD_DIR="${HOME}/Documents/claude/wire-pod"
-PATCH_FILE="$(dirname "$0")/fix-llm-response-timeout.patch"
+PATCH_FILE="$(cd "$(dirname "$0")" && pwd)/fix-llm-response-timeout.patch"
 
 if [ ! -d "$WIREPOD_DIR" ]; then
     echo "Error: wire-pod not found at $WIREPOD_DIR"
