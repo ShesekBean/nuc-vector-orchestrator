@@ -164,7 +164,6 @@ async def openclaw_chat(message: str, timeout_s: float = 60.0) -> str:
     chat.send request, collects ChatEvent deltas until final, and returns
     the combined response text.
     """
-    token = load_gateway_token()
     idempotency_key = str(uuid.uuid4())
     run_id = idempotency_key
 
