@@ -42,6 +42,10 @@ if [[ -f "$REPO_DIR/infra/systemd/nuc-agent-loop.service" ]]; then
     fi
 fi
 
+# Fix python symlink in OpenClaw container (python3 exists but 'python' doesn't)
+log "Fixing python symlink in openclaw-gateway..."
+cmd "sg docker -c 'docker exec -u root openclaw-gateway ln -sf /usr/bin/python3 /usr/bin/python' 2>/dev/null || true"
+
 # Start services
 log "Starting NUC agent-loop..."
 cmd "systemctl --user start nuc-agent-loop.service"
