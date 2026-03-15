@@ -1,0 +1,175 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.2.26",
+    "lastTouchedAt": "2026-03-11T00:13:31.500Z"
+  },
+  "env": {
+    "STRAVA_CLIENT_ID": "${STRAVA_CLIENT_ID}",
+    "STRAVA_CLIENT_SECRET": "${STRAVA_CLIENT_SECRET}",
+    "STRAVA_REFRESH_TOKEN": "${STRAVA_REFRESH_TOKEN}",
+    "WITHINGS_CLIENT_ID": "${WITHINGS_CLIENT_ID}",
+    "WITHINGS_CLIENT_SECRET": "${WITHINGS_CLIENT_SECRET}",
+    "WITHINGS_REFRESH_TOKEN": "${WITHINGS_REFRESH_TOKEN}",
+    "OURA_ACCESS_TOKEN": "${OURA_ACCESS_TOKEN}"
+  },
+  "wizard": {
+    "lastRunAt": "2026-03-11T00:11:54.597Z",
+    "lastRunVersion": "2026.2.26",
+    "lastRunCommand": "configure",
+    "lastRunMode": "local"
+  },
+  "logging": {
+    "redactSensitive": "tools"
+  },
+  "update": {
+    "checkOnStart": true,
+    "auto": {
+      "enabled": true
+    }
+  },
+  "browser": {
+    "ssrfPolicy": {
+      "allowedHostnames": []
+    }
+  },
+  "auth": {
+    "profiles": {
+      "openai-codex:default": {
+        "provider": "openai-codex",
+        "mode": "oauth"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openai-codex/gpt-5.3-codex"
+      },
+      "models": {
+        "openai-codex/gpt-5.3-codex": {}
+      },
+      "workspace": "/home/node/.openclaw/workspace",
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8
+      },
+      "sandbox": {
+        "mode": "off",
+        "workspaceAccess": "ro",
+        "scope": "agent"
+      }
+    }
+  },
+  "tools": {
+    "elevated": {
+      "enabled": false
+    },
+    "exec": {
+      "timeoutSec": 120
+    },
+    "fs": {
+      "workspaceOnly": false
+    }
+  },
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "approvals": {
+    "exec": {
+      "enabled": true,
+      "mode": "targets",
+      "targets": [
+        {
+          "channel": "signal",
+          "to": "+14084758230"
+        }
+      ]
+    }
+  },
+  "session": {
+    "dmScope": "main"
+  },
+  "cron": {
+    "enabled": true
+  },
+  "hooks": {
+    "enabled": true,
+    "path": "/hooks",
+    "token": "b4eae01172712e75935540e31b8b0ac0e9e006c5a3c625b25138fe57411c8cc5",
+    "defaultSessionKey": "hook:ingress",
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "session-memory": {
+          "enabled": true
+        },
+        "boot-md": {
+          "enabled": true
+        },
+        "bootstrap-extra-files": {
+          "enabled": true
+        },
+        "command-logger": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "channels": {
+    "signal": {
+      "enabled": true,
+      "account": "+14086469950",
+      "cliPath": "signal-cli",
+      "dmPolicy": "allowlist",
+      "allowFrom": [
+        14084758230
+      ],
+      "groupPolicy": "disabled"
+    }
+  },
+  "discovery": {
+    "mdns": {
+      "mode": "minimal"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "controlUi": {
+      "allowedOrigins": [
+        "http://localhost:18789",
+        "http://127.0.0.1:18789",
+        "http://localhost:18889",
+        "http://127.0.0.1:18889"
+      ]
+    },
+    "auth": {
+      "mode": "token",
+      "token": "fed3aea80e03410f8dae71c586049e85af3929b10d1f7a36508cabf05a5ec505"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
+    "nodes": {
+      "denyCommands": []
+    }
+  },
+  "plugins": {
+    "entries": {
+      "signal": {
+        "enabled": true
+      }
+    }
+  }
+}
