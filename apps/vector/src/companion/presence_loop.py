@@ -163,13 +163,13 @@ class PresenceDetectionLoop:
                     try:
                         faces = self._face_detector.detect(frame)
                         if faces:
-                            results = self._face_recognizer.recognize(frame, faces)
-                            if results:
-                                for name, conf, bbox in results:
+                            matches = self._face_recognizer.recognize(frame, faces)
+                            if matches:
+                                for match in matches:
                                     self._bus.emit(FACE_RECOGNIZED, FaceRecognizedEvent(
-                                        name=name, confidence=conf,
-                                        x=bbox[0], y=bbox[1],
-                                        width=bbox[2], height=bbox[3],
+                                        name=match.name, confidence=match.confidence,
+                                        x=match.detection.x, y=match.detection.y,
+                                        width=match.detection.width, height=match.detection.height,
                                     ))
                     except Exception:
                         logger.debug("Face detection/recognition error", exc_info=True)
